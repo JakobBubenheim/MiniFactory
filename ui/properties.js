@@ -99,7 +99,8 @@ MF.props = {
       input = document.createElement('select');
       def.options.forEach(function (o) {
         var opt = document.createElement('option');
-        opt.value = opt.textContent = o;
+        opt.value = o;
+        opt.textContent = o === '' ? '–' : o;
         input.appendChild(opt);
       });
       input.value = value;
@@ -217,8 +218,8 @@ MF.props = {
     sentence.className = 'rule-sentence';
     function updateSentence() {
       sentence.innerHTML = '<b>WENN</b> <span></span> = 1<br><b>DANN</b> <span></span> := 1';
-      sentence.children[1].textContent = rule.when;
-      sentence.children[4].textContent = rule.then;
+      sentence.children[1].textContent = rule.when || '–';
+      sentence.children[4].textContent = rule.then || '–';
     }
     updateSentence();
 
@@ -226,9 +227,9 @@ MF.props = {
     this.field(s1, { label: 'Name', type: 'text' }, rule.name, function (v) { rule.name = v; self.commit(); self.render(); });
 
     var s2 = this.section(body, 'Bedingung');
-    this.field(s2, { label: 'Wenn', type: 'select', options: MF.store.signals('out') }, rule.when,
+    this.field(s2, { label: 'Wenn', type: 'select', options: [''].concat(MF.store.signals('out')) }, rule.when,
       function (v) { rule.when = v; updateSentence(); self.commit(); });
-    this.field(s2, { label: 'Dann', type: 'select', options: MF.store.signals('in') }, rule.then,
+    this.field(s2, { label: 'Dann', type: 'select', options: [''].concat(MF.store.signals('in')) }, rule.then,
       function (v) { rule.then = v; updateSentence(); self.commit(); });
 
     body.appendChild(sentence);

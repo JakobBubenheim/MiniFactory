@@ -5,7 +5,8 @@ window.MF = window.MF || {};
 // Beschreibung der fünf Elementtypen: Eigenschaften und Signale (I/O).
 MF.types = {
   source: {
-    label: 'Quelle', icon: 'i-source',
+    label: 'Quelle', icon: 'i-source', prefix: 'Q', size: [1, 1], color: '#D9701A',
+    defaults: { interval: 2, maxCount: 0, enabled: true },
     props: [
       { key: 'interval', label: 'Takt', type: 'number', unit: 's', step: 0.1, min: 0.1 },
       { key: 'maxCount', label: 'Max. Anzahl', type: 'number', step: 1, min: 0 },
@@ -17,7 +18,8 @@ MF.types = {
     ]
   },
   conveyor: {
-    label: 'Förderband', icon: 'i-conveyor',
+    label: 'Förderband', icon: 'i-conveyor', prefix: 'B', size: [4, 1], color: '#1B2430',
+    defaults: { speed: 0.5, direction: 'rechts' },
     props: [
       { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0 },
       { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'] }
@@ -29,7 +31,8 @@ MF.types = {
     ]
   },
   sensor: {
-    label: 'Lichtschranke', icon: 'i-sensor',
+    label: 'Lichtschranke', icon: 'i-sensor', prefix: 'LS', size: [1, 1], color: '#1B2430',
+    defaults: { invert: false, debounce: 0 },
     props: [
       { key: 'invert', label: 'Invertieren', type: 'bool' },
       { key: 'debounce', label: 'Entprellzeit', type: 'number', unit: 'ms', step: 10, min: 0 }
@@ -39,7 +42,8 @@ MF.types = {
     ]
   },
   pusher: {
-    label: 'Schieber', icon: 'i-pusher',
+    label: 'Schieber', icon: 'i-pusher', prefix: 'S', size: [1, 1], color: '#1B2430',
+    defaults: { stroke: 400, speed: 0.3, returnDelay: 0.5 },
     props: [
       { key: 'stroke', label: 'Hub', type: 'number', unit: 'mm', step: 10, min: 0 },
       { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0 },
@@ -52,7 +56,8 @@ MF.types = {
     ]
   },
   sink: {
-    label: 'Senke', icon: 'i-sink',
+    label: 'Senke', icon: 'i-sink', prefix: 'SE', size: [1, 1], color: '#1B2430',
+    defaults: { count: 0 },
     props: [
       { key: 'count', label: 'Zählerstand', type: 'number', readonly: true }
     ],
@@ -95,7 +100,7 @@ MF.model.elements.forEach(function (el) {
   el.rt = {};
   el.visible = true;
   el.locked = false;
-  el.color = el.type === 'source' ? '#D9701A' : '#1B2430';
+  el.color = MF.types[el.type].color;
 });
 
 // Zentraler Zustand mit einfachem Ereignissystem.
@@ -128,6 +133,74 @@ MF.store = {
     var rules = MF.model.rules;
     for (var i = 0; i < rules.length; i++) if (rules[i].id === id) return rules[i];
     return null;
+  },
+
+  // ---------- Elemente anlegen, löschen, duplizieren ----------
+
+  // Nächste freie ID mit Kürzel, z. B. "B" -> "B2". Gibt auch die Nummer zurück.
+  nextId: function (prefix) {
+    var max = 0;
+    var re = new RegExp('^' + prefix + '(\\d+)$');
+    MF.model.elements.forEach(function (el) {
+      var m = re.exec(el.id);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return { id: prefix + (max + 1), n: max + 1 };
+  },
+
+  // Neues Element aus der Bibliothek. Werte kommen aus den Standardwerten des Typs.
+  createElement: function (type, x, y, group) {
+    var t = MF.types[type];
+    var next = this.nextId(t.prefix);
+    var el = {
+      id: next.id, type: type, name: t.label + ' ' + next.n, group: group,
+      x: x, y: y, w: t.size[0], h: t.size[1],
+      props: JSON.parse(JSON.stringify(t.defaults)),
+      rt: {}, visible: true, locked: false, color: t.color
+    };
+    MF.model.elements.push(el);
+    this.selectedId = el.id;
+    this.changed();
+    return el;
+  },
+
+  // Kopie mit neuer ID, eine Zelle versetzt
+  duplicateElement: function (id) {
+    var src = this.findElement(id);
+    if (!src) return null;
+    var el = this.createElement(src.type, src.x + 1, src.y + 1, src.group);
+    el.w = src.w;
+    el.h = src.h;
+    el.props = JSON.parse(JSON.stringify(src.props));
+    if (src.type === 'sink') el.props.count = 0;
+    el.color = src.color;
+    this.changed();
+    return el;
+  },
+
+  // Element entfernen. Regeln, die seine Signale benutzen, verlieren den Bezug.
+  deleteElement: function (id) {
+    var els = MF.model.elements;
+    var i = els.indexOf(this.findElement(id));
+    if (i < 0) return false;
+    els.splice(i, 1);
+    MF.model.rules.forEach(function (r) {
+      if (r.when && r.when.indexOf(id + '.') === 0) r.when = '';
+      if (r.then && r.then.indexOf(id + '.') === 0) r.then = '';
+    });
+    if (this.selectedId === id) this.selectedId = null;
+    this.changed();
+    return true;
+  },
+
+  deleteRule: function (id) {
+    var rules = MF.model.rules;
+    var i = rules.indexOf(this.findRule(id));
+    if (i < 0) return false;
+    rules.splice(i, 1);
+    if (this.selectedId === id) this.selectedId = null;
+    this.changed();
+    return true;
   },
 
   // Liste aller Signale, z. B. "LS1.Belegt", für die Regel-Auswahl.

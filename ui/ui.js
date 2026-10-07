@@ -135,6 +135,9 @@ MF.ui = {
         case 'sim-pause': MF.engine.pause(); break;
         case 'sim-step':  MF.engine.stepOnce(); break;
         case 'sim-reset': MF.engine.reset(); break;
+        case 'duplicate':   MF.editor.duplicateSelected(); break;
+        case 'delete':      MF.editor.deleteSelected(); break;
+        case 'delete-rule': MF.editor.deleteSelectedRule(); break;
       }
       self.syncToggles();
       self.updateStatus();

@@ -45,16 +45,18 @@ MF.sim = {
     return { x: Math.floor(w.x), y: Math.floor(w.y) };
   },
 
-  // Oberstes sichtbares Element unter dem Mauszeiger, sonst null.
+  // Sichtbares Element unter dem Mauszeiger, sonst null. Liegen mehrere
+  // übereinander (z. B. Lichtschranke auf Band), gewinnt das kleinste.
   hitTest: function (px, py) {
     var w = this.toWorld(px, py);
-    var els = MF.model.elements;
-    for (var i = els.length - 1; i >= 0; i--) {
-      var el = els[i];
-      if (!el.visible) continue;
-      if (w.x >= el.x && w.x < el.x + el.w && w.y >= el.y && w.y < el.y + el.h) return el;
-    }
-    return null;
+    var best = null;
+    MF.model.elements.forEach(function (el) {
+      if (!el.visible) return;
+      if (w.x >= el.x && w.x < el.x + el.w && w.y >= el.y && w.y < el.y + el.h) {
+        if (!best || el.w * el.h <= best.w * best.h) best = el;
+      }
+    });
+    return best;
   },
 
   setZoom: function (z, cx, cy) {
@@ -107,6 +109,7 @@ MF.sim = {
       if (el.visible) self.drawElement(el);
     });
     this.drawBoxes();
+    this.drawGhost();
     ctx.restore();
 
     if (this.showTags) this.drawTags();
@@ -241,6 +244,25 @@ MF.sim = {
     var e = MF.engine;
     if (!e.clock) return 0;
     return e.time - (1 - e.alpha()) * e.dt();
+  },
+
+  // Vorschau beim Ziehen aus der Bibliothek: halbtransparent mit Rahmen
+  ghost: null,   // { type, x, y, w, h } in Rasterzellen
+
+  drawGhost: function () {
+    var g = this.ghost;
+    if (!g) return;
+    var ctx = this.ctx;
+    var t = MF.types[g.type];
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    this.drawElement({ type: g.type, x: g.x, y: g.y, w: g.w, h: g.h, color: t.color, props: t.defaults });
+    ctx.restore();
+    ctx.strokeStyle = '#D9701A';
+    ctx.lineWidth = 2 / this.cellSize();
+    ctx.setLineDash([0.12, 0.08]);
+    ctx.strokeRect(g.x, g.y, g.w, g.h);
+    ctx.setLineDash([]);
   },
 
   // Kisten: zwischen alter und neuer Position interpoliert

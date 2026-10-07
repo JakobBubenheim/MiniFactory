@@ -107,8 +107,8 @@
         </div>
         <div class="rgroup">
           <div class="rgroup-items">
-            <button class="rbtn" data-stage="später"><svg><use href="#i-copy"/></svg><span>Duplizieren</span></button>
-            <button class="rbtn" data-stage="später"><svg><use href="#i-delete"/></svg><span>Löschen</span></button>
+            <button class="rbtn" data-action="duplicate" title="Duplizieren (Strg+D)"><svg><use href="#i-copy"/></svg><span>Duplizieren</span></button>
+            <button class="rbtn" data-action="delete" title="Löschen (Entf)"><svg><use href="#i-delete"/></svg><span>Löschen</span></button>
           </div>
           <div class="rgroup-label">Element</div>
         </div>
@@ -131,21 +131,21 @@
       <div class="ribbon-page" data-page="komponenten" hidden>
         <div class="rgroup">
           <div class="rgroup-items">
-            <button class="rbtn" data-stage="später"><svg><use href="#i-source"/></svg><span>Quelle</span></button>
-            <button class="rbtn" data-stage="später"><svg><use href="#i-conveyor"/></svg><span>Förderband</span></button>
-            <button class="rbtn" data-stage="später"><svg><use href="#i-sink"/></svg><span>Senke</span></button>
+            <button class="rbtn" data-create="source" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-source"/></svg><span>Quelle</span></button>
+            <button class="rbtn" data-create="conveyor" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-conveyor"/></svg><span>Förderband</span></button>
+            <button class="rbtn" data-create="sink" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-sink"/></svg><span>Senke</span></button>
           </div>
           <div class="rgroup-label">Materialfluss</div>
         </div>
         <div class="rgroup">
           <div class="rgroup-items">
-            <button class="rbtn" data-stage="3"><svg><use href="#i-sensor"/></svg><span>Lichtschranke</span></button>
+            <button class="rbtn" data-create="sensor" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-sensor"/></svg><span>Lichtschranke</span></button>
           </div>
           <div class="rgroup-label">Sensoren</div>
         </div>
         <div class="rgroup">
           <div class="rgroup-items">
-            <button class="rbtn" data-stage="3"><svg><use href="#i-pusher"/></svg><span>Schieber</span></button>
+            <button class="rbtn" data-create="pusher" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-pusher"/></svg><span>Schieber</span></button>
           </div>
           <div class="rgroup-label">Aktoren</div>
         </div>
@@ -155,7 +155,7 @@
         <div class="rgroup">
           <div class="rgroup-items">
             <button class="rbtn" data-stage="4"><svg><use href="#i-rule"/></svg><span>Neue Regel</span></button>
-            <button class="rbtn" data-stage="4"><svg><use href="#i-delete"/></svg><span>Regel löschen</span></button>
+            <button class="rbtn" data-action="delete-rule"><svg><use href="#i-delete"/></svg><span>Regel löschen</span></button>
           </div>
           <div class="rgroup-label">Regeln</div>
         </div>
@@ -245,6 +245,18 @@
         <input type="search" id="tree-search" placeholder="Suchen …" autocomplete="off">
       </div>
       <ul class="tree" id="tree" role="tree" aria-label="Strukturbaum"></ul>
+
+      <div class="panel-head panel-head-sub">
+        <svg><use href="#i-plus"/></svg>
+        <span>Bibliothek</span>
+      </div>
+      <div class="library" aria-label="Bibliothek">
+        <button class="lib-item" data-create="source" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-source"/></svg><span>Quelle</span></button>
+        <button class="lib-item" data-create="conveyor" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-conveyor"/></svg><span>Förderband</span></button>
+        <button class="lib-item" data-create="sensor" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-sensor"/></svg><span>Lichtschranke</span></button>
+        <button class="lib-item" data-create="pusher" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-pusher"/></svg><span>Schieber</span></button>
+        <button class="lib-item" data-create="sink" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-sink"/></svg><span>Senke</span></button>
+      </div>
     </aside>
 
     <div class="splitter" data-side="left" role="separator" aria-orientation="vertical" aria-label="Breite Strukturbaum" tabindex="0"></div>
@@ -298,6 +310,7 @@
   <script src="logic/logic.js"></script>
   <script src="ui/ui.js"></script>
   <script src="ui/tree.js"></script>
+  <script src="ui/editor.js"></script>
   <script src="ui/properties.js"></script>
   <script src="main.js"></script>
 </body>

@@ -531,6 +531,82 @@ button, input, select {
   color: var(--muted);
 }
 
+/* ---------- Bibliothek ---------- */
+
+.panel-head-sub {
+  border-top: 1px solid var(--line);
+}
+
+.library {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 8px;
+  flex: none;
+}
+
+.lib-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  background: var(--dark-3);
+  border: 1px solid transparent;
+  color: var(--light);
+  font-size: 11px;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.lib-item svg {
+  color: var(--light-dim);
+}
+
+.lib-item:hover {
+  border-color: var(--accent);
+}
+
+.lib-item:hover svg {
+  color: var(--accent);
+}
+
+.rbtn[data-create] {
+  cursor: grab;
+  touch-action: none;
+}
+
+/* Anzeige am Mauszeiger beim Ziehen aus der Bibliothek */
+.drag-chip {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--dark);
+  border: 1px solid var(--accent);
+  color: var(--light);
+  font-size: 11px;
+  pointer-events: none;
+  transform: translate(12px, 12px);
+}
+
+.drag-chip svg {
+  color: var(--accent);
+}
+
+.drag-chip.is-over-canvas {
+  opacity: 0.6;
+}
+
+body.is-dragging, body.is-dragging * {
+  cursor: grabbing !important;
+}
+
 /* ---------- Simulationsfläche ---------- */
 
 .stage {
