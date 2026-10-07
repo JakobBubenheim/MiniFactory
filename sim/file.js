@@ -276,10 +276,16 @@ window.MF = window.MF || {};
         });
         return;
       }
+      // Ohne accept-Filter: Safari kennt die Endung .mfab nicht und graut die Datei
+      // sonst aus. Falsche Dateien fängt validate() ab.
       var input = document.createElement('input');
       input.type = 'file';
-      input.accept = this.EXT + ',application/json';
+      input.style.display = 'none';
+      document.body.appendChild(input);   // Safari meldet "change" nur zuverlässig im DOM
+      function remove() { if (input.parentNode) input.parentNode.removeChild(input); }
+      input.addEventListener('cancel', remove);
       input.addEventListener('change', function () {
+        remove();
         var f = input.files && input.files[0];
         if (!f) return;
         var reader = new FileReader();
