@@ -75,6 +75,8 @@ MF.engine = {
       el.rt = {};  // Laufzeitdaten je Element
       if (el.type === 'sink') el.props.count = 0;
     });
+    // Regel-Ziele zum leeren Prozessabbild passend setzen (z. B. Schieber eingefahren)
+    MF.logic.run();
   },
 
   // ---------- Ein Zeitschritt ----------
@@ -93,7 +95,9 @@ MF.engine = {
       if (el.type === 'sensor') el.rt.occupied = self.sensorHit(el);
     });
 
-    // 2. Logik – die Wenn-dann-Regeln werden ab Etappe 4 hier ausgewertet
+    // 2. Logik – Wenn-dann-Regeln schreiben die Eingänge der Aktoren
+    MF.logic.run();
+
     // 3. Aktoren – Schieber fahren ab Etappe 3 hier
 
     // 4. Bewegung

@@ -154,14 +154,14 @@
       <div class="ribbon-page" data-page="logik" hidden>
         <div class="rgroup">
           <div class="rgroup-items">
-            <button class="rbtn" data-stage="4"><svg><use href="#i-rule"/></svg><span>Neue Regel</span></button>
+            <button class="rbtn" data-action="new-rule" title="Neue Regel anlegen"><svg><use href="#i-rule"/></svg><span>Neue Regel</span></button>
             <button class="rbtn" data-action="delete-rule"><svg><use href="#i-delete"/></svg><span>Regel löschen</span></button>
           </div>
           <div class="rgroup-label">Regeln</div>
         </div>
         <div class="rgroup">
           <div class="rgroup-items">
-            <button class="rbtn" data-stage="4"><svg><use href="#i-signal"/></svg><span>Signalliste</span></button>
+            <button class="rbtn" data-action="signal-list" title="Alle Signale mit Live-Werten"><svg><use href="#i-signal"/></svg><span>Signalliste</span></button>
           </div>
           <div class="rgroup-label">Signale</div>
         </div>
@@ -286,6 +286,22 @@
       <div class="props" id="props"></div>
     </aside>
 
+    <!-- Signalliste: schwebendes Fenster über der Fläche, nicht modal -->
+    <dialog class="siglist" id="siglist" aria-labelledby="siglist-title">
+      <div class="siglist-head">
+        <svg><use href="#i-signal"/></svg>
+        <span id="siglist-title">Signalliste</span>
+        <input type="search" id="siglist-filter" placeholder="Filtern …" autocomplete="off" aria-label="Signale filtern">
+        <button type="button" class="siglist-close" data-action="signal-list-close" title="Schließen (Esc)" aria-label="Schließen">×</button>
+      </div>
+      <div class="siglist-body">
+        <table class="io-table siglist-table">
+          <thead><tr><th></th><th>Element</th><th>Name</th><th>Richtung</th><th>Typ</th><th>Wert</th><th>Verwendet in</th></tr></thead>
+          <tbody id="siglist-rows"></tbody>
+        </table>
+      </div>
+    </dialog>
+
     <!-- Statusleiste -->
     <footer class="statusbar">
       <span class="sb-path" id="sb-path">/Beispielanlage</span>
@@ -312,6 +328,7 @@
   <script src="ui/tree.js"></script>
   <script src="ui/editor.js"></script>
   <script src="ui/properties.js"></script>
+  <script src="ui/signals.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

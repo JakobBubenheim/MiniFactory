@@ -283,8 +283,10 @@ MF.props = {
       type.io.forEach(function (s) {
         var sig = el.id + '.' + s.name;
         var users = s.dir === 'in' ? MF.logic.rulesSetting(sig) : MF.logic.rulesReading(sig);
+        var byRule = s.dir === 'in' ? MF.logic.activeSetting(sig) : [];
         var tr = document.createElement('tr');
         tr.dataset.signal = s.name;
+        if (byRule.length) tr.classList.add('is-rule');
         tr.innerHTML =
           '<td><span class="dot"></span></td>' +
           '<td class="mono"></td>' +
@@ -293,8 +295,10 @@ MF.props = {
           '<td class="io-cell"></td>' +
           '<td></td>';
         tr.children[1].textContent = s.name;
-        tr.children[5].textContent = users.map(function (r) { return r.name; }).join(', ') || '–';
-        self.ioValueCell(tr.children[4], el, s);
+        tr.children[5].textContent = users.map(function (r) {
+          return r.name + (MF.logic.isActive(r) ? '' : ' (aus)');
+        }).join(', ') || '–';
+        self.ioValueCell(tr.children[4], el, s, byRule);
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
@@ -302,7 +306,8 @@ MF.props = {
       var note = document.createElement('div');
       note.className = 'io-note';
       note.textContent = 'Wert anklicken und eintippen, z. B. 0 oder 1. Eingänge (EIN) wirken sofort; ' +
-        'Ausgänge (AUS) werden geforct (F) und zeigen den festen Wert, bis du × klickst.';
+        'Ausgänge (AUS) werden geforct (F) und zeigen den festen Wert, bis du × klickst. ' +
+        'Eingänge mit R werden durch eine Regel gesetzt und sind hier nicht änderbar.';
       body.appendChild(note);
       this.refreshLive();
     }
@@ -329,11 +334,16 @@ MF.props = {
       sentence.innerHTML = '<b>WENN</b> <span></span> = 1<br><b>DANN</b> <span></span> := 1';
       sentence.children[1].textContent = rule.when || '–';
       sentence.children[4].textContent = rule.then || '–';
+      sentence.classList.toggle('is-off', rule.enabled === false);
+      if (rule.enabled === false) sentence.insertAdjacentHTML('beforeend', '<br><i>abgeschaltet – wird nicht ausgewertet</i>');
+      else if (!rule.when || !rule.then) sentence.insertAdjacentHTML('beforeend', '<br><i>unvollständig – wird nicht ausgewertet</i>');
     }
     updateSentence();
 
     var s1 = this.section(body, 'Allgemein');
     this.field(s1, { label: 'Name', type: 'text' }, rule.name, function (v) { rule.name = v; self.commit(); self.render(); });
+    this.field(s1, { label: 'Aktiv', type: 'bool', onText: 'Ja', offText: 'Nein', hint: 'Abgeschaltete Regeln bleiben erhalten, werden aber nicht ausgewertet' },
+      rule.enabled !== false, function (v) { rule.enabled = v; updateSentence(); self.commit(); });
 
     var s2 = this.section(body, 'Bedingung');
     this.field(s2, { label: 'Wenn', type: 'select', options: [''].concat(MF.store.signals('out')) }, rule.when,
@@ -392,7 +402,8 @@ MF.props = {
   },
 
   // Wert-Zelle der I/O-Tabelle: eintippen setzt den Eingang bzw. forct den Ausgang
-  ioValueCell: function (td, el, s) {
+  // byRule: aktive Regeln, die diesen Eingang schreiben – dann nur Anzeige
+  ioValueCell: function (td, el, s, byRule) {
     var self = this;
     var input = document.createElement('input');
     input.type = 'text';
@@ -400,6 +411,12 @@ MF.props = {
     input.inputMode = 'decimal';
     input.setAttribute('aria-label', el.id + '.' + s.name);
     input.title = s.dir === 'in' ? 'Eingang setzen' : 'Ausgang forcen';
+    if (byRule && byRule.length) {
+      input.readOnly = true;
+      input.title = 'Durch Regel gesetzt: ' + byRule.map(function (r) { return r.name; }).join(', ');
+      td.appendChild(input);
+      return;
+    }
     var release = document.createElement('button');
     release.type = 'button';
     release.className = 'io-release';
@@ -453,7 +470,8 @@ MF.props = {
       if (input !== document.activeElement) {
         input.value = def.type === 'FLOAT32' ? v.toFixed(2).replace('.', ',') : String(v);
       }
-      tr.querySelector('.io-release').hidden = !forced;
+      var release = tr.querySelector('.io-release');
+      if (release) release.hidden = !forced;
     });
   },
 

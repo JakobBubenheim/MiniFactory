@@ -232,6 +232,15 @@ MF.editor = {
     }
   },
 
+  // Leere Regel anlegen und im Eigenschaften-Panel öffnen
+  newRule: function () {
+    if (!this.canEdit()) return;
+    MF.tree.expanded.project = MF.tree.expanded.logic = true;
+    MF.props.tab = 'props';
+    var rule = MF.store.createRule();
+    MF.ui.message(rule.name + ' (' + rule.id + ') angelegt – Wenn und Dann wählen.');
+  },
+
   deleteSelectedRule: function () {
     if (MF.store.findRule(MF.store.selectedId)) this.deleteSelected();
     else MF.ui.message('Zuerst eine Regel im Strukturbaum auswählen.');

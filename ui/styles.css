@@ -526,6 +526,11 @@ button, input, select {
   text-decoration: line-through;
 }
 
+.is-off-rule > .tree-row .tree-label {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .tree-empty {
   padding: 8px 12px;
   color: var(--muted);
@@ -1036,6 +1041,19 @@ body.is-dragging, body.is-dragging * {
   color: var(--light);
 }
 
+/* Eingang wird durch eine Regel gesetzt: nur Anzeige, markiert mit R */
+.io-table tr.is-rule .io-value {
+  color: var(--in);
+  border-style: dashed;
+  cursor: default;
+}
+
+.io-table tr.is-rule td:nth-child(2)::after {
+  content: " R";
+  color: var(--in);
+  font-weight: 700;
+}
+
 .io-note {
   padding: 8px 10px;
   color: var(--muted);
@@ -1056,6 +1074,123 @@ body.is-dragging, body.is-dragging * {
 
 .rule-sentence b {
   color: var(--accent);
+}
+
+.rule-sentence i {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.rule-sentence.is-off {
+  border-left-color: var(--muted);
+  color: var(--muted);
+}
+
+.rule-sentence.is-off b {
+  color: var(--muted);
+}
+
+/* Signalliste: schwebendes Fenster über der Fläche */
+.siglist {
+  position: fixed;
+  top: calc(var(--titlebar-h) + var(--ribbon-h) + 16px);
+  left: calc(var(--left) + 24px);
+  right: auto;
+  z-index: 20;
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--titlebar-h) - var(--ribbon-h) - var(--statusbar-h) - 32px);
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  background: var(--dark-2);
+  color: var(--light);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.siglist[open] {
+  display: flex;
+}
+
+.siglist-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px 0 10px;
+  background: var(--dark);
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+
+.siglist-head svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+.siglist-head input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin-left: 8px;
+  padding: 0 6px;
+  background: var(--dark-2);
+  border: 1px solid var(--line);
+  color: var(--light);
+  font: inherit;
+  font-weight: 400;
+}
+
+.siglist-head input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.siglist-close {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--light-dim);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.siglist-close:hover {
+  border-color: var(--accent);
+  color: var(--light);
+}
+
+.siglist-body {
+  overflow: auto;
+}
+
+.siglist-table tbody tr {
+  cursor: pointer;
+}
+
+.siglist-table tr.is-selected td {
+  background: var(--accent-tint);
+}
+
+.siglist-table tr.is-forced .siglist-value {
+  color: var(--accent);
+}
+
+.siglist-table tr.is-forced .siglist-value::after {
+  content: " F";
+  font-weight: 700;
+}
+
+.siglist-value {
+  text-align: right;
+}
+
+.siglist-empty {
+  color: var(--muted);
+  text-align: center;
 }
 
 /* ---------- Statusleiste ---------- */

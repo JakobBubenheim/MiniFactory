@@ -92,13 +92,13 @@ MF.model = {
       props: { count: 0 } }
   ],
   rules: [
-    { id: 'R1', name: 'Regel 1', when: 'LS1.Belegt', then: 'S1.Ausfahren' }
+    { id: 'R1', name: 'Regel 1', when: 'LS1.Belegt', then: 'S1.Ausfahren', enabled: true }
   ]
 };
 
 // Eingangssignale auf ihre Startwerte, keine geforcten Ausgänge.
 // Eingänge mit prop (z. B. Tempo) sind direkt an eine Eigenschaft gekoppelt.
-// inputs: von Hand oder (ab Etappe 4) von Regeln geschriebene Eingänge, z. B. { Ein: 1 }
+// inputs: von Hand oder von Regeln geschriebene Eingänge, z. B. { Ein: 1 }
 // force:  Ausgänge, deren Wert von Hand festgehalten wird, z. B. { Belegt: 1 }
 MF.initIo = function (el) {
   el.inputs = {};
@@ -206,6 +206,20 @@ MF.store = {
     if (this.selectedId === id) this.selectedId = null;
     this.changed();
     return true;
+  },
+
+  // Neue, leere Regel R<n>; wird ausgewählt, damit das Panel sie zeigt
+  createRule: function () {
+    var max = 0;
+    MF.model.rules.forEach(function (r) {
+      var m = /^R(\d+)$/.exec(r.id);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    var rule = { id: 'R' + (max + 1), name: 'Regel ' + (max + 1), when: '', then: '', enabled: true };
+    MF.model.rules.push(rule);
+    this.selectedId = rule.id;
+    this.changed();
+    return rule;
   },
 
   deleteRule: function (id) {

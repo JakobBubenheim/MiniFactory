@@ -119,6 +119,7 @@ MF.tree = {
     var open = hasKids && (this.expanded[node.id] || node.forceOpen);
     if (hasKids) li.setAttribute('aria-expanded', String(!!open));
     if (node.el && !node.el.visible) li.classList.add('is-hidden-el');
+    if (node.rule && node.rule.enabled === false) li.classList.add('is-off-rule');
 
     var row = document.createElement('div');
     row.className = 'tree-row';

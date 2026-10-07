@@ -94,6 +94,7 @@ MF.ui = {
     });
 
     if (MF.props) MF.props.refreshLive();
+    if (MF.signals) MF.signals.refreshLive();
   },
 
   // ---------- Ribbon-Reiter ----------
@@ -138,6 +139,9 @@ MF.ui = {
         case 'duplicate':   MF.editor.duplicateSelected(); break;
         case 'delete':      MF.editor.deleteSelected(); break;
         case 'delete-rule': MF.editor.deleteSelectedRule(); break;
+        case 'new-rule':    MF.editor.newRule(); break;
+        case 'signal-list': MF.signals.toggle(); break;
+        case 'signal-list-close': MF.signals.close(); break;
       }
       self.syncToggles();
       self.updateStatus();
