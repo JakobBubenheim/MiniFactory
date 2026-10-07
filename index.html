@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mini-Fabrik</title>
+  <link rel="stylesheet" href="ui/styles.css">
+</head>
+<body>
+
+  <!-- Icon-Satz: einmal definiert, per <use href="#..."> eingebunden -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <defs>
+      <!-- Elemente -->
+      <symbol id="i-source" viewBox="0 0 16 16"><rect x="2" y="3" width="9" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 8h4M13 6l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-conveyor" viewBox="0 0 16 16"><rect x="1" y="5" width="14" height="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 5v6M8 5v6M12 5v6" stroke="currentColor" stroke-width="1"/></symbol>
+      <symbol id="i-sensor" viewBox="0 0 16 16"><rect x="1" y="2" width="4" height="4" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="10" width="4" height="4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 6l6 4" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 1.5"/></symbol>
+      <symbol id="i-pusher" viewBox="0 0 16 16"><rect x="1" y="4" width="5" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 8h6" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="5" width="2" height="6" fill="currentColor"/></symbol>
+      <symbol id="i-sink" viewBox="0 0 16 16"><path d="M2 3v11h12V3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 7l3 3 3-3M8 2v8" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <!-- Baum -->
+      <symbol id="i-project" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 6h12M6 6v8" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.5 4.5h5l1.5 2h6.5v7h-13z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-plant" viewBox="0 0 16 16"><path d="M1.5 14.5v-7l4-3v3l4-3v3l5-3v10z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-logic" viewBox="0 0 16 16"><path d="M2 4h4v8H2M6 8h3M9 4h5v8H9z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-rule" viewBox="0 0 16 16"><path d="M2 3h5M2 8h12M2 13h8" stroke="currentColor" stroke-width="1.5"/><path d="M11 11l3 2-3 2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="6.5" y="6.5" width="3" height="3" fill="currentColor"/></symbol>
+      <symbol id="i-eye-off" viewBox="0 0 16 16"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 14L14 2" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" fill="currentColor"/><path d="M5 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-unlock" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5 7V4h6v1" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-search" viewBox="0 0 16 16"><rect x="2" y="2" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 10l4 4" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <!-- Werkzeuge -->
+      <symbol id="i-new" viewBox="0 0 16 16"><path d="M3 1.5h7l3 3v10H3z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-open" viewBox="0 0 16 16"><path d="M1.5 4.5h5l1.5 2h6.5v7h-13z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 13V8M6 10l2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+      <symbol id="i-save" viewBox="0 0 16 16"><path d="M2 2h10l2 2v10H2z" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="2" width="5" height="4" fill="currentColor"/><rect x="4.5" y="9" width="7" height="5" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+      <symbol id="i-undo" viewBox="0 0 16 16"><path d="M5 3L2 6l3 3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 6h8a4 4 0 010 8H6" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-redo" viewBox="0 0 16 16"><path d="M11 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M14 6H6a4 4 0 000 8h4" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-select" viewBox="0 0 16 16"><path d="M3 2l9 6-4 1-2 4z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-move" viewBox="0 0 16 16"><path d="M8 1v14M1 8h14M8 1l-2 2M8 1l2 2M8 15l-2-2M8 15l2-2M1 8l2-2M1 8l2 2M15 8l-2-2M15 8l-2 2" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+      <symbol id="i-rotate" viewBox="0 0 16 16"><path d="M13 8a5 5 0 11-2-4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 1v3h3" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 11V2h9" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-delete" viewBox="0 0 16 16"><path d="M3 4h10M6 4V2h4v2M4 4l1 10h6l1-10" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 16 16"><path d="M1 5.5h14M1 10.5h14M5.5 1v14M10.5 1v14" stroke="currentColor" stroke-width="1.2"/><rect x="1" y="1" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-snap" viewBox="0 0 16 16"><path d="M3 2v7a5 5 0 0010 0V2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 5h3M10 5h3" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-signal" viewBox="0 0 16 16"><path d="M1 12h3V4h4v8h3V6h4" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 16 16"><path d="M2 8h12" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-fit" viewBox="0 0 16 16"><path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+      <symbol id="i-tag" viewBox="0 0 16 16"><path d="M1.5 1.5h7l6 6-7 7-6-6z" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="4" width="2" height="2" fill="currentColor"/></symbol>
+      <symbol id="i-panels" viewBox="0 0 16 16"><rect x="1" y="2" width="14" height="12" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 2v12M10.5 2v12" stroke="currentColor" stroke-width="1.2"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4v4h3" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <!-- Simulation -->
+      <symbol id="i-play" viewBox="0 0 16 16"><path d="M4 2l10 6-10 6z" fill="currentColor"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 16 16"><rect x="3" y="2" width="3.5" height="12" fill="currentColor"/><rect x="9.5" y="2" width="3.5" height="12" fill="currentColor"/></symbol>
+      <symbol id="i-step" viewBox="0 0 16 16"><path d="M2 2l8 6-8 6z" fill="currentColor"/><rect x="11" y="2" width="3" height="12" fill="currentColor"/></symbol>
+      <symbol id="i-reset" viewBox="0 0 16 16"><rect x="2" y="2" width="3" height="12" fill="currentColor"/><path d="M14 2L6 8l8 6z" fill="currentColor"/></symbol>
+      <symbol id="i-record" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" fill="currentColor"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app" id="app">
+
+    <!-- Kopfzeile: Schnellzugriff, Ribbon-Reiter, Simulationssteuerung -->
+    <header class="titlebar">
+      <div class="brand">
+        <svg class="brand-mark"><use href="#i-plant"/></svg>
+        <span>Mini-Fabrik</span>
+      </div>
+
+      <div class="quick">
+        <button class="qbtn" title="Neu (Strg+N)" data-stage="4"><svg><use href="#i-new"/></svg></button>
+        <button class="qbtn" title="Öffnen (Strg+O)" data-stage="4"><svg><use href="#i-open"/></svg></button>
+        <button class="qbtn" title="Speichern (Strg+S)" data-stage="4"><svg><use href="#i-save"/></svg></button>
+        <span class="qsep"></span>
+        <button class="qbtn" title="Rückgängig (Strg+Z)" data-stage="später"><svg><use href="#i-undo"/></svg></button>
+        <button class="qbtn" title="Wiederholen (Strg+Y)" data-stage="später"><svg><use href="#i-redo"/></svg></button>
+      </div>
+
+      <nav class="ribbon-tabs" role="tablist" aria-label="Funktionen">
+        <button class="ribbon-tab" role="tab" aria-selected="true"  data-tab="modell">Modell</button>
+        <button class="ribbon-tab" role="tab" aria-selected="false" data-tab="komponenten">Komponenten</button>
+        <button class="ribbon-tab" role="tab" aria-selected="false" data-tab="logik">Logik</button>
+        <button class="ribbon-tab" role="tab" aria-selected="false" data-tab="simulation">Simulation</button>
+        <button class="ribbon-tab" role="tab" aria-selected="false" data-tab="ansicht">Ansicht</button>
+      </nav>
+
+      <div class="transport" aria-label="Simulationssteuerung">
+        <button class="tbtn" title="Aufnahme" data-stage="später"><svg class="rec"><use href="#i-record"/></svg></button>
+        <button class="tbtn" title="Reset" data-stage="2"><svg><use href="#i-reset"/></svg></button>
+        <button class="tbtn tbtn-play" title="Start (Leertaste)" data-stage="2"><svg><use href="#i-play"/></svg></button>
+        <button class="tbtn" title="Pause" data-stage="2"><svg><use href="#i-pause"/></svg></button>
+        <button class="tbtn" title="Einzelschritt" data-stage="2"><svg><use href="#i-step"/></svg></button>
+        <span class="state-lamp" id="state-lamp" title="Zustand">STOP</span>
+      </div>
+    </header>
+
+    <!-- Ribbon: Gruppen mit Icon-Buttons, je Reiter eine Seite -->
+    <section class="ribbon">
+      <div class="ribbon-page" data-page="modell">
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn is-active" data-stage="später"><svg><use href="#i-select"/></svg><span>Auswählen</span></button>
+            <button class="rbtn" data-stage="später"><svg><use href="#i-move"/></svg><span>Verschieben</span></button>
+            <button class="rbtn" data-stage="später"><svg><use href="#i-rotate"/></svg><span>Drehen</span></button>
+          </div>
+          <div class="rgroup-label">Bearbeiten</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-stage="später"><svg><use href="#i-copy"/></svg><span>Duplizieren</span></button>
+            <button class="rbtn" data-stage="später"><svg><use href="#i-delete"/></svg><span>Löschen</span></button>
+          </div>
+          <div class="rgroup-label">Element</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-action="toggle-grid"><svg><use href="#i-grid"/></svg><span>Raster</span></button>
+            <button class="rbtn is-active" data-stage="später"><svg><use href="#i-snap"/></svg><span>Fangen</span></button>
+          </div>
+          <div class="rgroup-label">Raster</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-stage="4"><svg><use href="#i-open"/></svg><span>Laden</span></button>
+            <button class="rbtn" data-stage="4"><svg><use href="#i-save"/></svg><span>Speichern</span></button>
+          </div>
+          <div class="rgroup-label">Datei</div>
+        </div>
+      </div>
+
+      <div class="ribbon-page" data-page="komponenten" hidden>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-stage="2"><svg><use href="#i-source"/></svg><span>Quelle</span></button>
+            <button class="rbtn" data-stage="2"><svg><use href="#i-conveyor"/></svg><span>Förderband</span></button>
+            <button class="rbtn" data-stage="2"><svg><use href="#i-sink"/></svg><span>Senke</span></button>
+          </div>
+          <div class="rgroup-label">Materialfluss</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-stage="3"><svg><use href="#i-sensor"/></svg><span>Lichtschranke</span></button>
+          </div>
+          <div class="rgroup-label">Sensoren</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-stage="3"><svg><use href="#i-pusher"/></svg><span>Schieber</span></button>
+          </div>
+          <div class="rgroup-label">Aktoren</div>
+        </div>
+      </div>
+
+      <div class="ribbon-page" data-page="logik" hidden>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-stage="4"><svg><use href="#i-rule"/></svg><span>Neue Regel</span></button>
+            <button class="rbtn" data-stage="4"><svg><use href="#i-delete"/></svg><span>Regel löschen</span></button>
+          </div>
+          <div class="rgroup-label">Regeln</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-stage="4"><svg><use href="#i-signal"/></svg><span>Signalliste</span></button>
+          </div>
+          <div class="rgroup-label">Signale</div>
+        </div>
+      </div>
+
+      <div class="ribbon-page" data-page="simulation" hidden>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-stage="2"><svg><use href="#i-play"/></svg><span>Start</span></button>
+            <button class="rbtn" data-stage="2"><svg><use href="#i-pause"/></svg><span>Pause</span></button>
+            <button class="rbtn" data-stage="2"><svg><use href="#i-step"/></svg><span>Schritt</span></button>
+            <button class="rbtn" data-stage="2"><svg><use href="#i-reset"/></svg><span>Reset</span></button>
+          </div>
+          <div class="rgroup-label">Ablauf</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <label class="rfield">
+              <svg><use href="#i-clock"/></svg>
+              <select id="timescale" data-stage="2">
+                <option>0,5×</option>
+                <option selected>1×</option>
+                <option>2×</option>
+                <option>5×</option>
+              </select>
+            </label>
+          </div>
+          <div class="rgroup-label">Zeitfaktor</div>
+        </div>
+      </div>
+
+      <div class="ribbon-page" data-page="ansicht" hidden>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-action="zoom-in"><svg><use href="#i-plus"/></svg><span>Vergrößern</span></button>
+            <button class="rbtn" data-action="zoom-out"><svg><use href="#i-minus"/></svg><span>Verkleinern</span></button>
+            <button class="rbtn" data-action="zoom-fit"><svg><use href="#i-fit"/></svg><span>Einpassen</span></button>
+          </div>
+          <div class="rgroup-label">Zoom</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-action="toggle-grid"><svg><use href="#i-grid"/></svg><span>Raster</span></button>
+            <button class="rbtn" data-action="toggle-tags"><svg><use href="#i-tag"/></svg><span>Namen</span></button>
+          </div>
+          <div class="rgroup-label">Anzeige</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-action="reset-panels"><svg><use href="#i-panels"/></svg><span>Layout zurücksetzen</span></button>
+          </div>
+          <div class="rgroup-label">Fenster</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Links: Strukturbaum -->
+    <aside class="panel panel-left">
+      <div class="panel-head">
+        <svg><use href="#i-project"/></svg>
+        <span>Struktur</span>
+      </div>
+      <div class="search">
+        <svg><use href="#i-search"/></svg>
+        <input type="search" id="tree-search" placeholder="Suchen …" autocomplete="off">
+      </div>
+      <ul class="tree" id="tree" role="tree" aria-label="Strukturbaum"></ul>
+    </aside>
+
+    <div class="splitter" data-side="left" role="separator" aria-orientation="vertical" aria-label="Breite Strukturbaum" tabindex="0"></div>
+
+    <!-- Mitte: Simulationsfläche -->
+    <main class="stage" id="stage">
+      <canvas id="canvas"></canvas>
+      <div class="viewbar" aria-label="Ansicht">
+        <button class="vbtn" data-action="zoom-in" title="Vergrößern"><svg><use href="#i-plus"/></svg></button>
+        <button class="vbtn" data-action="zoom-out" title="Verkleinern"><svg><use href="#i-minus"/></svg></button>
+        <button class="vbtn" data-action="zoom-fit" title="Einpassen"><svg><use href="#i-fit"/></svg></button>
+        <span class="vsep"></span>
+        <button class="vbtn is-active" data-action="toggle-grid" title="Raster"><svg><use href="#i-grid"/></svg></button>
+        <button class="vbtn is-active" data-action="toggle-tags" title="Namen"><svg><use href="#i-tag"/></svg></button>
+        <span class="vzoom" id="zoom-label">100 %</span>
+      </div>
+    </main>
+
+    <div class="splitter" data-side="right" role="separator" aria-orientation="vertical" aria-label="Breite Eigenschaften" tabindex="0"></div>
+
+    <!-- Rechts: Eigenschaften des gewählten Elements -->
+    <aside class="panel panel-right">
+      <div class="panel-head">
+        <svg><use href="#i-signal"/></svg>
+        <span>Eigenschaften</span>
+      </div>
+      <div class="props" id="props"></div>
+    </aside>
+
+    <!-- Statusleiste -->
+    <footer class="statusbar">
+      <span class="sb-path" id="sb-path">/Beispielanlage</span>
+      <span class="sb-msg" id="sb-msg"></span>
+      <span class="sb-item">Zeit <strong id="sb-time">00:00</strong></span>
+      <span class="sb-item">Faktor <strong id="sb-scale">1×</strong></span>
+      <span class="sb-item">Elemente <strong id="sb-count">0</strong></span>
+      <span class="sb-item" id="sb-cursor">x –  y –</span>
+      <span class="sb-state">Zustand <strong class="state-chip" id="sb-state">Gestoppt</strong></span>
+    </footer>
+
+  </div>
+
+  <!-- Klassische Skripte (keine ES-Module), damit die Seite per Doppelklick läuft -->
+  <script src="sim/model.js"></script>
+  <script src="sim/sim.js"></script>
+  <script src="logic/logic.js"></script>
+  <script src="ui/ui.js"></script>
+  <script src="ui/tree.js"></script>
+  <script src="ui/properties.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
