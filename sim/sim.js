@@ -143,10 +143,19 @@ MF.sim = {
   },
 
   // Zeichnet ein Element in Rasterkoordinaten (1 Einheit = 1 Zelle).
+  // Gedrehte Elemente werden um ihre Mitte gedreht und dann in Grundstellung
+  // gezeichnet: Band nach rechts, Strahl senkrecht, Schieber drückt nach unten.
   drawElement: function (el) {
     var ctx = this.ctx;
-    var x = el.x, y = el.y, w = el.w, h = el.h;
+    var rot = el.type === 'pusher' ? 0 : el.rot || 0;   // Schieber dreht sich selbst nach Schubrichtung
+    var turned = rot % 180 !== 0;
+    var w = turned ? el.h : el.w, h = turned ? el.w : el.h;   // Maße ohne Drehung
+    var x = -w / 2, y = -h / 2;
     var lw = 1.5 / this.cellSize(); // Linienstärke ~1,5 px
+
+    ctx.save();
+    ctx.translate(el.x + el.w / 2, el.y + el.h / 2);
+    if (rot) ctx.rotate(rot * Math.PI / 180);
 
     ctx.lineWidth = lw;
     ctx.strokeStyle = '#1B2430';
@@ -167,9 +176,11 @@ MF.sim = {
       case 'conveyor':
         ctx.fillStyle = el.color;
         ctx.fillRect(x, y + 0.15, w, h - 0.3);
-        // Querstreifen wandern mit dem Band (nur bei Laufrichtung rechts/links)
+        // Querstreifen wandern mit dem Band. Richtung relativ zur Drehung:
+        // normalerweise 0° (vorwärts); 180°, falls Richtung und Drehung abweichen
         var shift = 0;
-        var dirSign = el.props.direction === 'links' ? -1 : el.props.direction === 'rechts' ? 1 : 0;
+        var rel = (MF.rotForDir('conveyor', el.props.direction) - rot + 360) % 360;
+        var dirSign = rel === 180 ? -1 : rel === 0 ? 1 : 0;
         if (dirSign) {
           var rt = el.rt || {};
           var travel = rt.travel || 0;
@@ -193,7 +204,7 @@ MF.sim = {
         ctx.fillStyle = MF.engine.beltOn(el) ? '#D9701A' : '#8A93A0';
         var mid = y + h / 2;
         ctx.beginPath();
-        if (el.props.direction === 'links') {
+        if (dirSign < 0) {
           ctx.moveTo(x + 0.45, mid - 0.15);
           ctx.lineTo(x + 0.2, mid);
           ctx.lineTo(x + 0.45, mid + 0.15);
@@ -261,6 +272,7 @@ MF.sim = {
         ctx.stroke();
         break;
     }
+    ctx.restore();
   },
 
   // Vorschau beim Ziehen aus der Bibliothek: halbtransparent mit Rahmen
@@ -312,7 +324,8 @@ MF.sim = {
     MF.model.elements.forEach(function (el) {
       if (!el.visible || el.type === 'conveyor' && el.w < 2) return;
       var tx = self.offsetX + el.x * c;
-      var ty = self.offsetY + (el.y + el.h) * c + (el.type === 'sensor' ? 0.25 * c + 3 : 3);
+      var below = el.type === 'sensor' && (el.rot || 0) % 180 === 0;  // Empfänger ragt unten heraus
+      var ty = self.offsetY + (el.y + el.h) * c + (below ? 0.25 * c + 3 : 3);
       var text = el.id;
       var tw = ctx.measureText(text).width + 8;
       ctx.fillStyle = 'rgba(27, 36, 48, 0.85)';

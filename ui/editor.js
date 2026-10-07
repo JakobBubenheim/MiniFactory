@@ -1,24 +1,125 @@
 // Editor: Bedienung der Fläche mit Maus und Tastatur.
 // - Elemente aus der Bibliothek (links oder Ribbon "Komponenten") auf die Fläche
 //   ziehen; ein einfacher Klick legt das Element in die Mitte der Ansicht.
-// - Elemente anklicken und verschieben (rastet auf ganze Zellen ein).
+// - Werkzeuge im Ribbon "Modell" (Kürzel V / M / D):
+//   Auswählen  – Klick wählt aus, Ziehen verschiebt die Ansicht
+//   Verschieben – Elemente ziehen
+//   Drehen     – Klick dreht das Element um 90° im Uhrzeigersinn
+//   Die Werkzeuge greifen auch, während die Simulation läuft.
+// - Fangen an: ganze Rasterzellen; aus: 0,1-Zellen-Schritte.
 // - Löschen mit Entf/Rücktaste, Duplizieren mit Strg/Cmd+D,
 //   Pfeiltasten verschieben um eine Zelle (mit Shift um fünf).
 // - Freie Fläche ziehen verschiebt die Ansicht, Mausrad zoomt.
-// Während die Simulation läuft, ist Bearbeiten gesperrt.
+// Einfügen, Löschen und Duplizieren sind gesperrt, solange die Simulation läuft.
 window.MF = window.MF || {};
 
 MF.editor = {
   DRAG_START_PX: 4,   // erst ab dieser Mausbewegung zählt es als Ziehen
+  tool: 'select',     // 'select' | 'move' | 'rotate'
+  snap: true,         // Fangen: auf ganze Zellen einrasten
+
+  TOOLS: {
+    select: { label: 'Auswählen',   key: 'v' },
+    move:   { label: 'Verschieben', key: 'm' },
+    rotate: { label: 'Drehen',      key: 'd' }
+  },
 
   init: function (canvas) {
     this.canvas = canvas;
+    try { this.snap = localStorage.getItem('mf.snap') !== '0'; } catch (e) { /* Standard: an */ }
     this.initLibrary();
     this.initCanvas();
     this.initKeys();
+    this.updateCursor(null);
+    MF.ui.syncToggles();   // gemerktes Fangen im Ribbon anzeigen
   },
 
-  // Bearbeiten ist nur möglich, wenn die Simulation nicht läuft
+  // ---------- Werkzeug und Fangen ----------
+
+  setTool: function (tool) {
+    if (!this.TOOLS[tool] || tool === this.tool) return;
+    this.tool = tool;
+    this.updateCursor(null);
+    MF.ui.syncToggles();
+    MF.ui.message('Werkzeug: ' + this.TOOLS[tool].label + '.');
+  },
+
+  toggleSnap: function () {
+    this.snap = !this.snap;
+    try { localStorage.setItem('mf.snap', this.snap ? '1' : '0'); } catch (e) { /* egal */ }
+    MF.ui.syncToggles();
+    MF.props.render();   // Schrittweite der X/Y-Felder
+    MF.ui.message(this.snap ? 'Fangen an: ganze Rasterzellen.' : 'Fangen aus: Schritte von 0,1 Zellen.');
+  },
+
+  // Schrittweite für Positionen in Zellen
+  snapStep: function () { return this.snap ? 1 : 0.1; },
+
+  // Position auf das Raster bzw. auf 0,1 Zellen runden.
+  // halfDown: genau halbe Schritte abrunden statt aufrunden (für die Drehung).
+  snapValue: function (v, halfDown) {
+    var step = this.snapStep();
+    var n = Math.round(v / step * 1e6) / 1e6;
+    n = halfDown ? Math.ceil(n - 0.5) : Math.round(n);
+    return Math.round(n * step * 1e6) / 1e6;
+  },
+
+  // Mauszeiger der Fläche: zeigt das Werkzeug, über gesperrten Elementen "verboten"
+  ROTATE_CURSOR: 'url("data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
+    '<g fill="none" stroke-width="5" stroke="#F4F2EC"><path d="M19 12a7 7 0 1 1-3-5.7"/><path d="M16.5 2.5v4h4"/></g>' +
+    '<g fill="none" stroke-width="2" stroke="#1B2430"><path d="M19 12a7 7 0 1 1-3-5.7"/><path d="M16.5 2.5v4h4"/></g>' +
+    '</svg>') + '") 12 12, alias',
+
+  updateCursor: function (over) {
+    var c;
+    if (this.tool === 'select') c = over ? 'pointer' : 'default';
+    else if (over && over.locked) c = 'not-allowed';
+    else c = this.tool === 'move' ? 'move' : this.ROTATE_CURSOR;
+    this.canvas.style.cursor = c;
+  },
+
+  // ---------- Drehen ----------
+
+  // Element auf eine Drehung (0/90/180/270) bringen. Es dreht sich um seine Mitte,
+  // w und h werden bei 90°/270° getauscht. Beim Förderband folgt die Laufrichtung,
+  // beim Schieber die Schubrichtung.
+  // Bei gerader Länge fällt die Mitte zwischen zwei Zellen; dann rundet 0°/180°
+  // auf und 90°/270° ab – so landet das Element nach vier Drehungen wieder am Ausgangspunkt.
+  setRotation: function (el, rot) {
+    rot = ((rot % 360) + 360) % 360;
+    var old = el.rot || 0;
+    var follows = !!MF.ROT_ZERO_DIR[el.type];   // Richtung folgt der Drehung
+    if (rot === old && !(follows && el.props.direction !== MF.dirForRot(el.type, rot))) return false;
+    if (el.locked) { MF.ui.message(el.name + ' ist gesperrt.'); return false; }
+    var cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+    if ((rot - old) % 180 !== 0) { var w = el.w; el.w = el.h; el.h = w; }
+    var halfDown = rot % 180 !== 0;
+    el.x = this.snapValue(cx - el.w / 2, halfDown);
+    el.y = this.snapValue(cy - el.h / 2, halfDown);
+    el.rot = rot;
+    if (follows) el.props.direction = MF.dirForRot(el.type, rot);
+    MF.store.changed();
+    return true;
+  },
+
+  rotateElement: function (el) {
+    var rot = el.rot || 0;
+    // Schieber auf "auto": von der tatsächlichen Schubrichtung aus weiterdrehen
+    if (el.type === 'pusher' && !(el.props.direction in MF.DIR_ROT)) {
+      var v = MF.engine.pusherDir(el);
+      for (var d in MF.engine.DIRS) {
+        if (MF.engine.DIRS[d][0] === v[0] && MF.engine.DIRS[d][1] === v[1]) rot = MF.rotForDir('pusher', d);
+      }
+    }
+    if (this.setRotation(el, rot + 90)) {
+      MF.ui.message(el.name + ' auf ' + el.rot + '° gedreht' +
+        (el.type === 'conveyor' ? ', läuft nach ' + el.props.direction :
+         el.type === 'pusher' ? ', schiebt nach ' + el.props.direction : '') + '.');
+    }
+  },
+
+  // Einfügen, Löschen, Duplizieren nur, wenn die Simulation nicht läuft
   canEdit: function () {
     if (MF.engine.state !== 'running') return true;
     MF.ui.message('Zum Bearbeiten die Simulation pausieren.');
@@ -45,7 +146,7 @@ MF.editor = {
   cellFor: function (type, px, py) {
     var t = MF.types[type];
     var w = MF.sim.toWorld(px, py);
-    return { x: Math.round(w.x - t.size[0] / 2), y: Math.round(w.y - t.size[1] / 2), w: t.size[0], h: t.size[1] };
+    return { x: this.snapValue(w.x - t.size[0] / 2), y: this.snapValue(w.y - t.size[1] / 2), w: t.size[0], h: t.size[1] };
   },
 
   // ---------- Bibliothek: Ziehen auf die Fläche ----------
@@ -127,7 +228,7 @@ MF.editor = {
     return el;
   },
 
-  // ---------- Fläche: Auswählen, Verschieben, Ansicht ziehen ----------
+  // ---------- Fläche: Werkzeuge und Ansicht ziehen ----------
 
   initCanvas: function () {
     var self = this;
@@ -140,15 +241,15 @@ MF.editor = {
       if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
       var p = self.canvasPos(e);
       var hit = e.button === 0 ? MF.sim.hitTest(p.x, p.y) : null;
+      if (e.button === 0) MF.store.select(hit ? hit.id : null);
 
-      if (hit) {
-        MF.store.select(hit.id);
+      if (hit && self.tool === 'move') {
         var w = MF.sim.toWorld(p.x, p.y);
         drag = { mode: 'move', el: hit, wx: w.x, wy: w.y, ox: hit.x, oy: hit.y, sx: p.x, sy: p.y, active: false };
       } else {
-        if (e.button === 0) MF.store.select(null);
-        drag = { mode: 'pan', sx: p.x, sy: p.y, ox: MF.sim.offsetX, oy: MF.sim.offsetY };
-        canvas.style.cursor = 'grabbing';
+        // Ansicht ziehen – auch über Elementen, damit Auswählen/Drehen nichts verschiebt.
+        // Ein Klick ohne Ziehen dreht beim Werkzeug "Drehen" das Element.
+        drag = { mode: 'pan', sx: p.x, sy: p.y, ox: MF.sim.offsetX, oy: MF.sim.offsetY, el: hit, active: false };
       }
       canvas.setPointerCapture(e.pointerId);
     });
@@ -158,10 +259,16 @@ MF.editor = {
       MF.ui.setCursor(MF.sim.cellAt(p.x, p.y));
 
       if (!drag) {
-        var over = MF.sim.hitTest(p.x, p.y);
-        canvas.style.cursor = !over ? 'default'
-          : over.locked || MF.engine.state === 'running' ? 'pointer' : 'move';
+        self.updateCursor(MF.sim.hitTest(p.x, p.y));
         return;
+      }
+
+      // Erst ab kleiner Mindestbewegung zählt es als Ziehen, damit ein Klick nur auswählt
+      if (!drag.active) {
+        if (Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) < self.DRAG_START_PX) return;
+        if (drag.mode === 'move' && drag.el.locked) { MF.ui.message(drag.el.name + ' ist gesperrt.'); drag = null; return; }
+        drag.active = true;
+        if (drag.mode === 'pan') canvas.style.cursor = 'grabbing';
       }
 
       if (drag.mode === 'pan') {
@@ -171,16 +278,9 @@ MF.editor = {
         return;
       }
 
-      // Verschieben erst ab kleiner Mindestbewegung, damit ein Klick nur auswählt
-      if (!drag.active) {
-        if (Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) < self.DRAG_START_PX) return;
-        if (drag.el.locked) { MF.ui.message(drag.el.name + ' ist gesperrt.'); drag = null; return; }
-        if (!self.canEdit()) { drag = null; return; }
-        drag.active = true;
-      }
       var w = MF.sim.toWorld(p.x, p.y);
-      var nx = drag.ox + Math.round(w.x - drag.wx);
-      var ny = drag.oy + Math.round(w.y - drag.wy);
+      var nx = self.snapValue(drag.ox + (w.x - drag.wx));
+      var ny = self.snapValue(drag.oy + (w.y - drag.wy));
       if (nx !== drag.el.x || ny !== drag.el.y) {
         drag.el.x = nx;
         drag.el.y = ny;
@@ -188,13 +288,18 @@ MF.editor = {
       }
     });
 
-    function end() {
+    function end(e) {
       if (drag && drag.mode === 'move' && drag.active &&
           (drag.el.x !== drag.ox || drag.el.y !== drag.oy)) {
-        MF.ui.message(drag.el.name + ' nach x ' + drag.el.x + ', y ' + drag.el.y + ' verschoben.');
+        MF.ui.message(drag.el.name + ' nach x ' + MF.props.formatNumber(drag.el.x) +
+          ', y ' + MF.props.formatNumber(drag.el.y) + ' verschoben.');
+      }
+      if (drag && drag.mode === 'pan' && !drag.active && drag.el && self.tool === 'rotate' && e.type === 'pointerup') {
+        self.rotateElement(drag.el);
       }
       drag = null;
-      canvas.style.cursor = 'default';
+      var p = self.canvasPos(e);
+      self.updateCursor(p.inside ? MF.sim.hitTest(p.x, p.y) : null);
     }
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
@@ -275,9 +380,8 @@ MF.editor = {
     var el = MF.store.findElement(MF.store.selectedId);
     if (!el) return false;
     if (el.locked) { MF.ui.message(el.name + ' ist gesperrt.'); return true; }
-    if (!this.canEdit()) return true;
-    el.x += dx;
-    el.y += dy;
+    el.x = Math.round((el.x + dx) * 1e6) / 1e6;
+    el.y = Math.round((el.y + dy) * 1e6) / 1e6;
     MF.store.changed();
     return true;
   },
@@ -300,6 +404,14 @@ MF.editor = {
         self.duplicateSelected();
         e.preventDefault();
         return;
+      }
+
+      // Werkzeuge: V = Auswählen, M = Verschieben, D = Drehen
+      if (!mod && !e.altKey) {
+        var key = e.key.toLowerCase();
+        for (var tool in self.TOOLS) {
+          if (self.TOOLS[tool].key === key) { self.setTool(tool); e.preventDefault(); return; }
+        }
       }
 
       // Pfeiltasten im Strukturbaum navigieren dort; sonst verschieben sie das Element
