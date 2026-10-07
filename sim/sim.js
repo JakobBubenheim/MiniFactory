@@ -165,12 +165,15 @@ MF.sim = {
       case 'conveyor':
         ctx.fillStyle = el.color;
         ctx.fillRect(x, y + 0.15, w, h - 0.3);
-        // Querstreifen wandern mit der Bandgeschwindigkeit (nur bei Laufrichtung rechts/links)
+        // Querstreifen wandern mit dem Band (nur bei Laufrichtung rechts/links)
         var shift = 0;
         var dirSign = el.props.direction === 'links' ? -1 : el.props.direction === 'rechts' ? 1 : 0;
         if (dirSign) {
-          var meters = this.simTime() * el.props.speed / MF.model.settings.cellM;
-          shift = ((meters * dirSign) % 0.5 + 0.5) % 0.5;
+          var rt = el.rt || {};
+          var travel = rt.travel || 0;
+          var prev = rt.prevTravel !== undefined ? rt.prevTravel : travel;
+          var cells = prev + (travel - prev) * MF.engine.alpha();
+          shift = ((cells * dirSign) % 0.5 + 0.5) % 0.5;
         }
         ctx.save();
         ctx.beginPath();
@@ -184,13 +187,19 @@ MF.sim = {
         }
         ctx.stroke();
         ctx.restore();
-        // Laufrichtung
-        ctx.fillStyle = '#D9701A';
+        // Laufrichtung; grau, wenn der Antrieb aus ist
+        ctx.fillStyle = MF.engine.beltOn(el) ? '#D9701A' : '#8A93A0';
         var mid = y + h / 2;
         ctx.beginPath();
-        ctx.moveTo(x + w - 0.45, mid - 0.15);
-        ctx.lineTo(x + w - 0.2, mid);
-        ctx.lineTo(x + w - 0.45, mid + 0.15);
+        if (el.props.direction === 'links') {
+          ctx.moveTo(x + 0.45, mid - 0.15);
+          ctx.lineTo(x + 0.2, mid);
+          ctx.lineTo(x + 0.45, mid + 0.15);
+        } else {
+          ctx.moveTo(x + w - 0.45, mid - 0.15);
+          ctx.lineTo(x + w - 0.2, mid);
+          ctx.lineTo(x + w - 0.45, mid + 0.15);
+        }
         ctx.closePath();
         ctx.fill();
         break;
@@ -231,16 +240,6 @@ MF.sim = {
         ctx.stroke();
         break;
     }
-  },
-
-  // Angezeigte Simulationszeit, passend zu den interpolierten Kisten:
-  // Kisten werden zwischen vorletztem (alpha 0) und letztem Schritt (alpha 1)
-  // gezeichnet, also liegt die Anzeige bis zu einen Schritt hinter e.time.
-  // In der Pause ist alpha 1 – Anzeige = Zustand des letzten Schritts.
-  simTime: function () {
-    var e = MF.engine;
-    if (!e.clock) return 0;
-    return e.time - (1 - e.alpha()) * e.dt();
   },
 
   // Kisten: zwischen alter und neuer Position interpoliert

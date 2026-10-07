@@ -7,9 +7,9 @@ MF.types = {
   source: {
     label: 'Quelle', icon: 'i-source',
     props: [
-      { key: 'interval', label: 'Takt', type: 'number', unit: 's', step: 0.1, min: 0.1 },
-      { key: 'maxCount', label: 'Max. Anzahl', type: 'number', step: 1, min: 0 },
-      { key: 'enabled', label: 'Aktiv', type: 'bool' }
+      { key: 'enabled', label: 'Aktiv', type: 'bool', hint: 'Erzeugt die Quelle Kisten?' },
+      { key: 'interval', label: 'Takt', type: 'number', unit: 's', step: 0.1, min: 0.1, max: 60, hint: 'Abstand zwischen zwei Kisten' },
+      { key: 'maxCount', label: 'Max. Anzahl', type: 'number', step: 1, min: 0, hint: '0 = unbegrenzt' }
     ],
     io: [
       { name: 'Freigabe', dir: 'in', type: 'BOOL' },
@@ -19,8 +19,9 @@ MF.types = {
   conveyor: {
     label: 'Förderband', icon: 'i-conveyor',
     props: [
-      { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0 },
-      { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'] }
+      { key: 'running', label: 'Antrieb', type: 'bool', hint: 'Band ein- oder ausschalten' },
+      { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0, max: 5, hint: 'Bandgeschwindigkeit' },
+      { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'], hint: 'Laufrichtung des Bands' }
     ],
     io: [
       { name: 'Ein', dir: 'in', type: 'BOOL' },
@@ -31,8 +32,8 @@ MF.types = {
   sensor: {
     label: 'Lichtschranke', icon: 'i-sensor',
     props: [
-      { key: 'invert', label: 'Invertieren', type: 'bool' },
-      { key: 'debounce', label: 'Entprellzeit', type: 'number', unit: 'ms', step: 10, min: 0 }
+      { key: 'invert', label: 'Invertieren', type: 'bool', onText: 'Ja', offText: 'Nein', hint: 'Meldet "belegt", wenn der Strahl frei ist' },
+      { key: 'debounce', label: 'Entprellzeit', type: 'number', unit: 'ms', step: 10, min: 0, max: 5000, hint: 'Wirkt ab Etappe 3' }
     ],
     io: [
       { name: 'Belegt', dir: 'out', type: 'BOOL' }
@@ -41,9 +42,9 @@ MF.types = {
   pusher: {
     label: 'Schieber', icon: 'i-pusher',
     props: [
-      { key: 'stroke', label: 'Hub', type: 'number', unit: 'mm', step: 10, min: 0 },
-      { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0 },
-      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0 }
+      { key: 'stroke', label: 'Hub', type: 'number', unit: 'mm', step: 10, min: 0, max: 2000, hint: 'Wie weit der Schieber ausfährt (wirkt ab Etappe 3)' },
+      { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0.1, max: 5, hint: 'Ausfahrgeschwindigkeit (wirkt ab Etappe 3)' },
+      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren (wirkt ab Etappe 3)' }
     ],
     io: [
       { name: 'Ausfahren', dir: 'in', type: 'BOOL' },
@@ -54,7 +55,7 @@ MF.types = {
   sink: {
     label: 'Senke', icon: 'i-sink',
     props: [
-      { key: 'count', label: 'Zählerstand', type: 'number', readonly: true }
+      { key: 'count', label: 'Zählerstand', type: 'number', readonly: true, hint: 'Aufgenommene Kisten' }
     ],
     io: [
       { name: 'Reset', dir: 'in', type: 'BOOL' },
@@ -75,7 +76,7 @@ MF.model = {
     { id: 'Q1',  type: 'source',   name: 'Quelle 1',      group: 'Förderstrecke 1', x: 2,  y: 4, w: 1, h: 1,
       props: { interval: 2, maxCount: 0, enabled: true } },
     { id: 'B1',  type: 'conveyor', name: 'Förderband 1',  group: 'Förderstrecke 1', x: 3,  y: 4, w: 9, h: 1,
-      props: { speed: 0.5, direction: 'rechts' } },
+      props: { running: true, speed: 0.5, direction: 'rechts' } },
     { id: 'LS1', type: 'sensor',   name: 'Lichtschranke 1', group: 'Förderstrecke 1', x: 8, y: 4, w: 1, h: 1,
       props: { invert: false, debounce: 0 } },
     { id: 'S1',  type: 'pusher',   name: 'Schieber 1',    group: 'Förderstrecke 1', x: 9,  y: 3, w: 1, h: 1,

@@ -97,6 +97,7 @@ MF.engine = {
     // 3. Aktoren – Schieber fahren ab Etappe 3 hier
 
     // 4. Bewegung
+    this.moveBelts(dt);
     this.moveBoxes(dt);
 
     // 5. Quelle und Senke
@@ -170,6 +171,25 @@ MF.engine = {
     return null;
   },
 
+  // Läuft das Band? Schalter "Antrieb" im Eigenschaften-Panel und Signal "Ein" (kommt mit der Logik)
+  beltOn: function (belt) {
+    return belt.props.running !== false && (!belt.rt || belt.rt.on !== false);
+  },
+
+  // Zurückgelegter Weg je Band in Zellen – für die wandernden Streifen.
+  // Aufsummiert statt aus Zeit × Tempo berechnet, damit Tempo-Änderungen nicht springen.
+  moveBelts: function (dt) {
+    var cellM = MF.model.settings.cellM;
+    var self = this;
+    MF.model.elements.forEach(function (el) {
+      if (el.type !== 'conveyor') return;
+      var rt = el.rt;
+      rt.travel = rt.travel || 0;
+      rt.prevTravel = rt.travel;
+      if (self.beltOn(el)) rt.travel += (el.props.speed / cellM) * dt;
+    });
+  },
+
   // Bänder bewegen Kisten in Laufrichtung. Kisten stauen sich, statt sich zu überlappen.
   moveBoxes: function (dt) {
     var cellM = MF.model.settings.cellM;
@@ -183,8 +203,7 @@ MF.engine = {
     order.forEach(function (b) {
       var belt = self.conveyorAt(b.x, b.y);
       if (!belt) return;
-      var on = belt.rt.on !== undefined ? belt.rt.on : true; // Signal "Ein" kommt mit der Logik
-      if (!on) return;
+      if (!self.beltOn(belt)) return;
 
       var dir = self.DIRS[belt.props.direction] || self.DIRS.rechts;
       var dist = (belt.props.speed / cellM) * dt;   // m/s -> Zellen pro Schritt
@@ -214,11 +233,11 @@ MF.engine = {
   // Schieber und Regeln steuern noch nichts (Etappe 3 und 4), daher 0.
   signal: function (el, name) {
     var p = el.props, rt = el.rt || {};
-    var on = rt.on !== false;
+    var on = el.type === 'conveyor' ? this.beltOn(el) : rt.on !== false;
     switch (el.type + '.' + name) {
       case 'source.Freigabe':  return p.enabled ? 1 : 0;
       case 'source.Erzeugt':   return rt.made || 0;
-      case 'conveyor.Ein':     return rt.on === false ? 0 : 1;
+      case 'conveyor.Ein':     return on ? 1 : 0;
       case 'conveyor.Läuft':   return on && p.speed > 0 ? 1 : 0;
       case 'conveyor.Tempo':   return on ? p.speed : 0;
       case 'sensor.Belegt':    return (!!rt.occupied !== !!p.invert) ? 1 : 0;  // Wert aus dem letzten Schritt

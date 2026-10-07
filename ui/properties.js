@@ -83,16 +83,39 @@ MF.props = {
     return d.querySelector('.section-body');
   },
 
-  // Eine Zeile "Label | Wert". def: {label, type, unit, step, min, options, readonly}
+  // Zahl mit deutschem Komma anzeigen, z. B. 0.5 -> "0,5"
+  formatNumber: function (v) {
+    if (typeof v !== 'number' || isNaN(v)) return '';
+    return String(Math.round(v * 1e6) / 1e6).replace('.', ',');
+  },
+
+  // "0,5" oder "0.5" -> 0.5; NaN, wenn keine Zahl
+  parseNumber: function (text) {
+    var t = String(text).trim().replace(',', '.');
+    return t === '' ? NaN : Number(t);
+  },
+
+  // Auf min/max begrenzen; bei Schritt 1 ganzzahlig
+  clamp: function (def, v) {
+    if (def.step === 1) v = Math.round(v);
+    if (def.min !== undefined) v = Math.max(def.min, v);
+    if (def.max !== undefined) v = Math.min(def.max, v);
+    return v;
+  },
+
+  // Eine Zeile "Label | Wert".
+  // def: {label, type, unit, step, min, max, options, readonly, hint, onText, offText}
   field: function (parent, def, value, onChange) {
     var row = document.createElement('label');
     row.className = 'field';
+    if (def.hint) row.title = def.hint;
     var lab = document.createElement('span');
     lab.className = 'field-label';
     lab.textContent = def.label;
-    lab.title = def.label;
+    if (!def.hint) lab.title = def.label;
     var val = document.createElement('span');
     val.className = 'field-value';
+    var editable = onChange && !def.readonly;
 
     var input;
     if (def.type === 'select') {
@@ -103,36 +126,107 @@ MF.props = {
         input.appendChild(opt);
       });
       input.value = value;
+      if (editable) input.addEventListener('change', function () { onChange(input.value); });
+      val.appendChild(input);
+    } else if (def.type === 'bool') {
+      input = this.switchControl(def, value, editable ? onChange : null);
+      val.appendChild(input);
+    } else if (def.type === 'number') {
+      input = this.numberControl(def, value, editable ? onChange : null, val);
     } else {
       input = document.createElement('input');
-      input.type = def.type === 'bool' ? 'checkbox' : def.type === 'color' ? 'color' : def.type === 'number' ? 'number' : 'text';
-      if (def.type === 'bool') input.checked = !!value;
-      else input.value = value;
-      if (def.step !== undefined) input.step = def.step;
-      if (def.min !== undefined) input.min = def.min;
+      input.type = def.type === 'color' ? 'color' : 'text';
+      input.value = value;
       if (def.readonly) input.readOnly = true;
+      if (editable) input.addEventListener('change', function () { onChange(input.value); });
+      val.appendChild(input);
     }
-
-    if (onChange && !def.readonly) {
-      input.addEventListener('change', function () {
-        var v = def.type === 'bool' ? input.checked
-              : def.type === 'number' ? parseFloat(input.value)
-              : input.value;
-        if (def.type === 'number' && isNaN(v)) return;
-        onChange(v);
-      });
-    }
-
-    val.appendChild(input);
     if (def.unit !== undefined) {
       var u = document.createElement('span');
       u.className = 'unit';
       u.textContent = def.unit;
-      val.appendChild(u);
+      val.insertBefore(u, val.querySelector('.stepper'));  // Einheit direkt hinter die Zahl
     }
     row.appendChild(lab);
     row.appendChild(val);
     parent.appendChild(row);
+    return input;
+  },
+
+  // An/Aus-Schalter: ein Klick schaltet um
+  switchControl: function (def, value, onChange) {
+    var on = !!value;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'switch';
+    btn.setAttribute('role', 'switch');
+    function show() {
+      btn.setAttribute('aria-checked', String(on));
+      btn.textContent = on ? (def.onText || 'Ein') : (def.offText || 'Aus');
+    }
+    show();
+    if (onChange) {
+      btn.addEventListener('click', function () { on = !on; show(); onChange(on); });
+    } else {
+      btn.disabled = true;
+    }
+    return btn;
+  },
+
+  // Zahlenfeld mit − / +. Änderungen wirken sofort, auch während die Simulation läuft.
+  // Pfeil hoch/runter = ein Schritt, mit Shift zehn Schritte.
+  numberControl: function (def, value, onChange, val) {
+    var self = this;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.className = 'num';
+    input.value = this.formatNumber(value);
+    if (!onChange) { input.readOnly = true; val.appendChild(input); return input; }
+
+    var current = value;
+    var step = def.step || 1;
+
+    function set(v, rewrite) {
+      v = self.clamp(def, v);
+      if (rewrite) input.value = self.formatNumber(v);
+      if (v === current) return;
+      current = v;
+      onChange(v);
+    }
+
+    // Beim Tippen übernehmen, ohne das Feld umzuschreiben
+    input.addEventListener('input', function () {
+      var v = self.parseNumber(input.value);
+      if (!isNaN(v)) set(v, false);
+    });
+    // Beim Verlassen oder Enter den tatsächlich gültigen Wert anzeigen
+    input.addEventListener('change', function () { input.value = self.formatNumber(current); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      var n = (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1);
+      set(Math.round((current + n * step) * 1e6) / 1e6, true);
+    });
+
+    function stepper(sign, text, label) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'stepper';
+      b.textContent = text;
+      b.setAttribute('aria-label', label);
+      b.tabIndex = -1;
+      b.addEventListener('click', function (e) {
+        e.preventDefault();
+        var n = sign * (e.shiftKey ? 10 : 1);
+        set(Math.round((current + n * step) * 1e6) / 1e6, true);
+      });
+      return b;
+    }
+
+    val.appendChild(input);
+    val.appendChild(stepper(-1, '−', def.label + ' verringern'));
+    val.appendChild(stepper(1, '+', def.label + ' erhöhen'));
     return input;
   },
 
@@ -165,6 +259,19 @@ MF.props = {
         var input = self.field(s3, p, el.props[p.key], function (v) { el.props[p.key] = v; self.commit(); });
         if (p.readonly) input.dataset.live = p.key;  // z. B. Zählerstand läuft mit
       });
+
+      if (el.type === 'sink') {
+        var reset = document.createElement('button');
+        reset.type = 'button';
+        reset.className = 'props-action';
+        reset.textContent = 'Zähler zurücksetzen';
+        reset.addEventListener('click', function () {
+          el.props.count = 0;
+          self.commit();
+          self.refreshLive();
+        });
+        s3.appendChild(reset);
+      }
     }
 
     if (this.tab === 'io') {
@@ -287,7 +394,7 @@ MF.props = {
     var el = MF.store.findElement(MF.store.selectedId);
     if (!el) return;
     this.root.querySelectorAll('[data-live]').forEach(function (input) {
-      input.value = el.props[input.dataset.live];
+      input.value = MF.props.formatNumber(el.props[input.dataset.live]);
     });
     var type = MF.types[el.type];
     this.root.querySelectorAll('tr[data-signal]').forEach(function (tr) {
