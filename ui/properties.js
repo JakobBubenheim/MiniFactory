@@ -393,28 +393,58 @@ MF.props = {
     s2.appendChild(conv);
   },
 
+  // Code direkt im Panel bearbeiten (gleiche Farben und Tasten wie im SCL-Editor).
+  // Für Größeres gibt es den SCL-Editor mit Variablenliste und Lexikon.
   renderSclCode: function (body, rule) {
-    var u = MF.logic.unit(rule);
+    var self = this;
     var s2 = this.section(body, 'SCL-Code');
-    var pre = document.createElement('pre');
-    pre.className = 'scl-preview';
-    pre.title = 'Klicken, um im SCL-Editor zu bearbeiten';
-    pre.innerHTML = MF.sclEditor.highlight(rule.code || '') || '<i>leer</i>';
-    pre.addEventListener('click', function () { MF.sclEditor.open(rule); });
-    s2.appendChild(pre);
+
+    var box = document.createElement('div');
+    box.className = 'scl-mini';
+    box.innerHTML = '<div class="scl-layer"><pre class="scl-hl" aria-hidden="true"></pre></div>' +
+      '<textarea class="scl-text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="SCL-Code"></textarea>';
+    var layer = box.firstChild, hl = layer.firstChild, ta = box.lastChild;
+    ta.value = rule.code || '';
+    s2.appendChild(box);
 
     var st = document.createElement('div');
-    var err = u.error || u.runError;
-    st.className = 'scl-status ' + (err ? 'is-error' : 'is-ok');
-    st.textContent = err
-      ? 'Zeile ' + err.line + ': ' + err.message
-      : 'OK · schreibt ' + (u.prog.writes.join(', ') || 'nichts') + (u.prog.reads.length ? ' · liest ' + u.prog.reads.join(', ') : '');
     s2.appendChild(st);
+
+    // Höhe wächst mit dem Code, Breite scrollt
+    function paint() {
+      hl.innerHTML = MF.sclEditor.highlight(ta.value) + '\n ';
+      var lines = ta.value.split('\n').length;
+      box.style.height = Math.max(90, lines * 16 + 26) + 'px';
+      layer.style.transform = 'translateX(' + (-ta.scrollLeft) + 'px)';
+    }
+    function status() {
+      var u = MF.logic.unit(rule);
+      var err = u.error || u.runError;
+      st.className = 'scl-status ' + (err ? 'is-error' : 'is-ok');
+      st.textContent = err
+        ? 'Zeile ' + err.line + ': ' + err.message + (u.error && u.prog ? ' (letzte fehlerfreie Fassung läuft)' : '')
+        : 'OK · schreibt ' + (u.prog.writes.join(', ') || 'nichts') + (u.prog.reads.length ? ' · liest ' + u.prog.reads.join(', ') : '');
+    }
+    function changed() {
+      rule.code = ta.value;
+      paint();
+      self.commit();   // Panel nicht neu aufbauen, damit der Fokus bleibt
+      status();
+    }
+
+    ta.addEventListener('input', changed);
+    ta.addEventListener('scroll', paint);
+    ta.addEventListener('keydown', function (e) {
+      if (MF.sclEditor.handleKey(e, ta)) changed();
+    });
+    paint();
+    status();
 
     var open = document.createElement('button');
     open.type = 'button';
     open.className = 'props-action';
-    open.textContent = 'SCL-Editor öffnen';
+    open.textContent = 'Im großen Editor öffnen';
+    open.title = 'SCL-Editor mit Variablenliste und Lexikon';
     open.addEventListener('click', function () { MF.sclEditor.open(rule); });
     s2.appendChild(open);
   },

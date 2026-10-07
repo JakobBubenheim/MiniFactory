@@ -4,6 +4,9 @@
 // Mitte der Code mit Zeilennummern, Hervorhebung und Fehlermeldung.
 // Rechts das Lexikon mit allen Befehlen, durchsuchbar, mit "Einfügen".
 // Änderungen wirken sofort, auch während die Simulation läuft.
+// Das Fenster lässt sich an der Titelleiste verschieben und an allen Kanten
+// und Ecken in der Größe ändern; Variablen und Lexikon lassen sich einklappen.
+// Größe, Lage und eingeklappte Bereiche merkt sich der Browser.
 window.MF = window.MF || {};
 
 MF.sclEditor = {
@@ -11,6 +14,12 @@ MF.sclEditor = {
   varFilter: '',
   lexFilter: '',
   LINE_H: 18,
+  MIN_W: 520,
+  MIN_H: 260,
+  GEOM_KEY: 'mf.scl.geom',
+  FOLD_KEY: 'mf.scl.fold',
+  geom: null,               // { x, y, w, h } in px; null = Standard
+  fold: { vars: false, lex: false },
 
   init: function () {
     var self = this;
@@ -25,7 +34,9 @@ MF.sclEditor = {
 
     this.text.addEventListener('input', function () { self.onEdit(); });
     this.text.addEventListener('scroll', function () { self.syncScroll(); });
-    this.text.addEventListener('keydown', function (e) { self.onKey(e); });
+    this.text.addEventListener('keydown', function (e) {
+      if (self.handleKey(e, self.text)) { self.onEdit(); self.showPos(); }
+    });
     ['keyup', 'click', 'select'].forEach(function (ev) {
       self.text.addEventListener(ev, function () { self.showPos(); });
     });
@@ -59,6 +70,8 @@ MF.sclEditor = {
       if (e.key === 'Escape') { self.close(); e.stopPropagation(); }
     });
 
+    this.initWindow();
+
     // Eigenständiges Lexikon (Ribbon "Lexikon")
     this.lexDialog = document.getElementById('lex-dlg');
     document.getElementById('lex-filter').addEventListener('input', function (e) {
@@ -87,6 +100,8 @@ MF.sclEditor = {
     this.renderVars();
     this.renderLexikon(this.lexList, this.lexFilter, true);
     this.dialog.show();
+    this.applyGeom();
+    this.applyFold();
     this.text.focus();
     this.renderStatus();
   },
@@ -115,17 +130,19 @@ MF.sclEditor = {
     this.renderStatus();
   },
 
-  // Tab = zwei Leerzeichen, Enter übernimmt die Einrückung der Zeile
-  onKey: function (e) {
-    var t = this.text;
+  // Tasten im Code: Tab = zwei Leerzeichen, Enter übernimmt die Einrückung,
+  // END_IF/ELSE/… rücken eine Ebene aus. Gibt true zurück, wenn der Text geändert wurde.
+  // Wird auch vom Code-Feld im Eigenschaften-Panel benutzt.
+  handleKey: function (e, t) {
     if (e.key === 'Tab' && !e.shiftKey) {
       e.preventDefault();
-      this.insert('  ');
-    } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+      this.insertText(t, '  ');
+      return true;
+    }
+    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
       var start = t.value.lastIndexOf('\n', t.selectionStart - 1) + 1;
       var line = t.value.slice(start, t.selectionStart);
       var indent = /^ */.exec(line)[0];
-      // END_IF, ELSE, ELSIF, END_VAR … gehören eine Ebene weiter nach links
       if (/^ *(END_\w+|ELSE|ELSIF)\b/i.test(line) && indent.length >= 2) {
         var caret = t.selectionStart;
         t.setRangeText('', start, start + 2);
@@ -134,21 +151,145 @@ MF.sclEditor = {
       }
       if (/\b(THEN|ELSE|OF|VAR)\s*$/i.test(line)) indent += '  ';
       e.preventDefault();
-      this.insert('\n' + indent);
+      this.insertText(t, '\n' + indent);
+      return true;
     }
+    return false;
   },
 
   // Text an der Schreibmarke einfügen; "|" in Vorlagen markiert die neue Schreibmarke
-  insert: function (snippet) {
-    var t = this.text;
+  insertText: function (t, snippet) {
     var mark = snippet.indexOf('|');
     var clean = mark >= 0 ? snippet.slice(0, mark) + snippet.slice(mark + 1) : snippet;
     var start = t.selectionStart, end = t.selectionEnd;
     t.focus();
     t.setRangeText(clean, start, end, 'end');
     if (mark >= 0) t.selectionStart = t.selectionEnd = start + mark;
+  },
+
+  insert: function (snippet) {
+    this.insertText(this.text, snippet);
     this.onEdit();
     this.showPos();
+  },
+
+  // ---------- Fenster: verschieben, Größe ändern, einklappen ----------
+
+  initWindow: function () {
+    var self = this;
+    this.geom = this.loadJson(this.GEOM_KEY, null);
+    this.fold = this.loadJson(this.FOLD_KEY, this.fold);
+
+    // Titelleiste ziehen verschiebt, Doppelklick setzt Größe und Lage zurück
+    var head = this.dialog.querySelector('.scl-head');
+    head.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0 || e.target.closest('button, input')) return;
+      self.drag(e, 'move');
+    });
+    head.addEventListener('dblclick', function (e) {
+      if (e.target.closest('button, input')) return;
+      self.geom = null;
+      self.saveJson(self.GEOM_KEY, null);
+      self.applyGeom();
+    });
+
+    // Griffe an Kanten und Ecken
+    this.dialog.querySelectorAll('[data-resize]').forEach(function (h) {
+      h.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0) return;
+        self.drag(e, h.dataset.resize);
+      });
+    });
+
+    this.dialog.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-fold]');
+      if (!b) return;
+      var k = b.dataset.fold;
+      self.fold[k] = !self.fold[k];
+      self.saveJson(self.FOLD_KEY, self.fold);
+      self.applyFold();
+    });
+
+    window.addEventListener('resize', function () { if (self.isOpen()) self.applyGeom(); });
+  },
+
+  // Standard: über die ganze Breite, vom Ribbon bis zur Statusleiste
+  defaultGeom: function () {
+    var top = document.querySelector('.ribbon').getBoundingClientRect().bottom + 8;
+    var bottom = document.querySelector('.statusbar').getBoundingClientRect().top - 8;
+    return { x: 8, y: top, w: window.innerWidth - 16, h: bottom - top };
+  },
+
+  // Lage auf den sichtbaren Bereich begrenzen und setzen
+  applyGeom: function () {
+    var g = this.geom || this.defaultGeom();
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var w = Math.max(this.MIN_W, Math.min(g.w, vw));
+    var h = Math.max(this.MIN_H, Math.min(g.h, vh));
+    var x = Math.max(0, Math.min(g.x, vw - w));
+    var y = Math.max(0, Math.min(g.y, vh - h));
+    var st = this.dialog.style;
+    st.left = x + 'px';
+    st.top = y + 'px';
+    st.width = w + 'px';
+    st.height = h + 'px';
+    this.syncScroll();
+  },
+
+  // Ziehen an Titelleiste (mode 'move') oder an einem Griff ('n', 'se', …)
+  drag: function (e, mode) {
+    var self = this;
+    var r = this.dialog.getBoundingClientRect();
+    var start = { x: r.left, y: r.top, w: r.width, h: r.height };
+    var sx = e.clientX, sy = e.clientY;
+    var target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    this.dialog.classList.add('is-dragging');
+
+    function move(ev) {
+      var dx = ev.clientX - sx, dy = ev.clientY - sy;
+      var g = { x: start.x, y: start.y, w: start.w, h: start.h };
+      if (mode === 'move') { g.x += dx; g.y += dy; self.geom = g; self.applyGeom(); return; }
+      if (mode.indexOf('e') >= 0) g.w = Math.max(self.MIN_W, start.w + dx);
+      if (mode.indexOf('s') >= 0) g.h = Math.max(self.MIN_H, start.h + dy);
+      if (mode.indexOf('w') >= 0) { g.w = Math.max(self.MIN_W, start.w - dx); g.x = start.x + start.w - g.w; }
+      if (mode.indexOf('n') >= 0) { g.h = Math.max(self.MIN_H, start.h - dy); g.y = start.y + start.h - g.h; }
+      self.geom = g;
+      self.applyGeom();
+    }
+    function up() {
+      target.removeEventListener('pointermove', move);
+      target.removeEventListener('pointerup', up);
+      target.removeEventListener('pointercancel', up);
+      self.dialog.classList.remove('is-dragging');
+      self.saveJson(self.GEOM_KEY, self.geom);
+    }
+    target.addEventListener('pointermove', move);
+    target.addEventListener('pointerup', up);
+    target.addEventListener('pointercancel', up);
+  },
+
+  applyFold: function () {
+    var main = this.dialog.querySelector('.scl-main');
+    main.classList.toggle('is-vars-folded', !!this.fold.vars);
+    main.classList.toggle('is-lex-folded', !!this.fold.lex);
+    this.dialog.querySelectorAll('[data-fold]').forEach(function (b) {
+      var open = !MF.sclEditor.fold[b.dataset.fold];
+      b.setAttribute('aria-expanded', String(open));
+    });
+    this.syncScroll();
+  },
+
+  loadJson: function (key, fallback) {
+    try {
+      var v = JSON.parse(localStorage.getItem(key));
+      return v === null || v === undefined ? fallback : v;
+    } catch (e) { return fallback; }
+  },
+
+  saveJson: function (key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* egal */ }
   },
 
   // ---------- Darstellung ----------

@@ -1285,20 +1285,33 @@ body.is-dragging, body.is-dragging * {
   outline: none;
 }
 
-.scl-preview {
+.scl-mini {
+  position: relative;
   margin: 8px 10px 4px;
-  padding: 8px 10px;
-  max-height: 220px;
-  overflow: auto;
+  min-height: 90px;
   background: var(--dark);
   border-left: 2px solid var(--accent);
-  font: 11px/1.5 var(--mono);
-  white-space: pre;
-  cursor: pointer;
+  overflow: hidden;
 }
 
-.scl-preview:hover {
-  outline: 1px solid var(--line);
+.scl-mini:focus-within {
+  outline: 1px solid var(--accent);
+}
+
+.scl-mini .scl-layer {
+  min-width: 100%;
+}
+
+.scl-mini .scl-hl,
+.scl-mini .scl-text {
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.scl-mini .scl-text {
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .scl-status {
@@ -1320,14 +1333,13 @@ body.is-dragging, body.is-dragging * {
 /* ---------- SCL-Editor ---------- */
 
 .scl-ed {
+  /* Lage und Größe setzt ui/scl-editor.js (verschiebbar, Größe ziehbar) */
   position: fixed;
-  left: calc(var(--left) + 12px);
-  right: calc(var(--right) + 12px);
-  top: auto;
-  bottom: calc(var(--statusbar-h) + 10px);
+  left: 8px;
+  top: calc(var(--titlebar-h) + var(--ribbon-h) + 8px);
   z-index: 21;
-  width: auto;
-  height: min(560px, calc(100vh - var(--titlebar-h) - var(--ribbon-h) - var(--statusbar-h) - 40px));
+  width: calc(100vw - 16px);
+  height: calc(100vh - var(--titlebar-h) - var(--ribbon-h) - var(--statusbar-h) - 16px);
   max-width: none;
   max-height: none;
   margin: 0;
@@ -1368,8 +1380,113 @@ body.is-dragging, body.is-dragging * {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr) 270px;
+  grid-template-columns: 230px minmax(0, 1fr) 320px;
 }
+
+.scl-main.is-vars-folded { grid-template-columns: 26px minmax(0, 1fr) 320px; }
+.scl-main.is-lex-folded { grid-template-columns: 230px minmax(0, 1fr) 26px; }
+.scl-main.is-vars-folded.is-lex-folded { grid-template-columns: 26px minmax(0, 1fr) 26px; }
+
+/* Eingeklappt: nur eine schmale Leiste mit senkrechtem Titel */
+.scl-strip {
+  display: none;
+  flex: 1;
+  padding: 8px 0;
+  background: var(--dark-2);
+  border: 0;
+  color: var(--light-dim);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scl-strip span {
+  writing-mode: vertical-rl;
+}
+
+.scl-strip:hover {
+  background: var(--dark-3);
+  color: var(--light);
+}
+
+.is-vars-folded .scl-vars > :not(.scl-strip),
+.is-lex-folded .scl-lex > :not(.scl-strip) {
+  display: none;
+}
+
+.is-vars-folded .scl-vars .scl-strip,
+.is-lex-folded .scl-lex .scl-strip {
+  display: block;
+}
+
+.scl-lex .scl-strip span {
+  transform: none;
+}
+
+.scl-foldbtn {
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--light-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.scl-foldbtn:hover {
+  border-color: var(--line);
+  color: var(--light);
+}
+
+.scl-headbtn {
+  height: 20px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.scl-headbtn[aria-expanded="true"] {
+  background: var(--dark-3);
+  color: var(--light);
+}
+
+.scl-headbtn:hover {
+  border-color: var(--accent);
+}
+
+.scl-head {
+  cursor: move;
+  user-select: none;
+}
+
+.scl-ed.is-dragging {
+  user-select: none;
+}
+
+/* Griffe zum Größe ändern: unsichtbare Streifen an Kanten und Ecken */
+.scl-rz {
+  position: absolute;
+  z-index: 2;
+}
+
+.scl-rz-n, .scl-rz-s { left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.scl-rz-e, .scl-rz-w { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.scl-rz-n { top: -3px; }
+.scl-rz-s { bottom: -3px; }
+.scl-rz-e { right: -3px; }
+.scl-rz-w { left: -3px; }
+.scl-rz-ne, .scl-rz-nw, .scl-rz-se, .scl-rz-sw { width: 12px; height: 12px; }
+.scl-rz-ne { top: -3px; right: -3px; cursor: nesw-resize; }
+.scl-rz-sw { bottom: -3px; left: -3px; cursor: nesw-resize; }
+.scl-rz-nw { top: -3px; left: -3px; cursor: nwse-resize; }
+.scl-rz-se { bottom: -3px; right: -3px; cursor: nwse-resize; }
 
 .scl-side {
   display: flex;
@@ -1384,13 +1501,17 @@ body.is-dragging, body.is-dragging * {
 }
 
 .scl-side-head {
-  padding: 6px 10px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 4px 10px;
   font-size: 11px;
   font-weight: 600;
   color: var(--light-dim);
 }
 
-.scl-side-head span {
+.scl-side-head small {
+  font-size: 11px;
   font-weight: 400;
   color: var(--muted);
 }

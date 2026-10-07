@@ -309,17 +309,23 @@
 
     <!-- SCL-Editor: Variablen | Code | Lexikon -->
     <dialog class="scl-ed" id="scl-ed" aria-labelledby="scl-title">
-      <div class="siglist-head">
+      <div class="siglist-head scl-head" title="Ziehen zum Verschieben, Doppelklick setzt Größe zurück">
         <svg><use href="#i-code"/></svg>
         <span>SCL-Editor</span>
         <span class="scl-title" id="scl-title"></span>
         <span class="scl-chip" id="scl-state"></span>
         <span class="scl-spacer"></span>
+        <button type="button" class="scl-headbtn" data-fold="vars" title="Variablen ein-/ausklappen">Variablen</button>
+        <button type="button" class="scl-headbtn" data-fold="lex" title="Lexikon ein-/ausklappen">Lexikon</button>
         <button type="button" class="siglist-close" data-action="scl-close" title="Schließen (Esc)" aria-label="Schließen">×</button>
       </div>
       <div class="scl-main">
-        <aside class="scl-side" aria-label="Variablen">
-          <div class="scl-side-head">Variablen <span>ziehen oder Doppelklick</span></div>
+        <aside class="scl-side scl-vars" aria-label="Variablen">
+          <button type="button" class="scl-strip" data-fold="vars" title="Variablen ausklappen"><span>Variablen</span></button>
+          <div class="scl-side-head">
+            <span>Variablen <small>ziehen oder Doppelklick</small></span>
+            <button type="button" class="scl-foldbtn" data-fold="vars" title="Einklappen" aria-label="Variablen einklappen">‹</button>
+          </div>
           <input type="search" id="scl-varfilter" class="scl-filter" placeholder="Signal suchen …" autocomplete="off" aria-label="Variablen filtern">
           <div class="scl-varlist" id="scl-varlist"></div>
         </aside>
@@ -334,7 +340,11 @@
           </div>
         </div>
         <aside class="scl-side scl-lex" aria-label="Lexikon">
-          <div class="scl-side-head">Lexikon</div>
+          <button type="button" class="scl-strip" data-fold="lex" title="Lexikon ausklappen"><span>Lexikon</span></button>
+          <div class="scl-side-head">
+            <span>Lexikon</span>
+            <button type="button" class="scl-foldbtn" data-fold="lex" title="Einklappen" aria-label="Lexikon einklappen">›</button>
+          </div>
           <input type="search" id="scl-lexfilter" class="scl-filter" placeholder="Befehl suchen, z. B. TON …" autocomplete="off" aria-label="Lexikon durchsuchen">
           <div class="scl-lexlist" id="scl-lexlist"></div>
         </aside>
@@ -343,6 +353,15 @@
         <span class="scl-msg" id="scl-msg"></span>
         <span class="scl-pos" id="scl-pos"></span>
       </div>
+      <!-- Griffe zum Größe ändern -->
+      <div class="scl-rz scl-rz-n" data-resize="n"></div>
+      <div class="scl-rz scl-rz-s" data-resize="s"></div>
+      <div class="scl-rz scl-rz-e" data-resize="e"></div>
+      <div class="scl-rz scl-rz-w" data-resize="w"></div>
+      <div class="scl-rz scl-rz-ne" data-resize="ne"></div>
+      <div class="scl-rz scl-rz-nw" data-resize="nw"></div>
+      <div class="scl-rz scl-rz-se" data-resize="se"></div>
+      <div class="scl-rz scl-rz-sw" data-resize="sw"></div>
     </dialog>
 
     <!-- Lexikon ohne Editor -->
