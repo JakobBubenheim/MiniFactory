@@ -240,7 +240,7 @@ MF.engine = {
       case 'source.Erzeugt':   return rt.made || 0;
       case 'conveyor.Ein':     return this.input(el, name);
       case 'conveyor.Läuft':   return on && p.speed > 0 ? 1 : 0;
-      case 'conveyor.Tempo':   return on ? p.speed : 0;
+      case 'conveyor.Tempo':   return this.input(el, name);  // Sollwert, auch bei stehendem Band
       case 'sensor.Belegt':    return (!!rt.occupied !== !!p.invert) ? 1 : 0;  // Wert aus dem letzten Schritt
       case 'sink.Anzahl':      return p.count;
       case 'sink.Reset':       return this.input(el, name);
@@ -249,8 +249,11 @@ MF.engine = {
     }
   },
 
-  // Wert eines Eingangs (von Hand gesetzt oder Startwert)
+  // Wert eines Eingangs (von Hand gesetzt oder Startwert).
+  // Eingänge mit prop lesen und schreiben direkt die Eigenschaft, z. B. Tempo -> props.speed.
   input: function (el, name) {
+    var def = this.ioDef(el, name);
+    if (def && def.prop) return el.props[def.prop];
     return el.inputs && name in el.inputs ? el.inputs[name] : 0;
   },
 
@@ -259,7 +262,13 @@ MF.engine = {
     var def = this.ioDef(el, name);
     if (!def) return;
     v = def.type === 'BOOL' ? (v ? 1 : 0) : def.type === 'INT32' ? Math.round(v) : v;
-    if (def.dir === 'in') el.inputs[name] = v;
+    if (def.prop) {
+      // Grenzen der Eigenschaft einhalten, z. B. Tempo 0 … 5 m/s
+      var pd = MF.types[el.type].props.filter(function (p) { return p.key === def.prop; })[0] || {};
+      if (pd.min !== undefined) v = Math.max(pd.min, v);
+      if (pd.max !== undefined) v = Math.min(pd.max, v);
+      el.props[def.prop] = v;
+    } else if (def.dir === 'in') el.inputs[name] = v;
     else el.force[name] = v;
   },
 

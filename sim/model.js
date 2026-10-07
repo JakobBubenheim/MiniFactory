@@ -28,7 +28,7 @@ MF.types = {
     io: [
       { name: 'Ein', dir: 'in', type: 'BOOL', init: 1 },
       { name: 'Läuft', dir: 'out', type: 'BOOL' },
-      { name: 'Tempo', dir: 'out', type: 'FLOAT32' }
+      { name: 'Tempo', dir: 'in', type: 'FLOAT32', prop: 'speed' }  // Sollwert = Eigenschaft "Tempo"
     ]
   },
   sensor: {
@@ -97,13 +97,14 @@ MF.model = {
 };
 
 // Eingangssignale auf ihre Startwerte, keine geforcten Ausgänge.
+// Eingänge mit prop (z. B. Tempo) sind direkt an eine Eigenschaft gekoppelt.
 // inputs: von Hand oder (ab Etappe 4) von Regeln geschriebene Eingänge, z. B. { Ein: 1 }
 // force:  Ausgänge, deren Wert von Hand festgehalten wird, z. B. { Belegt: 1 }
 MF.initIo = function (el) {
   el.inputs = {};
   el.force = {};
   MF.types[el.type].io.forEach(function (s) {
-    if (s.dir === 'in') el.inputs[s.name] = s.init || 0;
+    if (s.dir === 'in' && !s.prop) el.inputs[s.name] = s.init || 0;
   });
 };
 
