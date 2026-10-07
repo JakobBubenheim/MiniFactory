@@ -127,7 +127,9 @@ MF.sclEditor = {
       var indent = /^ */.exec(line)[0];
       // END_IF, ELSE, ELSIF, END_VAR … gehören eine Ebene weiter nach links
       if (/^ *(END_\w+|ELSE|ELSIF)\b/i.test(line) && indent.length >= 2) {
-        t.setRangeText('', start, start + 2, 'end');
+        var caret = t.selectionStart;
+        t.setRangeText('', start, start + 2);
+        t.selectionStart = t.selectionEnd = caret - 2;
         indent = indent.slice(2);
       }
       if (/\b(THEN|ELSE|OF|VAR)\s*$/i.test(line)) indent += '  ';

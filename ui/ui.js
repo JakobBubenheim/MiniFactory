@@ -11,6 +11,7 @@ MF.ui = {
     this.initActions();
     this.initSplitters();
     this.initSimControls();
+    this.initFileKeys();
     this.updateStatus();
   },
 
@@ -148,11 +149,33 @@ MF.ui = {
         case 'lexikon-close': document.getElementById('lex-dlg').close(); break;
         case 'signal-list': MF.signals.toggle(); break;
         case 'signal-list-close': MF.signals.close(); break;
+        case 'file-new':  MF.file.newPlant(); break;
+        case 'file-open': MF.file.open(); break;
+        case 'file-save': MF.file.save(); break;
+        case 'undo':        MF.history.undo(); break;
+        case 'redo':        MF.history.redo(); break;
       }
       self.syncToggles();
       self.updateStatus();
     });
     this.syncToggles();
+  },
+
+  // Strg+N / Strg+O / Strg+S (Mac: Cmd), auch beim Tippen in Feldern.
+  // preventDefault verhindert Seite speichern bzw. Datei öffnen des Browsers.
+  initFileKeys: function () {
+    document.addEventListener('keydown', function (e) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      var k = e.key.toLowerCase();
+      if (k !== 'n' && k !== 'o' && k !== 's') return;
+      e.preventDefault();
+      if (e.repeat) return;
+      // Feld zuerst verlassen, damit eine laufende Eingabe übernommen wird
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      if (k === 'n') MF.file.newPlant();
+      else if (k === 'o') MF.file.open();
+      else MF.file.save();
+    });
   },
 
   // Markiert Raster- und Namen-Buttons als aktiv, wenn eingeschaltet.
@@ -251,6 +274,14 @@ MF.ui = {
   updateStatus: function () {
     document.getElementById('sb-count').textContent = MF.model.elements.length;
     document.getElementById('zoom-label').textContent = Math.round(MF.sim.zoom * 100) + ' %';
+
+    // Anlagenname im Fenstertitel; Stern = ungespeicherte Änderungen
+    var dirty = MF.file && MF.file.dirty;
+    document.title = (dirty ? '* ' : '') + MF.model.name + ' – Mini-Fabrik';
+    var nameEl = document.getElementById('sb-name');
+    nameEl.textContent = MF.model.name + (dirty ? ' *' : '');
+    nameEl.title = dirty ? 'Ungespeicherte Änderungen' : 'Gespeichert';
+    nameEl.classList.toggle('is-dirty', !!dirty);
 
     // Pfad des gewählten Knotens, wie im Baum
     var path = '/' + MF.model.name;
