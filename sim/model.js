@@ -92,7 +92,8 @@ MF.model = {
       props: { count: 0 } }
   ],
   rules: [
-    { id: 'R1', name: 'Regel 1', when: 'LS1.Belegt', then: 'S1.Ausfahren', enabled: true }
+    { id: 'R1', name: 'Regel 1', kind: 'rule', when: 'LS1.Belegt', then: 'S1.Ausfahren', enabled: true,
+      description: 'Kiste an der Lichtschranke wird nach Senke 2 ausgeschleust.' }
   ]
 };
 
@@ -208,14 +209,20 @@ MF.store = {
     return true;
   },
 
-  // Neue, leere Regel R<n>; wird ausgewählt, damit das Panel sie zeigt
-  createRule: function () {
+  // Neue, leere Regel R<n>; wird ausgewählt, damit das Panel sie zeigt.
+  // kind: 'rule' (Wenn-dann) oder 'scl' (eigener Code)
+  createRule: function (kind) {
     var max = 0;
     MF.model.rules.forEach(function (r) {
       var m = /^R(\d+)$/.exec(r.id);
       if (m) max = Math.max(max, parseInt(m[1], 10));
     });
-    var rule = { id: 'R' + (max + 1), name: 'Regel ' + (max + 1), when: '', then: '', enabled: true };
+    var scl = kind === 'scl';
+    var rule = {
+      id: 'R' + (max + 1), name: (scl ? 'SCL-Baustein ' : 'Regel ') + (max + 1), kind: scl ? 'scl' : 'rule',
+      when: '', then: '', enabled: true, description: ''
+    };
+    if (scl) rule.code = MF.logic.toScl(rule);
     MF.model.rules.push(rule);
     this.selectedId = rule.id;
     this.changed();

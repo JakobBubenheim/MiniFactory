@@ -324,10 +324,40 @@ MF.props = {
 
   renderRule: function (rule) {
     var self = this;
-    this.header('i-rule', rule.name, rule.id + ' · Regel');
-    this.tabs([['props', 'Regel']]);
+    var scl = MF.logic.isScl(rule);
+    this.header('i-rule', rule.name, rule.id + ' · ' + (scl ? 'SCL-Baustein' : 'Regel'));
+    this.tabs([['props', scl ? 'Baustein' : 'Regel']]);
     var body = this.body();
 
+    var s1 = this.section(body, 'Allgemein');
+    this.field(s1, { label: 'Name', type: 'text' }, rule.name, function (v) { rule.name = v; self.commit(); self.render(); });
+    this.field(s1, { label: 'Aktiv', type: 'bool', onText: 'Ja', offText: 'Nein', hint: 'Abgeschaltete Regeln bleiben erhalten, werden aber nicht ausgewertet' },
+      rule.enabled !== false, function (v) { rule.enabled = v; self.commit(); self.render(); });
+    this.field(s1, { label: 'Art', type: 'select', options: ['Wenn-dann', 'SCL'], hint: 'Einfache Wenn-dann-Regel oder eigener SCL-Code' },
+      scl ? 'SCL' : 'Wenn-dann', function (v) {
+        rule.kind = v === 'SCL' ? 'scl' : 'rule';
+        if (rule.kind === 'scl' && !rule.code) rule.code = MF.logic.toScl(rule);
+        self.commit();
+        self.render();
+      });
+
+    if (scl) this.renderSclCode(body, rule);
+    else this.renderSimpleRule(body, rule);
+
+    // Freie Beschreibung, z. B. wozu die Regel da ist
+    var s3 = this.section(body, 'Beschreibung');
+    var ta = document.createElement('textarea');
+    ta.className = 'rule-desc';
+    ta.rows = 3;
+    ta.placeholder = 'Wozu ist diese Regel da? z. B. "Kisten an LS1 nach SE2 ausschleusen"';
+    ta.value = rule.description || '';
+    ta.setAttribute('aria-label', 'Beschreibung');
+    ta.addEventListener('input', function () { rule.description = ta.value; self.commit(); });
+    s3.appendChild(ta);
+  },
+
+  renderSimpleRule: function (body, rule) {
+    var self = this;
     var sentence = document.createElement('div');
     sentence.className = 'rule-sentence';
     function updateSentence() {
@@ -335,23 +365,62 @@ MF.props = {
       sentence.children[1].textContent = rule.when || '–';
       sentence.children[4].textContent = rule.then || '–';
       sentence.classList.toggle('is-off', rule.enabled === false);
-      if (rule.enabled === false) sentence.insertAdjacentHTML('beforeend', '<br><i>abgeschaltet – wird nicht ausgewertet</i>');
+      if (rule.enabled === false) sentence.insertAdjacentHTML('beforeend', '<br><i>abgeschaltet – Ziel steht auf Startwert</i>');
       else if (!rule.when || !rule.then) sentence.insertAdjacentHTML('beforeend', '<br><i>unvollständig – wird nicht ausgewertet</i>');
+      else sentence.insertAdjacentHTML('beforeend', '<br><i>sonst ' + self.esc(rule.then) + ' := 0</i>');
     }
     updateSentence();
-
-    var s1 = this.section(body, 'Allgemein');
-    this.field(s1, { label: 'Name', type: 'text' }, rule.name, function (v) { rule.name = v; self.commit(); self.render(); });
-    this.field(s1, { label: 'Aktiv', type: 'bool', onText: 'Ja', offText: 'Nein', hint: 'Abgeschaltete Regeln bleiben erhalten, werden aber nicht ausgewertet' },
-      rule.enabled !== false, function (v) { rule.enabled = v; updateSentence(); self.commit(); });
 
     var s2 = this.section(body, 'Bedingung');
     this.field(s2, { label: 'Wenn', type: 'select', options: [''].concat(MF.store.signals('out')) }, rule.when,
       function (v) { rule.when = v; updateSentence(); self.commit(); });
     this.field(s2, { label: 'Dann', type: 'select', options: [''].concat(MF.store.signals('in')) }, rule.then,
       function (v) { rule.then = v; updateSentence(); self.commit(); });
+    s2.appendChild(sentence);
 
-    body.appendChild(sentence);
+    var conv = document.createElement('button');
+    conv.type = 'button';
+    conv.className = 'props-action';
+    conv.textContent = 'In SCL umwandeln …';
+    conv.title = 'Regel als SCL-Code weiterschreiben, z. B. mit Zeiten, Zählern oder mehreren Bedingungen';
+    conv.addEventListener('click', function () {
+      rule.kind = 'scl';
+      rule.code = MF.logic.toScl(rule);
+      self.commit();
+      self.render();
+      MF.sclEditor.open(rule);
+    });
+    s2.appendChild(conv);
+  },
+
+  renderSclCode: function (body, rule) {
+    var u = MF.logic.unit(rule);
+    var s2 = this.section(body, 'SCL-Code');
+    var pre = document.createElement('pre');
+    pre.className = 'scl-preview';
+    pre.title = 'Klicken, um im SCL-Editor zu bearbeiten';
+    pre.innerHTML = MF.sclEditor.highlight(rule.code || '') || '<i>leer</i>';
+    pre.addEventListener('click', function () { MF.sclEditor.open(rule); });
+    s2.appendChild(pre);
+
+    var st = document.createElement('div');
+    var err = u.error || u.runError;
+    st.className = 'scl-status ' + (err ? 'is-error' : 'is-ok');
+    st.textContent = err
+      ? 'Zeile ' + err.line + ': ' + err.message
+      : 'OK · schreibt ' + (u.prog.writes.join(', ') || 'nichts') + (u.prog.reads.length ? ' · liest ' + u.prog.reads.join(', ') : '');
+    s2.appendChild(st);
+
+    var open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'props-action';
+    open.textContent = 'SCL-Editor öffnen';
+    open.addEventListener('click', function () { MF.sclEditor.open(rule); });
+    s2.appendChild(open);
+  },
+
+  esc: function (s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   },
 
   // ---------- Projekt, Anlage, Gruppe, Logik ----------

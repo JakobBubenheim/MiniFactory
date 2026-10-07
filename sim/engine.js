@@ -75,8 +75,8 @@ MF.engine = {
       el.rt = {};  // Laufzeitdaten je Element
       if (el.type === 'sink') el.props.count = 0;
     });
-    // Regel-Ziele zum leeren Prozessabbild passend setzen (z. B. Schieber eingefahren)
-    MF.logic.run();
+    // Regel-Ziele auf Startwert, SCL-Variablen und Zeitglieder auf Anfang
+    MF.logic.reset();
   },
 
   // ---------- Ein Zeitschritt ----------
@@ -96,7 +96,7 @@ MF.engine = {
     });
 
     // 2. Logik – Wenn-dann-Regeln schreiben die Eingänge der Aktoren
-    MF.logic.run();
+    MF.logic.run(dt);
 
     // 3. Aktoren – Schieber fahren ab Etappe 3 hier
 

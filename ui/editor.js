@@ -233,12 +233,29 @@ MF.editor = {
   },
 
   // Leere Regel anlegen und im Eigenschaften-Panel öffnen
-  newRule: function () {
+  newRule: function (kind) {
     if (!this.canEdit()) return;
     MF.tree.expanded.project = MF.tree.expanded.logic = true;
     MF.props.tab = 'props';
-    var rule = MF.store.createRule();
-    MF.ui.message(rule.name + ' (' + rule.id + ') angelegt – Wenn und Dann wählen.');
+    var rule = MF.store.createRule(kind);
+    if (kind === 'scl') {
+      MF.sclEditor.open(rule);
+      MF.ui.message(rule.name + ' (' + rule.id + ') angelegt – Signale links in den Code ziehen.');
+    } else {
+      MF.ui.message(rule.name + ' (' + rule.id + ') angelegt – Wenn und Dann wählen.');
+    }
+  },
+
+  // SCL-Editor für die gewählte Regel; Wenn-dann-Regeln werden dabei umgewandelt
+  openSclEditor: function () {
+    var rule = MF.store.findRule(MF.store.selectedId);
+    if (!rule) { MF.ui.message('Zuerst einen SCL-Baustein im Strukturbaum auswählen – oder "SCL-Baustein" anlegen.'); return; }
+    if (!MF.logic.isScl(rule)) {
+      rule.kind = 'scl';
+      rule.code = rule.code || MF.logic.toScl(rule);
+      MF.store.changed();
+    }
+    MF.sclEditor.open(rule);
   },
 
   deleteSelectedRule: function () {

@@ -22,6 +22,8 @@
       <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.5 4.5h5l1.5 2h6.5v7h-13z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
       <symbol id="i-plant" viewBox="0 0 16 16"><path d="M1.5 14.5v-7l4-3v3l4-3v3l5-3v10z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
       <symbol id="i-logic" viewBox="0 0 16 16"><path d="M2 4h4v8H2M6 8h3M9 4h5v8H9z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-code" viewBox="0 0 16 16"><path d="M5 4L1.5 8 5 12M11 4l3.5 4L11 12M9.5 2.5l-3 11" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-book" viewBox="0 0 16 16"><path d="M2 2.5h4.5A1.5 1.5 0 0 1 8 4v10a1.5 1.5 0 0 0-1.5-1.5H2zM14 2.5H9.5A1.5 1.5 0 0 0 8 4v10a1.5 1.5 0 0 1 1.5-1.5H14z" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
       <symbol id="i-rule" viewBox="0 0 16 16"><path d="M2 3h5M2 8h12M2 13h8" stroke="currentColor" stroke-width="1.5"/><path d="M11 11l3 2-3 2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
       <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
       <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="6.5" y="6.5" width="3" height="3" fill="currentColor"/></symbol>
@@ -154,7 +156,9 @@
       <div class="ribbon-page" data-page="logik" hidden>
         <div class="rgroup">
           <div class="rgroup-items">
-            <button class="rbtn" data-action="new-rule" title="Neue Regel anlegen"><svg><use href="#i-rule"/></svg><span>Neue Regel</span></button>
+            <button class="rbtn" data-action="new-rule" title="Neue Wenn-dann-Regel anlegen"><svg><use href="#i-rule"/></svg><span>Neue Regel</span></button>
+            <button class="rbtn" data-action="new-scl" title="Neuen SCL-Baustein anlegen (Structured Text)"><svg><use href="#i-code"/></svg><span>SCL-Baustein</span></button>
+            <button class="rbtn" data-action="scl-editor" title="Gewählte Regel im SCL-Editor öffnen"><svg><use href="#i-code"/></svg><span>SCL-Editor</span></button>
             <button class="rbtn" data-action="delete-rule"><svg><use href="#i-delete"/></svg><span>Regel löschen</span></button>
           </div>
           <div class="rgroup-label">Regeln</div>
@@ -162,6 +166,7 @@
         <div class="rgroup">
           <div class="rgroup-items">
             <button class="rbtn" data-action="signal-list" title="Alle Signale mit Live-Werten"><svg><use href="#i-signal"/></svg><span>Signalliste</span></button>
+            <button class="rbtn" data-action="lexikon" title="Alle SCL-Befehle mit Erklärung und Beispiel"><svg><use href="#i-book"/></svg><span>Lexikon</span></button>
           </div>
           <div class="rgroup-label">Signale</div>
         </div>
@@ -302,6 +307,55 @@
       </div>
     </dialog>
 
+    <!-- SCL-Editor: Variablen | Code | Lexikon -->
+    <dialog class="scl-ed" id="scl-ed" aria-labelledby="scl-title">
+      <div class="siglist-head">
+        <svg><use href="#i-code"/></svg>
+        <span>SCL-Editor</span>
+        <span class="scl-title" id="scl-title"></span>
+        <span class="scl-chip" id="scl-state"></span>
+        <span class="scl-spacer"></span>
+        <button type="button" class="siglist-close" data-action="scl-close" title="Schließen (Esc)" aria-label="Schließen">×</button>
+      </div>
+      <div class="scl-main">
+        <aside class="scl-side" aria-label="Variablen">
+          <div class="scl-side-head">Variablen <span>ziehen oder Doppelklick</span></div>
+          <input type="search" id="scl-varfilter" class="scl-filter" placeholder="Signal suchen …" autocomplete="off" aria-label="Variablen filtern">
+          <div class="scl-varlist" id="scl-varlist"></div>
+        </aside>
+        <div class="scl-code">
+          <div class="scl-gutter-wrap"><div class="scl-gutter" id="scl-gutter"></div></div>
+          <div class="scl-edit">
+            <div class="scl-layer" id="scl-layer">
+              <div class="scl-marker" id="scl-marker" hidden></div>
+              <pre class="scl-hl" id="scl-hl" aria-hidden="true"></pre>
+            </div>
+            <textarea id="scl-text" class="scl-text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="SCL-Code"></textarea>
+          </div>
+        </div>
+        <aside class="scl-side scl-lex" aria-label="Lexikon">
+          <div class="scl-side-head">Lexikon</div>
+          <input type="search" id="scl-lexfilter" class="scl-filter" placeholder="Befehl suchen, z. B. TON …" autocomplete="off" aria-label="Lexikon durchsuchen">
+          <div class="scl-lexlist" id="scl-lexlist"></div>
+        </aside>
+      </div>
+      <div class="scl-foot">
+        <span class="scl-msg" id="scl-msg"></span>
+        <span class="scl-pos" id="scl-pos"></span>
+      </div>
+    </dialog>
+
+    <!-- Lexikon ohne Editor -->
+    <dialog class="siglist lex-dlg" id="lex-dlg" aria-labelledby="lex-title">
+      <div class="siglist-head">
+        <svg><use href="#i-book"/></svg>
+        <span id="lex-title">SCL-Lexikon</span>
+        <input type="search" id="lex-filter" placeholder="Befehl suchen, z. B. TON …" autocomplete="off" aria-label="Lexikon durchsuchen">
+        <button type="button" class="siglist-close" data-action="lexikon-close" title="Schließen (Esc)" aria-label="Schließen">×</button>
+      </div>
+      <div class="siglist-body lex-list" id="lex-list"></div>
+    </dialog>
+
     <!-- Statusleiste -->
     <footer class="statusbar">
       <span class="sb-path" id="sb-path">/Beispielanlage</span>
@@ -323,12 +377,15 @@
   <script src="sim/sim.js"></script>
   <script src="sim/clock.js"></script>
   <script src="sim/engine.js"></script>
+  <script src="logic/scl.js"></script>
+  <script src="logic/lexikon.js"></script>
   <script src="logic/logic.js"></script>
   <script src="ui/ui.js"></script>
   <script src="ui/tree.js"></script>
   <script src="ui/editor.js"></script>
   <script src="ui/properties.js"></script>
   <script src="ui/signals.js"></script>
+  <script src="ui/scl-editor.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

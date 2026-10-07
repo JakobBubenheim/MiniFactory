@@ -9,6 +9,7 @@
   MF.tree.init();
   MF.props.init();
   MF.signals.init();
+  MF.sclEditor.init();
   MF.editor.init(canvas);
 
   // Jede Änderung oder Auswahl zeichnet Fläche und Statusleiste neu.

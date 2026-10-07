@@ -139,6 +139,8 @@ MF.tree = {
           '<svg><use href="#' + (node.el.locked ? 'i-lock' : 'i-unlock') + '"/></svg></button>' +
         '<button class="tree-act' + (!node.el.visible ? ' is-on' : '') + '" data-act="eye" tabindex="-1" title="Ein-/Ausblenden">' +
           '<svg><use href="#' + (node.el.visible ? 'i-eye' : 'i-eye-off') + '"/></svg></button>';
+    } else if (node.rule && node.rule.kind === 'scl') {
+      html += '<span class="tree-id">SCL</span>';
     } else if (hasKids) {
       html += '<span class="tree-id">' + node.children.length + '</span>';
     }
