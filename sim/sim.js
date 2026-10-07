@@ -1,5 +1,4 @@
 // Sim: Zeichenfläche. Zeichnet Raster und Elemente, findet Elemente unter der Maus.
-// Noch keine Bewegung – die Simulationsschleife kommt in Etappe 2.
 window.MF = window.MF || {};
 
 MF.sim = {
@@ -222,12 +221,31 @@ MF.sim = {
         break;
 
       case 'pusher':
+        // Gezeichnet für Schubrichtung "unten" und passend gedreht.
+        // Platte an der Zellkante, ausgefahren um rt.pos (interpoliert wie die Kisten).
+        var eng = MF.engine;
+        var dir = eng.pusherDir(el);
+        var prt = el.rt || {};
+        var pos = prt.pos || 0;
+        var prevPos = prt.prevPos !== undefined ? prt.prevPos : pos;
+        var ext = (prevPos + (pos - prevPos) * eng.alpha()) / MF.model.settings.cellM;
+        var half = (dir[0] !== 0 ? w : h) / 2;
+        var pw = eng.PLATE_W, pt = eng.PLATE;
+        ctx.save();
+        ctx.translate(x + w / 2, y + h / 2);
+        ctx.rotate(Math.atan2(-dir[0], dir[1]));
         ctx.fillStyle = '#9AA3AE';
-        ctx.fillRect(x + 0.15, y + 0.05, w - 0.3, h - 0.45);
-        ctx.strokeRect(x + 0.15, y + 0.05, w - 0.3, h - 0.45);
+        ctx.fillRect(-0.35, -0.45, 0.7, 0.55);
+        ctx.strokeRect(-0.35, -0.45, 0.7, 0.55);
+        // Stange und Platte hell mit Rand, damit sie auch über dem Band sichtbar sind
+        ctx.fillStyle = '#9AA3AE';
+        ctx.fillRect(-0.05, 0.1, 0.1, half - pt - 0.1 + ext);   // Stange
+        ctx.strokeRect(-0.05, 0.1, 0.1, half - pt - 0.1 + ext);
         ctx.fillStyle = el.color;
-        ctx.fillRect(x + 0.45, y + h - 0.4, 0.1, 0.2);
-        ctx.fillRect(x + 0.1, y + h - 0.2, w - 0.2, 0.08);
+        ctx.fillRect(-pw / 2, half - pt + ext, pw, pt);         // Platte
+        ctx.strokeStyle = '#F4F2EC';
+        ctx.strokeRect(-pw / 2, half - pt + ext, pw, pt);
+        ctx.restore();
         break;
 
       case 'sink':
