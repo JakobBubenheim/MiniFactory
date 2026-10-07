@@ -108,6 +108,30 @@ MF.initIo = function (el) {
   });
 };
 
+// Drehung im Uhrzeigersinn (Grad) je Laufrichtung des Förderbands.
+// Ein Band in Grundstellung (0°) läuft nach rechts; 90° heißt nach unten usw.
+MF.DIR_ROT = { rechts: 0, unten: 90, links: 180, oben: 270 };
+
+MF.dirForRot = function (rot) {
+  for (var d in MF.DIR_ROT) if (MF.DIR_ROT[d] === rot) return d;
+  return 'rechts';
+};
+
+// Drehung ergänzen bzw. aus der Laufrichtung ableiten (für Elemente ohne rot,
+// z. B. aus älteren Dateien). w und h sind immer die Maße MIT Drehung, also
+// das Rechteck, das das Element auf der Fläche belegt.
+MF.normalizeElement = function (el) {
+  if (el.type === 'conveyor') {
+    var rot = MF.DIR_ROT[el.props.direction] || 0;
+    if (el.rot === undefined && rot % 180 !== 0 && el.w > el.h) {
+      var w = el.w; el.w = el.h; el.h = w;   // altes Band quer, läuft aber hoch/runter
+    }
+    el.rot = rot;
+  } else {
+    el.rot = [0, 90, 180, 270].indexOf(el.rot) >= 0 ? el.rot : 0;
+  }
+};
+
 // Standardwerte für Darstellung und Laufzeitdaten (rt = runtime)
 MF.model.elements.forEach(function (el) {
   MF.initIo(el);
@@ -115,6 +139,7 @@ MF.model.elements.forEach(function (el) {
   el.visible = true;
   el.locked = false;
   el.color = MF.types[el.type].color;
+  MF.normalizeElement(el);
 });
 
 // Zentraler Zustand mit einfachem Ereignissystem.
@@ -168,11 +193,12 @@ MF.store = {
     var next = this.nextId(t.prefix);
     var el = {
       id: next.id, type: type, name: t.label + ' ' + next.n, group: group,
-      x: x, y: y, w: t.size[0], h: t.size[1],
+      x: x, y: y, w: t.size[0], h: t.size[1], rot: 0,
       props: JSON.parse(JSON.stringify(t.defaults)),
       rt: {}, visible: true, locked: false, color: t.color
     };
     MF.initIo(el);
+    MF.normalizeElement(el);
     MF.model.elements.push(el);
     this.selectedId = el.id;
     this.changed();
@@ -186,6 +212,7 @@ MF.store = {
     var el = this.createElement(src.type, src.x + 1, src.y + 1, src.group);
     el.w = src.w;
     el.h = src.h;
+    el.rot = src.rot;
     el.props = JSON.parse(JSON.stringify(src.props));
     if (src.type === 'sink') el.props.count = 0;
     el.color = src.color;

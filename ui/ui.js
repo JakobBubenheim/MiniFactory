@@ -138,6 +138,10 @@ MF.ui = {
         case 'duplicate':   MF.editor.duplicateSelected(); break;
         case 'delete':      MF.editor.deleteSelected(); break;
         case 'delete-rule': MF.editor.deleteSelectedRule(); break;
+        case 'tool-select': MF.editor.setTool('select'); break;
+        case 'tool-move':   MF.editor.setTool('move'); break;
+        case 'tool-rotate': MF.editor.setTool('rotate'); break;
+        case 'toggle-snap': MF.editor.toggleSnap(); break;
       }
       self.syncToggles();
       self.updateStatus();
@@ -145,8 +149,19 @@ MF.ui = {
     this.syncToggles();
   },
 
-  // Markiert Raster- und Namen-Buttons als aktiv, wenn eingeschaltet.
+  // Markiert Raster-, Namen- und Fangen-Buttons als aktiv, wenn eingeschaltet,
+  // und genau einen Werkzeug-Button.
   syncToggles: function () {
+    ['select', 'move', 'rotate'].forEach(function (t) {
+      document.querySelectorAll('[data-action="tool-' + t + '"]').forEach(function (b) {
+        b.classList.toggle('is-active', MF.editor.tool === t);
+        b.setAttribute('aria-pressed', String(MF.editor.tool === t));
+      });
+    });
+    document.querySelectorAll('[data-action="toggle-snap"]').forEach(function (b) {
+      b.classList.toggle('is-active', MF.editor.snap);
+      b.setAttribute('aria-pressed', String(MF.editor.snap));
+    });
     document.querySelectorAll('[data-action="toggle-grid"]').forEach(function (b) {
       b.classList.toggle('is-active', MF.sim.showGrid);
     });

@@ -95,9 +95,10 @@ MF.props = {
     return t === '' ? NaN : Number(t);
   },
 
-  // Auf min/max begrenzen; bei Schritt 1 ganzzahlig
+  // Auf min/max begrenzen; bei Schritt 1 ganzzahlig, mit quantize auf Vielfache von step
   clamp: function (def, v) {
     if (def.step === 1) v = Math.round(v);
+    else if (def.quantize) v = Math.round(Math.round(v / def.step) * def.step * 1e6) / 1e6;
     if (def.min !== undefined) v = Math.max(def.min, v);
     if (def.max !== undefined) v = Math.min(def.max, v);
     return v;
@@ -127,6 +128,7 @@ MF.props = {
         input.appendChild(opt);
       });
       input.value = value;
+      if (def.readonly) input.disabled = true;
       if (editable) input.addEventListener('change', function () { onChange(input.value); });
       val.appendChild(input);
     } else if (def.type === 'bool') {
@@ -249,15 +251,33 @@ MF.props = {
 
       var s2 = this.section(body, 'Position');
       var locked = { readonly: el.locked };
-      this.field(s2, { label: 'X', type: 'number', unit: 'Zelle', step: 1, readonly: locked.readonly }, el.x, function (v) { el.x = Math.round(v); self.commit(); });
-      this.field(s2, { label: 'Y', type: 'number', unit: 'Zelle', step: 1, readonly: locked.readonly }, el.y, function (v) { el.y = Math.round(v); self.commit(); });
+      // Schrittweite folgt dem Fangen: ganze Zellen oder 0,1 Zellen
+      var step = MF.editor.snapStep();
+      this.field(s2, { label: 'X', type: 'number', unit: 'Zelle', step: step, quantize: true, readonly: locked.readonly }, el.x,
+        function (v) { el.x = MF.editor.snapValue(v); self.commit(); });
+      this.field(s2, { label: 'Y', type: 'number', unit: 'Zelle', step: step, quantize: true, readonly: locked.readonly }, el.y,
+        function (v) { el.y = MF.editor.snapValue(v); self.commit(); });
+      this.field(s2, { label: 'Drehung', type: 'select', options: ['0', '90', '180', '270'], unit: '°',
+        readonly: locked.readonly, hint: 'Im Uhrzeigersinn; beim Förderband auch die Laufrichtung' },
+        String(el.rot || 0), function (v) { MF.editor.setRotation(el, parseInt(v, 10)); self.render(); });
       if (el.type === 'conveyor') {
-        this.field(s2, { label: 'Länge', type: 'number', unit: 'Zelle', step: 1, min: 1, readonly: locked.readonly }, el.w, function (v) { el.w = Math.max(1, Math.round(v)); self.commit(); });
+        // Länge liegt bei 90°/270° in h statt in w
+        var len = (el.rot || 0) % 180 ? 'h' : 'w';
+        this.field(s2, { label: 'Länge', type: 'number', unit: 'Zelle', step: 1, min: 1, readonly: locked.readonly }, el[len], function (v) { el[len] = Math.max(1, Math.round(v)); self.commit(); });
       }
 
       var s3 = this.section(body, 'Verhalten');
       type.props.forEach(function (p) {
-        var input = self.field(s3, p, el.props[p.key], function (v) { el.props[p.key] = v; self.commit(); });
+        var input = self.field(s3, p, el.props[p.key], function (v) {
+          // Laufrichtung des Bands = Drehung: das Band dreht sich mit
+          if (el.type === 'conveyor' && p.key === 'direction') {
+            MF.editor.setRotation(el, MF.DIR_ROT[v]);
+            self.render();
+            return;
+          }
+          el.props[p.key] = v;
+          self.commit();
+        });
         if (p.readonly) input.dataset.live = p.key;  // z. B. Zählerstand läuft mit
       });
 
