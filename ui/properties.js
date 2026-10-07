@@ -304,8 +304,10 @@ MF.props = {
       type.io.forEach(function (s) {
         var sig = el.id + '.' + s.name;
         var users = s.dir === 'in' ? MF.logic.rulesSetting(sig) : MF.logic.rulesReading(sig);
+        var byRule = s.dir === 'in' ? MF.logic.activeSetting(sig) : [];
         var tr = document.createElement('tr');
         tr.dataset.signal = s.name;
+        if (byRule.length) tr.classList.add('is-rule');
         tr.innerHTML =
           '<td><span class="dot"></span></td>' +
           '<td class="mono"></td>' +
@@ -314,8 +316,10 @@ MF.props = {
           '<td class="io-cell"></td>' +
           '<td></td>';
         tr.children[1].textContent = s.name;
-        tr.children[5].textContent = users.map(function (r) { return r.name; }).join(', ') || '–';
-        self.ioValueCell(tr.children[4], el, s);
+        tr.children[5].textContent = users.map(function (r) {
+          return r.name + (MF.logic.isActive(r) ? '' : ' (aus)');
+        }).join(', ') || '–';
+        self.ioValueCell(tr.children[4], el, s, byRule);
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
@@ -323,7 +327,8 @@ MF.props = {
       var note = document.createElement('div');
       note.className = 'io-note';
       note.textContent = 'Wert anklicken und eintippen, z. B. 0 oder 1. Eingänge (EIN) wirken sofort; ' +
-        'Ausgänge (AUS) werden geforct (F) und zeigen den festen Wert, bis du × klickst.';
+        'Ausgänge (AUS) werden geforct (F) und zeigen den festen Wert, bis du × klickst. ' +
+        'Eingänge mit R werden durch eine Regel gesetzt und sind hier nicht änderbar.';
       body.appendChild(note);
       this.refreshLive();
     }
@@ -340,29 +345,133 @@ MF.props = {
 
   renderRule: function (rule) {
     var self = this;
-    this.header('i-rule', rule.name, rule.id + ' · Regel');
-    this.tabs([['props', 'Regel']]);
+    var scl = MF.logic.isScl(rule);
+    this.header('i-rule', rule.name, rule.id + ' · ' + (scl ? 'SCL-Baustein' : 'Regel'));
+    this.tabs([['props', scl ? 'Baustein' : 'Regel']]);
     var body = this.body();
 
+    var s1 = this.section(body, 'Allgemein');
+    this.field(s1, { label: 'Name', type: 'text' }, rule.name, function (v) { rule.name = v; self.commit(); self.render(); });
+    this.field(s1, { label: 'Aktiv', type: 'bool', onText: 'Ja', offText: 'Nein', hint: 'Abgeschaltete Regeln bleiben erhalten, werden aber nicht ausgewertet' },
+      rule.enabled !== false, function (v) { rule.enabled = v; self.commit(); self.render(); });
+    this.field(s1, { label: 'Art', type: 'select', options: ['Wenn-dann', 'SCL'], hint: 'Einfache Wenn-dann-Regel oder eigener SCL-Code' },
+      scl ? 'SCL' : 'Wenn-dann', function (v) {
+        rule.kind = v === 'SCL' ? 'scl' : 'rule';
+        if (rule.kind === 'scl' && !rule.code) rule.code = MF.logic.toScl(rule);
+        self.commit();
+        self.render();
+      });
+
+    if (scl) this.renderSclCode(body, rule);
+    else this.renderSimpleRule(body, rule);
+
+    // Freie Beschreibung, z. B. wozu die Regel da ist
+    var s3 = this.section(body, 'Beschreibung');
+    var ta = document.createElement('textarea');
+    ta.className = 'rule-desc';
+    ta.rows = 3;
+    ta.placeholder = 'Wozu ist diese Regel da? z. B. "Kisten an LS1 nach SE2 ausschleusen"';
+    ta.value = rule.description || '';
+    ta.setAttribute('aria-label', 'Beschreibung');
+    ta.addEventListener('input', function () { rule.description = ta.value; self.commit(); });
+    s3.appendChild(ta);
+  },
+
+  renderSimpleRule: function (body, rule) {
+    var self = this;
     var sentence = document.createElement('div');
     sentence.className = 'rule-sentence';
     function updateSentence() {
       sentence.innerHTML = '<b>WENN</b> <span></span> = 1<br><b>DANN</b> <span></span> := 1';
       sentence.children[1].textContent = rule.when || '–';
       sentence.children[4].textContent = rule.then || '–';
+      sentence.classList.toggle('is-off', rule.enabled === false);
+      if (rule.enabled === false) sentence.insertAdjacentHTML('beforeend', '<br><i>abgeschaltet – Ziel steht auf Startwert</i>');
+      else if (!rule.when || !rule.then) sentence.insertAdjacentHTML('beforeend', '<br><i>unvollständig – wird nicht ausgewertet</i>');
+      else sentence.insertAdjacentHTML('beforeend', '<br><i>sonst ' + self.esc(rule.then) + ' := 0</i>');
     }
     updateSentence();
-
-    var s1 = this.section(body, 'Allgemein');
-    this.field(s1, { label: 'Name', type: 'text' }, rule.name, function (v) { rule.name = v; self.commit(); self.render(); });
 
     var s2 = this.section(body, 'Bedingung');
     this.field(s2, { label: 'Wenn', type: 'select', options: [''].concat(MF.store.signals('out')) }, rule.when,
       function (v) { rule.when = v; updateSentence(); self.commit(); });
     this.field(s2, { label: 'Dann', type: 'select', options: [''].concat(MF.store.signals('in')) }, rule.then,
       function (v) { rule.then = v; updateSentence(); self.commit(); });
+    s2.appendChild(sentence);
 
-    body.appendChild(sentence);
+    var conv = document.createElement('button');
+    conv.type = 'button';
+    conv.className = 'props-action';
+    conv.textContent = 'In SCL umwandeln …';
+    conv.title = 'Regel als SCL-Code weiterschreiben, z. B. mit Zeiten, Zählern oder mehreren Bedingungen';
+    conv.addEventListener('click', function () {
+      rule.kind = 'scl';
+      rule.code = MF.logic.toScl(rule);
+      self.commit();
+      self.render();
+      MF.sclEditor.open(rule);
+    });
+    s2.appendChild(conv);
+  },
+
+  // Code direkt im Panel bearbeiten (gleiche Farben und Tasten wie im SCL-Editor).
+  // Für Größeres gibt es den SCL-Editor mit Variablenliste und Lexikon.
+  renderSclCode: function (body, rule) {
+    var self = this;
+    var s2 = this.section(body, 'SCL-Code');
+
+    var box = document.createElement('div');
+    box.className = 'scl-mini';
+    box.innerHTML = '<div class="scl-layer"><pre class="scl-hl" aria-hidden="true"></pre></div>' +
+      '<textarea class="scl-text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="SCL-Code"></textarea>';
+    var layer = box.firstChild, hl = layer.firstChild, ta = box.lastChild;
+    ta.value = rule.code || '';
+    s2.appendChild(box);
+
+    var st = document.createElement('div');
+    s2.appendChild(st);
+
+    // Höhe wächst mit dem Code, Breite scrollt
+    function paint() {
+      hl.innerHTML = MF.sclEditor.highlight(ta.value) + '\n ';
+      var lines = ta.value.split('\n').length;
+      box.style.height = Math.max(90, lines * 16 + 26) + 'px';
+      layer.style.transform = 'translateX(' + (-ta.scrollLeft) + 'px)';
+    }
+    function status() {
+      var u = MF.logic.unit(rule);
+      var err = u.error || u.runError;
+      st.className = 'scl-status ' + (err ? 'is-error' : 'is-ok');
+      st.textContent = err
+        ? 'Zeile ' + err.line + ': ' + err.message + (u.error && u.prog ? ' (letzte fehlerfreie Fassung läuft)' : '')
+        : 'OK · schreibt ' + (u.prog.writes.join(', ') || 'nichts') + (u.prog.reads.length ? ' · liest ' + u.prog.reads.join(', ') : '');
+    }
+    function changed() {
+      rule.code = ta.value;
+      paint();
+      self.commit();   // Panel nicht neu aufbauen, damit der Fokus bleibt
+      status();
+    }
+
+    ta.addEventListener('input', changed);
+    ta.addEventListener('scroll', paint);
+    ta.addEventListener('keydown', function (e) {
+      if (MF.sclEditor.handleKey(e, ta)) changed();
+    });
+    paint();
+    status();
+
+    var open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'props-action';
+    open.textContent = 'Im großen Editor öffnen';
+    open.title = 'SCL-Editor mit Variablenliste und Lexikon';
+    open.addEventListener('click', function () { MF.sclEditor.open(rule); });
+    s2.appendChild(open);
+  },
+
+  esc: function (s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   },
 
   // ---------- Projekt, Anlage, Gruppe, Logik ----------
@@ -413,7 +522,8 @@ MF.props = {
   },
 
   // Wert-Zelle der I/O-Tabelle: eintippen setzt den Eingang bzw. forct den Ausgang
-  ioValueCell: function (td, el, s) {
+  // byRule: aktive Regeln, die diesen Eingang schreiben – dann nur Anzeige
+  ioValueCell: function (td, el, s, byRule) {
     var self = this;
     var input = document.createElement('input');
     input.type = 'text';
@@ -421,6 +531,12 @@ MF.props = {
     input.inputMode = 'decimal';
     input.setAttribute('aria-label', el.id + '.' + s.name);
     input.title = s.dir === 'in' ? 'Eingang setzen' : 'Ausgang forcen';
+    if (byRule && byRule.length) {
+      input.readOnly = true;
+      input.title = 'Durch Regel gesetzt: ' + byRule.map(function (r) { return r.name; }).join(', ');
+      td.appendChild(input);
+      return;
+    }
     var release = document.createElement('button');
     release.type = 'button';
     release.className = 'io-release';
@@ -474,7 +590,8 @@ MF.props = {
       if (input !== document.activeElement) {
         input.value = def.type === 'FLOAT32' ? v.toFixed(2).replace('.', ',') : String(v);
       }
-      tr.querySelector('.io-release').hidden = !forced;
+      var release = tr.querySelector('.io-release');
+      if (release) release.hidden = !forced;
     });
   },
 

@@ -119,6 +119,7 @@ MF.tree = {
     var open = hasKids && (this.expanded[node.id] || node.forceOpen);
     if (hasKids) li.setAttribute('aria-expanded', String(!!open));
     if (node.el && !node.el.visible) li.classList.add('is-hidden-el');
+    if (node.rule && node.rule.enabled === false) li.classList.add('is-off-rule');
 
     var row = document.createElement('div');
     row.className = 'tree-row';
@@ -138,6 +139,8 @@ MF.tree = {
           '<svg><use href="#' + (node.el.locked ? 'i-lock' : 'i-unlock') + '"/></svg></button>' +
         '<button class="tree-act' + (!node.el.visible ? ' is-on' : '') + '" data-act="eye" tabindex="-1" title="Ein-/Ausblenden">' +
           '<svg><use href="#' + (node.el.visible ? 'i-eye' : 'i-eye-off') + '"/></svg></button>';
+    } else if (node.rule && node.rule.kind === 'scl') {
+      html += '<span class="tree-id">SCL</span>';
     } else if (hasKids) {
       html += '<span class="tree-id">' + node.children.length + '</span>';
     }

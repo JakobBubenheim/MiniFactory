@@ -11,6 +11,8 @@
   MF.ui.init();
   MF.tree.init();
   MF.props.init();
+  MF.signals.init();
+  MF.sclEditor.init();
   MF.editor.init(canvas);
   MF.file.init();
   MF.history.init();

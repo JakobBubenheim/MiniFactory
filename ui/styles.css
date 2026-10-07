@@ -526,6 +526,11 @@ button, input, select {
   text-decoration: line-through;
 }
 
+.is-off-rule > .tree-row .tree-label {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .tree-empty {
   padding: 8px 12px;
   color: var(--muted);
@@ -1036,6 +1041,19 @@ body.is-dragging, body.is-dragging * {
   color: var(--light);
 }
 
+/* Eingang wird durch eine Regel gesetzt: nur Anzeige, markiert mit R */
+.io-table tr.is-rule .io-value {
+  color: var(--in);
+  border-style: dashed;
+  cursor: default;
+}
+
+.io-table tr.is-rule td:nth-child(2)::after {
+  content: " R";
+  color: var(--in);
+  font-weight: 700;
+}
+
 .io-note {
   padding: 8px 10px;
   color: var(--muted);
@@ -1056,6 +1074,123 @@ body.is-dragging, body.is-dragging * {
 
 .rule-sentence b {
   color: var(--accent);
+}
+
+.rule-sentence i {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.rule-sentence.is-off {
+  border-left-color: var(--muted);
+  color: var(--muted);
+}
+
+.rule-sentence.is-off b {
+  color: var(--muted);
+}
+
+/* Signalliste: schwebendes Fenster über der Fläche */
+.siglist {
+  position: fixed;
+  top: calc(var(--titlebar-h) + var(--ribbon-h) + 16px);
+  left: calc(var(--left) + 24px);
+  right: auto;
+  z-index: 20;
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--titlebar-h) - var(--ribbon-h) - var(--statusbar-h) - 32px);
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  background: var(--dark-2);
+  color: var(--light);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.siglist[open] {
+  display: flex;
+}
+
+.siglist-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px 0 10px;
+  background: var(--dark);
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+
+.siglist-head svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+.siglist-head input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin-left: 8px;
+  padding: 0 6px;
+  background: var(--dark-2);
+  border: 1px solid var(--line);
+  color: var(--light);
+  font: inherit;
+  font-weight: 400;
+}
+
+.siglist-head input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.siglist-close {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--light-dim);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.siglist-close:hover {
+  border-color: var(--accent);
+  color: var(--light);
+}
+
+.siglist-body {
+  overflow: auto;
+}
+
+.siglist-table tbody tr {
+  cursor: pointer;
+}
+
+.siglist-table tr.is-selected td {
+  background: var(--accent-tint);
+}
+
+.siglist-table tr.is-forced .siglist-value {
+  color: var(--accent);
+}
+
+.siglist-table tr.is-forced .siglist-value::after {
+  content: " F";
+  font-weight: 700;
+}
+
+.siglist-value {
+  text-align: right;
+}
+
+.siglist-empty {
+  color: var(--muted);
+  text-align: center;
 }
 
 /* ---------- Statusleiste ---------- */
@@ -1127,4 +1262,514 @@ body.is-dragging, body.is-dragging * {
   :root { --left: 200px; --right: 240px; }
   .brand span, .quick { display: none; }
   .ribbon-tab { padding: 0 8px; }
+}
+
+/* ---------- Regel: Beschreibung und SCL-Vorschau ---------- */
+
+.rule-desc {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 6px 10px;
+  padding: 6px 8px;
+  min-height: 54px;
+  resize: vertical;
+  background: var(--dark);
+  border: 1px solid var(--line);
+  color: var(--light);
+  font: inherit;
+  line-height: 1.4;
+}
+
+.rule-desc:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.scl-mini {
+  position: relative;
+  margin: 8px 10px 4px;
+  min-height: 90px;
+  background: var(--dark);
+  border-left: 2px solid var(--accent);
+  overflow: hidden;
+}
+
+.scl-mini:focus-within {
+  outline: 1px solid var(--accent);
+}
+
+.scl-mini .scl-layer {
+  min-width: 100%;
+}
+
+.scl-mini .scl-hl,
+.scl-mini .scl-text {
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.scl-mini .scl-text {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.scl-status {
+  margin: 0 10px;
+  font-size: 11px;
+}
+
+.scl-status.is-ok { color: var(--ok); }
+.scl-status.is-error { color: var(--off); }
+
+/* Hervorhebung im Code */
+.hl-kw   { color: var(--accent); font-weight: 600; }
+.hl-type { color: #C99BE0; }
+.hl-fn   { color: #E0C97A; }
+.hl-num  { color: #7FCB94; }
+.hl-sig  { color: var(--in); }
+.hl-com  { color: var(--muted); font-style: italic; }
+
+/* ---------- SCL-Editor ---------- */
+
+.scl-ed {
+  /* Lage und Größe setzt ui/scl-editor.js (verschiebbar, Größe ziehbar) */
+  position: fixed;
+  left: 8px;
+  top: calc(var(--titlebar-h) + var(--ribbon-h) + 8px);
+  z-index: 21;
+  width: calc(100vw - 16px);
+  height: calc(100vh - var(--titlebar-h) - var(--ribbon-h) - var(--statusbar-h) - 16px);
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  background: var(--dark-2);
+  color: var(--light);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.scl-ed[open] {
+  display: flex;
+}
+
+.scl-title {
+  font-weight: 400;
+  color: var(--light-dim);
+}
+
+.scl-chip {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--off);
+  color: var(--light);
+}
+
+.scl-chip.is-on {
+  background: var(--ok);
+}
+
+.scl-spacer {
+  flex: 1;
+}
+
+.scl-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr) 320px;
+}
+
+.scl-main.is-vars-folded { grid-template-columns: 26px minmax(0, 1fr) 320px; }
+.scl-main.is-lex-folded { grid-template-columns: 230px minmax(0, 1fr) 26px; }
+.scl-main.is-vars-folded.is-lex-folded { grid-template-columns: 26px minmax(0, 1fr) 26px; }
+
+/* Eingeklappt: nur eine schmale Leiste mit senkrechtem Titel */
+.scl-strip {
+  display: none;
+  flex: 1;
+  padding: 8px 0;
+  background: var(--dark-2);
+  border: 0;
+  color: var(--light-dim);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scl-strip span {
+  writing-mode: vertical-rl;
+}
+
+.scl-strip:hover {
+  background: var(--dark-3);
+  color: var(--light);
+}
+
+.is-vars-folded .scl-vars > :not(.scl-strip),
+.is-lex-folded .scl-lex > :not(.scl-strip) {
+  display: none;
+}
+
+.is-vars-folded .scl-vars .scl-strip,
+.is-lex-folded .scl-lex .scl-strip {
+  display: block;
+}
+
+.scl-lex .scl-strip span {
+  transform: none;
+}
+
+.scl-foldbtn {
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--light-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.scl-foldbtn:hover {
+  border-color: var(--line);
+  color: var(--light);
+}
+
+.scl-headbtn {
+  height: 20px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.scl-headbtn[aria-expanded="true"] {
+  background: var(--dark-3);
+  color: var(--light);
+}
+
+.scl-headbtn:hover {
+  border-color: var(--accent);
+}
+
+.scl-head {
+  cursor: move;
+  user-select: none;
+}
+
+.scl-ed.is-dragging {
+  user-select: none;
+}
+
+/* Griffe zum Größe ändern: unsichtbare Streifen an Kanten und Ecken */
+.scl-rz {
+  position: absolute;
+  z-index: 2;
+}
+
+.scl-rz-n, .scl-rz-s { left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.scl-rz-e, .scl-rz-w { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.scl-rz-n { top: -3px; }
+.scl-rz-s { bottom: -3px; }
+.scl-rz-e { right: -3px; }
+.scl-rz-w { left: -3px; }
+.scl-rz-ne, .scl-rz-nw, .scl-rz-se, .scl-rz-sw { width: 12px; height: 12px; }
+.scl-rz-ne { top: -3px; right: -3px; cursor: nesw-resize; }
+.scl-rz-sw { bottom: -3px; left: -3px; cursor: nesw-resize; }
+.scl-rz-nw { top: -3px; left: -3px; cursor: nwse-resize; }
+.scl-rz-se { bottom: -3px; right: -3px; cursor: nwse-resize; }
+
+.scl-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+}
+
+.scl-lex {
+  border-right: 0;
+  border-left: 1px solid var(--line);
+}
+
+.scl-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--light-dim);
+}
+
+.scl-side-head small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.scl-filter {
+  margin: 0 8px 6px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--dark);
+  border: 1px solid var(--line);
+  color: var(--light);
+  font: inherit;
+}
+
+.scl-filter:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.scl-varlist,
+.scl-lexlist {
+  flex: 1;
+  overflow: auto;
+}
+
+.scl-var-group {
+  padding: 6px 10px 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.scl-var {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px 0 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: grab;
+}
+
+.scl-var:hover {
+  background: var(--dark-3);
+}
+
+.scl-var:active {
+  cursor: grabbing;
+}
+
+.scl-var .dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+}
+
+.scl-var-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scl-var-type {
+  font-size: 10px;
+  color: #C99BE0;
+}
+
+.scl-var-val {
+  min-width: 28px;
+  text-align: right;
+  color: var(--light-dim);
+  white-space: nowrap;
+}
+
+.scl-empty {
+  padding: 10px;
+  color: var(--muted);
+}
+
+/* Code-Fläche: eingefärbter Text liegt unter einem durchsichtigen Textfeld */
+.scl-code {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  background: var(--dark);
+}
+
+.scl-gutter-wrap {
+  flex: none;
+  width: 40px;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+}
+
+.scl-gutter {
+  padding: 8px 0;
+  font: 12px/18px var(--mono);
+  color: var(--muted);
+  text-align: right;
+}
+
+.scl-gutter div {
+  padding-right: 8px;
+}
+
+.scl-gutter .is-error {
+  background: var(--off);
+  color: var(--light);
+}
+
+.scl-edit {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.scl-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 100%;
+}
+
+.scl-hl,
+.scl-text {
+  margin: 0;
+  padding: 8px 10px;
+  font: 12px/18px var(--mono);
+  white-space: pre;
+  tab-size: 2;
+  letter-spacing: 0;
+}
+
+.scl-hl {
+  position: relative;
+  color: var(--light);
+}
+
+.scl-marker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 18px;
+  background: rgba(194, 69, 58, 0.25);
+}
+
+.scl-text {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  overflow: auto;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: transparent;
+  caret-color: var(--light);
+  user-select: text;
+}
+
+.scl-text::selection {
+  background: rgba(91, 143, 209, 0.35);
+}
+
+.scl-foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--dark);
+  font-size: 11px;
+}
+
+.scl-msg {
+  flex: 1;
+}
+
+.scl-msg.is-ok { color: var(--ok); }
+.scl-msg.is-error { color: #E4796F; }
+
+.scl-pos {
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+/* Lexikon */
+.lex-cat {
+  padding: 8px 10px 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.lex-item summary {
+  padding: 3px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.lex-item summary:hover {
+  background: var(--dark-3);
+}
+
+.lex-body {
+  padding: 2px 10px 8px 20px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--light-dim);
+}
+
+.lex-body p {
+  margin: 4px 0;
+}
+
+.lex-label {
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.lex-code {
+  margin: 4px 0;
+  padding: 6px 8px;
+  overflow-x: auto;
+  background: var(--dark);
+  font: 11px/1.45 var(--mono);
+  color: var(--light);
+  white-space: pre;
+}
+
+.lex-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.lex-actions .props-action {
+  margin: 4px 0 0;
+}
+
+.lex-dlg {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.lex-list {
+  padding-bottom: 8px;
 }

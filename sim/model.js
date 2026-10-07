@@ -83,7 +83,7 @@ MF.model = {
       props: { interval: 2, maxCount: 0, enabled: true } },
     { id: 'B1',  type: 'conveyor', name: 'Förderband 1',  group: 'Förderstrecke 1', x: 3,  y: 4, w: 9, h: 1,
       props: { running: true, speed: 0.5, direction: 'rechts' } },
-    { id: 'LS1', type: 'sensor',   name: 'Lichtschranke 1', group: 'Förderstrecke 1', x: 8, y: 4, w: 1, h: 1,
+    { id: 'LS1', type: 'sensor',   name: 'Lichtschranke 1', group: 'Förderstrecke 1', x: 9, y: 4, w: 1, h: 1,
       props: { invert: false, debounce: 0 } },
     { id: 'S1',  type: 'pusher',   name: 'Schieber 1',    group: 'Förderstrecke 1', x: 9,  y: 3, w: 1, h: 1,
       props: { stroke: 600, speed: 0.3, returnDelay: 0.5, direction: 'unten' } },
@@ -93,13 +93,14 @@ MF.model = {
       props: { count: 0 } }
   ],
   rules: [
-    { id: 'R1', name: 'Regel 1', when: 'LS1.Belegt', then: 'S1.Ausfahren' }
+    { id: 'R1', name: 'Regel 1', kind: 'rule', when: 'LS1.Belegt', then: 'S1.Ausfahren', enabled: true,
+      description: 'Kiste an der Lichtschranke wird nach Senke 2 ausgeschleust.' }
   ]
 };
 
 // Eingangssignale auf ihre Startwerte, keine geforcten Ausgänge.
 // Eingänge mit prop (z. B. Tempo) sind direkt an eine Eigenschaft gekoppelt.
-// inputs: von Hand oder (ab Etappe 4) von Regeln geschriebene Eingänge, z. B. { Ein: 1 }
+// inputs: von Hand oder von Regeln geschriebene Eingänge, z. B. { Ein: 1 }
 // force:  Ausgänge, deren Wert von Hand festgehalten wird, z. B. { Belegt: 1 }
 MF.initIo = function (el) {
   el.inputs = {};
@@ -239,6 +240,26 @@ MF.store = {
     if (this.selectedId === id) this.selectedId = null;
     this.changed();
     return true;
+  },
+
+  // Neue, leere Regel R<n>; wird ausgewählt, damit das Panel sie zeigt.
+  // kind: 'rule' (Wenn-dann) oder 'scl' (eigener Code)
+  createRule: function (kind) {
+    var max = 0;
+    MF.model.rules.forEach(function (r) {
+      var m = /^R(\d+)$/.exec(r.id);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    var scl = kind === 'scl';
+    var rule = {
+      id: 'R' + (max + 1), name: (scl ? 'SCL-Baustein ' : 'Regel ') + (max + 1), kind: scl ? 'scl' : 'rule',
+      when: '', then: '', enabled: true, description: ''
+    };
+    if (scl) rule.code = MF.logic.toScl(rule);
+    MF.model.rules.push(rule);
+    this.selectedId = rule.id;
+    this.changed();
+    return rule;
   },
 
   deleteRule: function (id) {

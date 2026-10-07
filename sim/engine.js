@@ -75,6 +75,8 @@ MF.engine = {
       el.rt = {};  // Laufzeitdaten je Element
       if (el.type === 'sink') el.props.count = 0;
     });
+    // Regel-Ziele auf Startwert, SCL-Variablen und Zeitglieder auf Anfang
+    MF.logic.reset();
   },
 
   // ---------- Ein Zeitschritt ----------
@@ -93,7 +95,8 @@ MF.engine = {
       if (el.type === 'sensor') self.stepSensor(el, dt);
     });
 
-    // 2. Logik – die Wenn-dann-Regeln werden ab Etappe 4 hier ausgewertet
+    // 2. Logik – Wenn-dann-Regeln und SCL-Bausteine schreiben die Eingänge der Aktoren
+    MF.logic.run(dt);
 
     // 3. Aktoren
     els.forEach(function (el) {

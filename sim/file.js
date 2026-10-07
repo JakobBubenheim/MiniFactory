@@ -52,7 +52,13 @@ window.MF = window.MF || {};
           };
         }),
         rules: m.rules.map(function (r) {
-          return { id: r.id, name: r.name, when: r.when || '', then: r.then || '' };
+          var out = {
+            id: r.id, name: r.name, kind: r.kind === 'scl' ? 'scl' : 'rule',
+            enabled: r.enabled !== false, description: r.description || '',
+            when: r.when || '', then: r.then || ''
+          };
+          if (r.code) out.code = r.code;
+          return out;
         }),
         view: {
           zoom: MF.sim.zoom, panX: MF.sim.offsetX, panY: MF.sim.offsetY,
@@ -117,9 +123,11 @@ window.MF = window.MF || {};
         var what = 'Regel ' + (i + 1);
         if (!isObject(r)) { errors.push(what + ' ist kein Objekt.'); return; }
         checkId(r.id, what);
-        ['name', 'when', 'then'].forEach(function (k) {
+        ['name', 'when', 'then', 'description', 'code'].forEach(function (k) {
           if (r[k] !== undefined && typeof r[k] !== 'string') errors.push(what + ': "' + k + '" muss ein Text sein.');
         });
+        if (r.enabled !== undefined && typeof r.enabled !== 'boolean') errors.push(what + ': "enabled" muss true oder false sein.');
+        if (r.kind !== undefined && r.kind !== 'rule' && r.kind !== 'scl') errors.push(what + ': "kind" muss "rule" oder "scl" sein.');
       });
 
       if (obj.view !== undefined && !isObject(obj.view)) errors.push('"view" muss ein Objekt sein.');
@@ -182,8 +190,13 @@ window.MF = window.MF || {};
           });
           return el;
         }),
+        // Ältere Dateien ohne enabled/kind: Regel ist aktiv und vom Typ Wenn-dann
         rules: (obj.rules || []).map(function (r) {
-          return { id: r.id, name: r.name || r.id, when: r.when || '', then: r.then || '' };
+          return {
+            id: r.id, name: r.name || r.id, kind: r.kind === 'scl' ? 'scl' : 'rule',
+            enabled: r.enabled !== false, description: r.description || '',
+            when: r.when || '', then: r.then || '', code: r.code || ''
+          };
         })
       };
       return { model: model, errors: [], view: isObject(obj.view) ? obj.view : null };
