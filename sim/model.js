@@ -13,7 +13,7 @@ MF.types = {
       { key: 'maxCount', label: 'Max. Anzahl', type: 'number', step: 1, min: 0, hint: '0 = unbegrenzt' }
     ],
     io: [
-      { name: 'Freigabe', dir: 'in', type: 'BOOL' },
+      { name: 'Freigabe', dir: 'in', type: 'BOOL', init: 1 },
       { name: 'Erzeugt', dir: 'out', type: 'INT32' }
     ]
   },
@@ -26,7 +26,7 @@ MF.types = {
       { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'], hint: 'Laufrichtung des Bands' }
     ],
     io: [
-      { name: 'Ein', dir: 'in', type: 'BOOL' },
+      { name: 'Ein', dir: 'in', type: 'BOOL', init: 1 },
       { name: 'Läuft', dir: 'out', type: 'BOOL' },
       { name: 'Tempo', dir: 'out', type: 'FLOAT32' }
     ]
@@ -96,8 +96,20 @@ MF.model = {
   ]
 };
 
+// Eingangssignale auf ihre Startwerte, keine geforcten Ausgänge.
+// inputs: von Hand oder (ab Etappe 4) von Regeln geschriebene Eingänge, z. B. { Ein: 1 }
+// force:  Ausgänge, deren Wert von Hand festgehalten wird, z. B. { Belegt: 1 }
+MF.initIo = function (el) {
+  el.inputs = {};
+  el.force = {};
+  MF.types[el.type].io.forEach(function (s) {
+    if (s.dir === 'in') el.inputs[s.name] = s.init || 0;
+  });
+};
+
 // Standardwerte für Darstellung und Laufzeitdaten (rt = runtime)
 MF.model.elements.forEach(function (el) {
+  MF.initIo(el);
   el.rt = {};
   el.visible = true;
   el.locked = false;
@@ -159,6 +171,7 @@ MF.store = {
       props: JSON.parse(JSON.stringify(t.defaults)),
       rt: {}, visible: true, locked: false, color: t.color
     };
+    MF.initIo(el);
     MF.model.elements.push(el);
     this.selectedId = el.id;
     this.changed();

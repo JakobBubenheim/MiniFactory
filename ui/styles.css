@@ -979,6 +979,63 @@ body.is-dragging, body.is-dragging * {
 .dir-in  { background: var(--in); }
 .dir-out { background: var(--accent); }
 
+/* Wert-Zelle: eintippbar; geforcte Ausgänge orange mit F und × */
+.io-cell {
+  position: relative;
+}
+
+.io-value {
+  width: 46px;
+  height: 20px;
+  padding: 0 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: right;
+  background: var(--dark);
+  border: 1px solid var(--line);
+  color: var(--light);
+  cursor: text;
+  user-select: text;
+}
+
+.io-value:hover {
+  border-color: var(--light-dim);
+}
+
+.io-value:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.io-table tr.is-forced .io-value {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.io-table tr.is-forced td:nth-child(2)::after {
+  content: " F";
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.io-release {
+  width: 18px;
+  height: 20px;
+  margin-left: 2px;
+  padding: 0;
+  vertical-align: top;
+  background: var(--dark-3);
+  border: 1px solid var(--line);
+  color: var(--light-dim);
+  cursor: pointer;
+}
+
+.io-release:hover {
+  border-color: var(--accent);
+  color: var(--light);
+}
+
 .io-note {
   padding: 8px 10px;
   color: var(--muted);

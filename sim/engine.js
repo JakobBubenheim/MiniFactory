@@ -118,7 +118,7 @@ MF.engine = {
   // Quelle: legt im festen Takt eine Kiste auf das angrenzende Band
   stepSource: function (src, dt) {
     var p = src.props;
-    if (!p.enabled) return;
+    if (!p.enabled || !this.input(src, 'Freigabe')) return;
     var rt = src.rt;
     if (rt.made === undefined) { rt.made = 0; rt.timer = 0; }
     if (p.maxCount > 0 && rt.made >= p.maxCount) return;
@@ -171,9 +171,9 @@ MF.engine = {
     return null;
   },
 
-  // Läuft das Band? Schalter "Antrieb" im Eigenschaften-Panel und Signal "Ein" (kommt mit der Logik)
+  // Läuft das Band? Schalter "Antrieb" im Eigenschaften-Panel und Eingang "Ein"
   beltOn: function (belt) {
-    return belt.props.running !== false && (!belt.rt || belt.rt.on !== false);
+    return belt.props.running !== false && !!this.input(belt, 'Ein');
   },
 
   // Zurückgelegter Weg je Band in Zellen – für die wandernden Streifen.
@@ -230,20 +230,50 @@ MF.engine = {
   // Aktueller Wert eines Signals, z. B. signal(B1, 'Läuft') -> 1.
   // Signale hängen nur vom Zustand der Anlage ab, nie davon, ob die Uhr läuft:
   // Eine Pause friert die Zeit ein, die Zustände bleiben wie im letzten Schritt.
-  // Schieber und Regeln steuern noch nichts (Etappe 3 und 4), daher 0.
+  // Geforcte Ausgänge liefern den festgehaltenen Wert statt des berechneten.
   signal: function (el, name) {
+    if (el.force && name in el.force) return el.force[name];
     var p = el.props, rt = el.rt || {};
-    var on = el.type === 'conveyor' ? this.beltOn(el) : rt.on !== false;
+    var on = el.type === 'conveyor' ? this.beltOn(el) : true;
     switch (el.type + '.' + name) {
-      case 'source.Freigabe':  return p.enabled ? 1 : 0;
+      case 'source.Freigabe':  return this.input(el, name);
       case 'source.Erzeugt':   return rt.made || 0;
-      case 'conveyor.Ein':     return on ? 1 : 0;
+      case 'conveyor.Ein':     return this.input(el, name);
       case 'conveyor.Läuft':   return on && p.speed > 0 ? 1 : 0;
       case 'conveyor.Tempo':   return on ? p.speed : 0;
       case 'sensor.Belegt':    return (!!rt.occupied !== !!p.invert) ? 1 : 0;  // Wert aus dem letzten Schritt
       case 'sink.Anzahl':      return p.count;
+      case 'sink.Reset':       return this.input(el, name);
+      case 'pusher.Ausfahren': return this.input(el, name);  // wirkt ab Etappe 3
       default:                 return 0;
     }
+  },
+
+  // Wert eines Eingangs (von Hand gesetzt oder Startwert)
+  input: function (el, name) {
+    return el.inputs && name in el.inputs ? el.inputs[name] : 0;
+  },
+
+  // Signal von Hand setzen: Eingänge werden geschrieben, Ausgänge geforct.
+  setSignal: function (el, name, v) {
+    var def = this.ioDef(el, name);
+    if (!def) return;
+    v = def.type === 'BOOL' ? (v ? 1 : 0) : def.type === 'INT32' ? Math.round(v) : v;
+    if (def.dir === 'in') el.inputs[name] = v;
+    else el.force[name] = v;
+  },
+
+  // Forcen eines Ausgangs aufheben – er zeigt wieder den berechneten Wert
+  releaseForce: function (el, name) {
+    if (el.force) delete el.force[name];
+  },
+
+  isForced: function (el, name) {
+    return !!el.force && name in el.force;
+  },
+
+  ioDef: function (el, name) {
+    return MF.types[el.type].io.filter(function (s) { return s.name === name; })[0] || null;
   },
 
   // Senke: nimmt Kisten auf, deren Mitte über ihr liegt, und zählt sie
@@ -258,6 +288,11 @@ MF.engine = {
         }
       }
       return true;
+    });
+    // Eingang "Reset" hält den Zähler auf 0, solange er 1 ist
+    var self = this;
+    sinks.forEach(function (s) {
+      if (self.input(s, 'Reset')) s.props.count = 0;
     });
   }
 };

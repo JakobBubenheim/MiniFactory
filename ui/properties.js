@@ -290,17 +290,19 @@ MF.props = {
           '<td class="mono"></td>' +
           '<td><span class="dir dir-' + s.dir + '">' + (s.dir === 'in' ? 'EIN' : 'AUS') + '</span></td>' +
           '<td class="mono">' + s.type + '</td>' +
-          '<td class="mono">' + '0' + '</td>' +
+          '<td class="io-cell"></td>' +
           '<td></td>';
         tr.children[1].textContent = s.name;
         tr.children[5].textContent = users.map(function (r) { return r.name; }).join(', ') || '–';
+        self.ioValueCell(tr.children[4], el, s);
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
       body.appendChild(table);
       var note = document.createElement('div');
       note.className = 'io-note';
-      note.textContent = 'Werte laufen live mit. Schieber und Regeln steuern ab Etappe 3 und 4.';
+      note.textContent = 'Wert anklicken und eintippen, z. B. 0 oder 1. Eingänge (EIN) wirken sofort; ' +
+        'Ausgänge (AUS) werden geforct (F) und zeigen den festen Wert, bis du × klickst.';
       body.appendChild(note);
       this.refreshLive();
     }
@@ -389,6 +391,48 @@ MF.props = {
     }
   },
 
+  // Wert-Zelle der I/O-Tabelle: eintippen setzt den Eingang bzw. forct den Ausgang
+  ioValueCell: function (td, el, s) {
+    var self = this;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'io-value';
+    input.inputMode = 'decimal';
+    input.setAttribute('aria-label', el.id + '.' + s.name);
+    input.title = s.dir === 'in' ? 'Eingang setzen' : 'Ausgang forcen';
+    var release = document.createElement('button');
+    release.type = 'button';
+    release.className = 'io-release';
+    release.textContent = '×';
+    release.title = 'Forcen aufheben';
+    release.hidden = true;
+
+    function changed() {
+      self.commit();      // Fläche neu zeichnen, z. B. Pfeil grau bei Ein = 0
+      self.refreshLive();
+    }
+
+    input.addEventListener('focus', function () { input.select(); });
+    input.addEventListener('input', function () {
+      var v = self.parseNumber(input.value);
+      if (isNaN(v)) return;
+      MF.engine.setSignal(el, s.name, v);
+      changed();
+    });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === 'Escape') input.blur();
+    });
+    // Ungültiges oder angepasstes (z. B. 5 bei BOOL -> 1) wieder sauber anzeigen
+    input.addEventListener('blur', function () { self.refreshLive(); });
+    release.addEventListener('click', function () {
+      MF.engine.releaseForce(el, s.name);
+      changed();
+    });
+
+    td.appendChild(input);
+    td.appendChild(release);
+  },
+
   // Laufende Werte aktualisieren, ohne das Panel neu aufzubauen (wird pro Bild aufgerufen)
   refreshLive: function () {
     if (!this.root) return;
@@ -402,8 +446,14 @@ MF.props = {
       var name = tr.dataset.signal;
       var v = MF.engine.signal(el, name);
       var def = type.io.filter(function (s) { return s.name === name; })[0];
+      var forced = MF.engine.isForced(el, name);
       tr.children[0].firstChild.classList.toggle('is-on', !!v);
-      tr.children[4].textContent = def.type === 'FLOAT32' ? v.toFixed(2) : String(v);
+      tr.classList.toggle('is-forced', forced);
+      var input = tr.querySelector('.io-value');
+      if (input !== document.activeElement) {
+        input.value = def.type === 'FLOAT32' ? v.toFixed(2).replace('.', ',') : String(v);
+      }
+      tr.querySelector('.io-release').hidden = !forced;
     });
   },
 
