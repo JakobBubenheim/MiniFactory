@@ -109,14 +109,43 @@ MF.initIo = function (el) {
   });
 };
 
-// Standardwerte für Drehung, Darstellung und Laufzeitdaten (rt = runtime)
+// Himmelsrichtungen als Winkel im Uhrzeigersinn, 0° = rechts
+MF.DIR_ROT = { rechts: 0, unten: 90, links: 180, oben: 270 };
+
+// Typen, deren Eigenschaft "Richtung" der Drehung folgt (und umgekehrt), und
+// wohin sie in Grundstellung (0°) zeigen: Band läuft nach rechts, Schieber drückt nach unten.
+MF.ROT_ZERO_DIR = { conveyor: 'rechts', pusher: 'unten' };
+
+MF.rotForDir = function (type, dir) {
+  return (MF.DIR_ROT[dir] - MF.DIR_ROT[MF.ROT_ZERO_DIR[type]] + 360) % 360;
+};
+
+MF.dirForRot = function (type, rot) {
+  var a = (rot + MF.DIR_ROT[MF.ROT_ZERO_DIR[type]]) % 360;
+  for (var d in MF.DIR_ROT) if (MF.DIR_ROT[d] === a) return d;
+  return MF.ROT_ZERO_DIR[type];
+};
+
+// Drehung prüfen bzw. aus der Richtung ableiten, z. B. nach dem Laden einer Datei.
+// w und h sind immer die Maße MIT Drehung, also das Rechteck, das das Element
+// auf der Fläche belegt. Ein Band liegt deshalb bei 90°/270° hochkant.
+MF.normalizeElement = function (el) {
+  var dir = el.props.direction;
+  if (MF.ROT_ZERO_DIR[el.type] && dir in MF.DIR_ROT) el.rot = MF.rotForDir(el.type, dir);
+  else if ([0, 90, 180, 270].indexOf(el.rot) < 0) el.rot = 0;   // Schieber "auto" behält seine Drehung
+  if (el.type === 'conveyor' && (el.rot % 180 !== 0 ? el.w > el.h : el.h > el.w)) {
+    var w = el.w; el.w = el.h; el.h = w;
+  }
+};
+
+// Standardwerte für Darstellung und Laufzeitdaten (rt = runtime)
 MF.model.elements.forEach(function (el) {
   MF.initIo(el);
-  el.rot = 0;
   el.rt = {};
   el.visible = true;
   el.locked = false;
   el.color = MF.types[el.type].color;
+  MF.normalizeElement(el);
 });
 
 // Zentraler Zustand mit einfachem Ereignissystem.
@@ -175,6 +204,7 @@ MF.store = {
       rt: {}, visible: true, locked: false, color: t.color
     };
     MF.initIo(el);
+    MF.normalizeElement(el);
     MF.model.elements.push(el);
     this.selectedId = el.id;
     this.changed();

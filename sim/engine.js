@@ -122,11 +122,15 @@ MF.engine = {
     if (rt.raw !== rt.occupied && rt.stableMs >= (el.props.debounce || 0) - 1e-6) rt.occupied = rt.raw;
   },
 
-  // Liegt eine Kiste im Strahl der Lichtschranke (Mitte der Zelle)?
+  // Liegt eine Kiste im Strahl der Lichtschranke? Der Strahl ist ein 0,1 Zellen
+  // schmaler Streifen durch die Mitte: senkrecht bei 0°/180°, waagrecht bei 90°/270°.
   sensorHit: function (el) {
     var h = this.BOX / 2;
+    var beam = (el.rot || 0) % 180 === 0
+      ? { x: el.x + el.w / 2 - 0.05, y: el.y, w: 0.1, h: el.h }
+      : { x: el.x, y: el.y + el.h / 2 - 0.05, w: el.w, h: 0.1 };
     return this.boxes.some(function (b) {
-      return b.x + h > el.x + 0.45 && b.x - h < el.x + 0.55 && b.y + h > el.y && b.y - h < el.y + el.h;
+      return b.x + h > beam.x && b.x - h < beam.x + beam.w && b.y + h > beam.y && b.y - h < beam.y + beam.h;
     });
   },
 
@@ -150,17 +154,23 @@ MF.engine = {
     if (rt.timer < 0) rt.timer = p.interval;
   },
 
-  // Mitte der ersten Bandzelle neben der Quelle, sonst Mitte der Quelle
+  // Mitte der ersten Bandzelle neben der Quelle, sonst Mitte der Quelle.
+  // Zuerst wird in Blickrichtung der Quelle gesucht (0° = rechts, 90° = unten …).
   spawnPoint: function (src) {
     var cx = src.x + src.w / 2, cy = src.y + src.h / 2;
-    var candidates = [
-      { x: src.x + src.w + 0.5, y: cy },   // rechts
-      { x: src.x - 0.5,         y: cy },   // links
-      { x: cx, y: src.y + src.h + 0.5 },   // unten
-      { x: cx, y: src.y - 0.5 }            // oben
-    ];
-    for (var i = 0; i < candidates.length; i++) {
-      if (this.conveyorAt(candidates[i].x, candidates[i].y)) return candidates[i];
+    var sides = {
+      0:   { x: src.x + src.w + 0.5, y: cy },   // rechts
+      90:  { x: cx, y: src.y + src.h + 0.5 },   // unten
+      180: { x: src.x - 0.5,         y: cy },   // links
+      270: { x: cx, y: src.y - 0.5 }            // oben
+    };
+    var order = [0, 180, 90, 270];
+    var rot = src.rot || 0;
+    order.splice(order.indexOf(rot), 1);
+    order.unshift(rot);
+    for (var i = 0; i < order.length; i++) {
+      var c = sides[order[i]];
+      if (this.conveyorAt(c.x, c.y)) return c;
     }
     return { x: cx, y: cy };
   },

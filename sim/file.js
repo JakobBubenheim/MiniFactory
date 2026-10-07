@@ -175,6 +175,7 @@ window.MF = window.MF || {};
           if (el.type === 'sink') el.props.count = 0;
           // Eingänge: Startwerte des Typs, darüber die gespeicherten Werte
           MF.initIo(el);
+          MF.normalizeElement(el);   // Drehung passend zur Richtung, Band ggf. hochkant
           var inputs = f.inputs || {};
           Object.keys(el.inputs).forEach(function (k) {
             if (isNum(inputs[k])) el.inputs[k] = inputs[k];
