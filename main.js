@@ -9,6 +9,7 @@
   MF.tree.init();
   MF.props.init();
   MF.editor.init(canvas);
+  MF.history.init();
 
   // Jede Änderung oder Auswahl zeichnet Fläche und Statusleiste neu.
   MF.store.on(function () {

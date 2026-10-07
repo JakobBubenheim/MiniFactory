@@ -72,8 +72,8 @@
         <button class="qbtn" title="Öffnen (Strg+O)" data-stage="4"><svg><use href="#i-open"/></svg></button>
         <button class="qbtn" title="Speichern (Strg+S)" data-stage="4"><svg><use href="#i-save"/></svg></button>
         <span class="qsep"></span>
-        <button class="qbtn" title="Rückgängig (Strg+Z)" data-stage="später"><svg><use href="#i-undo"/></svg></button>
-        <button class="qbtn" title="Wiederholen (Strg+Y)" data-stage="später"><svg><use href="#i-redo"/></svg></button>
+        <button class="qbtn" title="Rückgängig (Strg+Z)" data-action="undo"><svg><use href="#i-undo"/></svg></button>
+        <button class="qbtn" title="Wiederholen (Strg+Y)" data-action="redo"><svg><use href="#i-redo"/></svg></button>
       </div>
 
       <nav class="ribbon-tabs" role="tablist" aria-label="Funktionen">
@@ -312,6 +312,7 @@
   <script src="ui/tree.js"></script>
   <script src="ui/editor.js"></script>
   <script src="ui/properties.js"></script>
+  <script src="ui/history.js"></script>
   <script src="main.js"></script>
 </body>
 </html>
