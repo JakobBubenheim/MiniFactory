@@ -214,6 +214,8 @@ window.MF = window.MF || {};
       this.loading = true;
       MF.store.changed();
       this.loading = false;
+      // Neue Anlage: Rückgängig führt nicht zurück in die vorige
+      if (MF.history) MF.history.reset();
     },
 
     applyView: function (view) {

@@ -142,6 +142,8 @@ MF.ui = {
         case 'file-new':  MF.file.newPlant(); break;
         case 'file-open': MF.file.open(); break;
         case 'file-save': MF.file.save(); break;
+        case 'undo':        MF.history.undo(); break;
+        case 'redo':        MF.history.redo(); break;
       }
       self.syncToggles();
       self.updateStatus();

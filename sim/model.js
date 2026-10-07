@@ -36,7 +36,7 @@ MF.types = {
     defaults: { invert: false, debounce: 0 },
     props: [
       { key: 'invert', label: 'Invertieren', type: 'bool', onText: 'Ja', offText: 'Nein', hint: 'Meldet "belegt", wenn der Strahl frei ist' },
-      { key: 'debounce', label: 'Entprellzeit', type: 'number', unit: 'ms', step: 10, min: 0, max: 5000, hint: 'Wirkt ab Etappe 3' }
+      { key: 'debounce', label: 'Entprellzeit', type: 'number', unit: 'ms', step: 10, min: 0, max: 5000, hint: 'Belegt/frei wechselt erst, wenn der Strahl so lange unverändert ist' }
     ],
     io: [
       { name: 'Belegt', dir: 'out', type: 'BOOL' }
@@ -44,11 +44,12 @@ MF.types = {
   },
   pusher: {
     label: 'Schieber', icon: 'i-pusher', prefix: 'S', size: [1, 1], color: '#1B2430',
-    defaults: { stroke: 400, speed: 0.3, returnDelay: 0.5 },
+    defaults: { stroke: 400, speed: 0.3, returnDelay: 0.5, direction: 'auto' },
     props: [
-      { key: 'stroke', label: 'Hub', type: 'number', unit: 'mm', step: 10, min: 0, max: 2000, hint: 'Wie weit der Schieber ausfährt (wirkt ab Etappe 3)' },
-      { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0.1, max: 5, hint: 'Ausfahrgeschwindigkeit (wirkt ab Etappe 3)' },
-      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren (wirkt ab Etappe 3)' }
+      { key: 'stroke', label: 'Hub', type: 'number', unit: 'mm', step: 10, min: 0, max: 2000, hint: 'Wie weit der Schieber ausfährt' },
+      { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0.1, max: 5, hint: 'Ausfahrgeschwindigkeit' },
+      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren' },
+      { key: 'direction', label: 'Richtung', type: 'select', options: ['auto', 'rechts', 'links', 'oben', 'unten'], hint: 'Schubrichtung; auto = vom Schieber weg über das angrenzende Band' }
     ],
     io: [
       { name: 'Ausfahren', dir: 'in', type: 'BOOL' },
@@ -85,10 +86,10 @@ MF.model = {
     { id: 'LS1', type: 'sensor',   name: 'Lichtschranke 1', group: 'Förderstrecke 1', x: 8, y: 4, w: 1, h: 1,
       props: { invert: false, debounce: 0 } },
     { id: 'S1',  type: 'pusher',   name: 'Schieber 1',    group: 'Förderstrecke 1', x: 9,  y: 3, w: 1, h: 1,
-      props: { stroke: 400, speed: 0.3, returnDelay: 0.5 } },
+      props: { stroke: 600, speed: 0.3, returnDelay: 0.5, direction: 'unten' } },
     { id: 'SE1', type: 'sink',     name: 'Senke 1',       group: 'Förderstrecke 1', x: 12, y: 4, w: 1, h: 1,
       props: { count: 0 } },
-    { id: 'SE2', type: 'sink',     name: 'Senke 2',       group: 'Ausschleusung',   x: 9,  y: 6, w: 1, h: 1,
+    { id: 'SE2', type: 'sink',     name: 'Senke 2',       group: 'Ausschleusung',   x: 9,  y: 5, w: 1, h: 1,
       props: { count: 0 } }
   ],
   rules: [
