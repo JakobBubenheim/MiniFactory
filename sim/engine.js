@@ -90,11 +90,15 @@ MF.engine = {
     // 1. Sensoren lesen (Prozessabbild der Eingänge)
     els.forEach(function (el) {
       if (!el.rt) el.rt = {};
-      if (el.type === 'sensor') el.rt.occupied = self.sensorHit(el);
+      if (el.type === 'sensor') self.stepSensor(el, dt);
     });
 
     // 2. Logik – die Wenn-dann-Regeln werden ab Etappe 4 hier ausgewertet
-    // 3. Aktoren – Schieber fahren ab Etappe 3 hier
+
+    // 3. Aktoren
+    els.forEach(function (el) {
+      if (el.type === 'pusher') self.stepPusher(el, dt);
+    });
 
     // 4. Bewegung
     this.moveBelts(dt);
@@ -105,6 +109,17 @@ MF.engine = {
     els.forEach(function (el) {
       if (el.type === 'source') self.stepSource(el, dt);
     });
+  },
+
+  // Lichtschranke mit Entprellung: "belegt" wechselt erst, wenn der Rohzustand
+  // props.debounce ms lang stabil anliegt. Nach Reset ist rt leer -> frei.
+  stepSensor: function (el, dt) {
+    var rt = el.rt;
+    var raw = this.sensorHit(el);
+    if (rt.occupied === undefined) { rt.occupied = false; rt.raw = false; rt.stableMs = 0; }
+    if (raw !== rt.raw) { rt.raw = raw; rt.stableMs = 0; }
+    else rt.stableMs += dt * 1000;
+    if (rt.raw !== rt.occupied && rt.stableMs >= (el.props.debounce || 0) - 1e-6) rt.occupied = rt.raw;
   },
 
   // Liegt eine Kiste im Strahl der Lichtschranke (Mitte der Zelle)?
@@ -215,9 +230,118 @@ MF.engine = {
       else nx = belt.x + belt.w / 2;
 
       if (self.boxAt(nx, ny, self.BOX + 0.02, b)) return; // Stau
+      // Ausgefahrener Schieber im Weg (liegt sie schon darin, darf sie heraus)
+      if (self.pusherBlocks(nx, ny) && !self.pusherBlocks(b.x, b.y)) return;
       b.x = nx;
       b.y = ny;
     });
+  },
+
+  // ---------- Schieber ----------
+
+  PLATE: 0.08,     // Dicke der Schieberplatte in Zellen
+  PLATE_W: 0.8,    // Breite der Platte quer zur Schubrichtung
+
+  // Schubrichtung: Eigenschaft "Richtung", bei "auto" vom Schieber weg zum
+  // angrenzenden Band (ohne Band: nach unten)
+  pusherDir: function (el) {
+    var d = el.props.direction;
+    if (d && d !== 'auto' && this.DIRS[d]) return this.DIRS[d];
+    var cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+    var order = ['unten', 'oben', 'rechts', 'links'];
+    for (var i = 0; i < order.length; i++) {
+      var v = this.DIRS[order[i]];
+      if (this.conveyorAt(cx + v[0] * (el.w / 2 + 0.5), cy + v[1] * (el.h / 2 + 0.5))) return v;
+    }
+    return this.DIRS.unten;
+  },
+
+  // Fläche, die der Schieber bei Hub ext (Zellen) überstreicht: von der Kante
+  // seiner Zelle bis zur Plattenvorderseite. face = Lage der Vorderseite.
+  pusherGeom: function (el, ext) {
+    var dir = this.pusherDir(el);
+    var cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+    var half = (dir[0] !== 0 ? el.w : el.h) / 2;
+    var along = dir[0] !== 0 ? cx : cy;       // Achse in Schubrichtung
+    var across = dir[0] !== 0 ? cy : cx;      // Achse quer dazu
+    var sign = dir[0] + dir[1];
+    return { dir: dir, sign: sign, axis: dir[0] !== 0 ? 'x' : 'y', across: across,
+      edge: along + sign * half, face: along + sign * (half + ext) };
+  },
+
+  // Rechteck { x0, y0, x1, y1 } des ausgefahrenen Teils (Stange + Platte)
+  pusherRect: function (el, ext) {
+    var g = this.pusherGeom(el, ext);
+    var a0 = Math.min(g.edge, g.face), a1 = Math.max(g.edge, g.face);
+    var c0 = g.across - this.PLATE_W / 2, c1 = g.across + this.PLATE_W / 2;
+    return g.axis === 'x' ? { x0: a0, y0: c0, x1: a1, y1: c1 } : { x0: c0, y0: a0, x1: c1, y1: a1 };
+  },
+
+  // Überlappt eine Kiste mit Mitte (x, y) ein ausgefahrenes Schieberteil?
+  pusherBlocks: function (x, y) {
+    var h = this.BOX / 2;
+    var els = MF.model.elements;
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.type !== 'pusher' || !el.rt || !(el.rt.pos > 0)) continue;
+      var r = this.pusherRect(el, el.rt.pos / MF.model.settings.cellM);
+      if (x + h > r.x0 + 1e-6 && x - h < r.x1 - 1e-6 && y + h > r.y0 + 1e-6 && y - h < r.y1 - 1e-6) return true;
+    }
+    return false;
+  },
+
+  // Ausfahren = 1: mit props.speed bis zum Hub. Ausfahren = 0: props.returnDelay
+  // warten, dann einfahren. rt.pos = Hub in Metern, rt.prevPos fürs Zeichnen.
+  // Kisten vor der Platte werden mitgeschoben; stößt eine davon an eine
+  // andere Kiste, bleibt der Schieber in diesem Schritt stehen.
+  stepPusher: function (el, dt) {
+    var rt = el.rt, p = el.props;
+    var cellM = MF.model.settings.cellM;
+    if (rt.pos === undefined) { rt.pos = 0; rt.wait = 0; }
+    rt.prevPos = rt.pos;
+
+    var stroke = Math.max(0, p.stroke / 1000);
+    var target = rt.pos;
+    if (this.input(el, 'Ausfahren')) {
+      rt.wait = 0;
+      target = Math.min(stroke, rt.pos + p.speed * dt);
+    } else if (rt.pos > 0) {
+      rt.wait += dt;
+      if (rt.wait >= p.returnDelay - 1e-9) target = Math.max(0, rt.pos - p.speed * dt);
+    }
+    if (target > stroke) target = Math.max(stroke, rt.pos - p.speed * dt); // Hub verkleinert
+    if (target <= rt.pos) { rt.pos = target; return; }
+
+    // Ausfahren: Kisten vor der Platte mitnehmen
+    var oldG = this.pusherGeom(el, rt.pos / cellM);
+    var newG = this.pusherGeom(el, target / cellM);
+    var h = this.BOX / 2, reach = this.PLATE_W / 2 + h;
+    var ax = oldG.axis, cx = ax === 'x' ? 'y' : 'x', s = oldG.sign;
+    var moves = [];
+    this.boxes.forEach(function (b) {
+      if (Math.abs(b[cx] - oldG.across) >= reach - 1e-6) return;  // seitlich vorbei
+      var near = b[ax] - s * h;                                    // Kistenseite zur Platte
+      if (s * (near - oldG.face) < -1e-6) return;                  // liegt hinter der Platte
+      if (s * (near - newG.face) >= 0) return;                     // wird nicht erreicht
+      moves.push({ b: b, v: newG.face + s * (h + 1e-4) });
+    });
+
+    // Prüfen, ob die geschobenen Kisten frei sind (kein Überlappen)
+    var self = this;
+    var pushed = moves.map(function (m) { return m.b; });
+    var free = moves.every(function (m) {
+      var x = ax === 'x' ? m.v : m.b.x, y = ax === 'y' ? m.v : m.b.y;
+      for (var i = 0; i < self.boxes.length; i++) {
+        var o = self.boxes[i];
+        if (pushed.indexOf(o) >= 0) continue;
+        if (Math.abs(o.x - x) < self.BOX && Math.abs(o.y - y) < self.BOX) return false;
+      }
+      return true;
+    });
+    if (!free) return;
+
+    moves.forEach(function (m) { m.b[ax] = m.v; });
+    rt.pos = target;
   },
 
   progress: function (b) {
@@ -244,7 +368,9 @@ MF.engine = {
       case 'sensor.Belegt':    return (!!rt.occupied !== !!p.invert) ? 1 : 0;  // Wert aus dem letzten Schritt
       case 'sink.Anzahl':      return p.count;
       case 'sink.Reset':       return this.input(el, name);
-      case 'pusher.Ausfahren': return this.input(el, name);  // wirkt ab Etappe 3
+      case 'pusher.Ausfahren':   return this.input(el, name);
+      case 'pusher.Ausgefahren': return (rt.pos || 0) >= p.stroke / 1000 - 1e-6 ? 1 : 0;
+      case 'pusher.Eingefahren': return (rt.pos || 0) <= 1e-6 ? 1 : 0;
       default:                 return 0;
     }
   },
