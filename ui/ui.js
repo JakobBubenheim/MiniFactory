@@ -138,6 +138,8 @@ MF.ui = {
         case 'duplicate':   MF.editor.duplicateSelected(); break;
         case 'delete':      MF.editor.deleteSelected(); break;
         case 'delete-rule': MF.editor.deleteSelectedRule(); break;
+        case 'undo':        MF.history.undo(); break;
+        case 'redo':        MF.history.redo(); break;
       }
       self.syncToggles();
       self.updateStatus();
