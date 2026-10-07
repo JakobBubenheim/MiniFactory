@@ -67,6 +67,10 @@ MF.types = {
 // Positionen und Größen in Rasterzellen.
 MF.model = {
   name: 'Beispielanlage',
+  settings: {
+    dtMs: 50,     // Zeitschritt der Simulation in Millisekunden
+    cellM: 0.5    // Kantenlänge einer Rasterzelle in Metern
+  },
   elements: [
     { id: 'Q1',  type: 'source',   name: 'Quelle 1',      group: 'Förderstrecke 1', x: 2,  y: 4, w: 1, h: 1,
       props: { interval: 2, maxCount: 0, enabled: true } },
@@ -86,8 +90,9 @@ MF.model = {
   ]
 };
 
-// Standardwerte für Darstellung
+// Standardwerte für Darstellung und Laufzeitdaten (rt = runtime)
 MF.model.elements.forEach(function (el) {
+  el.rt = {};
   el.visible = true;
   el.locked = false;
   el.color = el.type === 'source' ? '#D9701A' : '#1B2430';

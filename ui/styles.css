@@ -195,8 +195,32 @@ button, input, select {
   background: var(--off);
 }
 
-.state-lamp.is-running {
+.state-lamp.is-running,
+.state-chip.is-running {
   background: var(--ok);
+}
+
+.state-lamp.is-paused,
+.state-chip.is-paused {
+  background: var(--accent);
+  color: var(--dark) !important;
+}
+
+.tbtn:disabled, .rbtn:disabled, .rfield select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tbtn.is-active {
+  color: var(--accent);
+  background: var(--dark-3);
+  border-color: var(--accent);
+}
+
+.tbtn-play.is-active {
+  color: var(--dark);
+  background: var(--ok);
+  border-color: var(--ok);
 }
 
 /* ---------- Ribbon ---------- */
@@ -853,6 +877,11 @@ button, input, select {
   color: var(--accent);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+#sb-time {
+  display: inline-block;
+  min-width: 62px;
 }
 
 #sb-cursor {

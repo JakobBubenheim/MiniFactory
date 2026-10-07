@@ -162,7 +162,8 @@ MF.props = {
 
       var s3 = this.section(body, 'Verhalten');
       type.props.forEach(function (p) {
-        self.field(s3, p, el.props[p.key], function (v) { el.props[p.key] = v; self.commit(); });
+        var input = self.field(s3, p, el.props[p.key], function (v) { el.props[p.key] = v; self.commit(); });
+        if (p.readonly) input.dataset.live = p.key;  // z. B. Zählerstand läuft mit
       });
     }
 
@@ -175,6 +176,7 @@ MF.props = {
         var sig = el.id + '.' + s.name;
         var users = s.dir === 'in' ? MF.logic.rulesSetting(sig) : MF.logic.rulesReading(sig);
         var tr = document.createElement('tr');
+        tr.dataset.signal = s.name;
         tr.innerHTML =
           '<td><span class="dot"></span></td>' +
           '<td class="mono"></td>' +
@@ -190,8 +192,9 @@ MF.props = {
       body.appendChild(table);
       var note = document.createElement('div');
       note.className = 'io-note';
-      note.textContent = 'Live-Werte erscheinen, sobald die Simulation läuft (Etappe 3).';
+      note.textContent = 'Werte laufen live mit. Schieber und Regeln steuern ab Etappe 3 und 4.';
       body.appendChild(note);
+      this.refreshLive();
     }
 
     if (this.tab === 'look') {
@@ -256,6 +259,12 @@ MF.props = {
     if (id === 'project') {
       var s0 = this.section(body, 'Projekt');
       this.field(s0, { label: 'Name', type: 'text' }, MF.model.name, function (v) { MF.model.name = v; self.commit(); self.render(); });
+
+      var sSim = this.section(body, 'Simulation');
+      this.field(sSim, { label: 'Zeitschritt', type: 'select', options: ['10', '20', '50', '100'], unit: 'ms' },
+        String(MF.model.settings.dtMs), function (v) { MF.ui.changeDtMs(parseInt(v, 10)); self.render(); });
+      this.field(sSim, { label: 'Rasterzelle', type: 'number', unit: 'm', step: 0.1, min: 0.1 },
+        MF.model.settings.cellM, function (v) { if (v > 0) { MF.model.settings.cellM = v; self.commit(); } });
     }
 
     if (list.length) {
@@ -270,6 +279,24 @@ MF.props = {
       this.field(s2, { label: 'Regeln', type: 'text', readonly: true }, MF.model.rules.length);
       this.field(s2, { label: 'Signale', type: 'text', readonly: true }, MF.store.signals().length);
     }
+  },
+
+  // Laufende Werte aktualisieren, ohne das Panel neu aufzubauen (wird pro Bild aufgerufen)
+  refreshLive: function () {
+    if (!this.root) return;
+    var el = MF.store.findElement(MF.store.selectedId);
+    if (!el) return;
+    this.root.querySelectorAll('[data-live]').forEach(function (input) {
+      input.value = el.props[input.dataset.live];
+    });
+    var type = MF.types[el.type];
+    this.root.querySelectorAll('tr[data-signal]').forEach(function (tr) {
+      var name = tr.dataset.signal;
+      var v = MF.engine.signal(el, name);
+      var def = type.io.filter(function (s) { return s.name === name; })[0];
+      tr.children[0].firstChild.classList.toggle('is-on', !!v);
+      tr.children[4].textContent = def.type === 'FLOAT32' ? v.toFixed(2) : String(v);
+    });
   },
 
   renderEmpty: function () {

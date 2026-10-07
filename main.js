@@ -3,6 +3,7 @@
   var canvas = document.getElementById('canvas');
 
   MF.sim.init(canvas);
+  MF.engine.init();
   MF.logic.init();
   MF.ui.init();
   MF.tree.init();

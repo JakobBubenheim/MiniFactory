@@ -86,10 +86,10 @@
 
       <div class="transport" aria-label="Simulationssteuerung">
         <button class="tbtn" title="Aufnahme" data-stage="später"><svg class="rec"><use href="#i-record"/></svg></button>
-        <button class="tbtn" title="Reset" data-stage="2"><svg><use href="#i-reset"/></svg></button>
-        <button class="tbtn tbtn-play" title="Start (Leertaste)" data-stage="2"><svg><use href="#i-play"/></svg></button>
-        <button class="tbtn" title="Pause" data-stage="2"><svg><use href="#i-pause"/></svg></button>
-        <button class="tbtn" title="Einzelschritt" data-stage="2"><svg><use href="#i-step"/></svg></button>
+        <button class="tbtn" title="Reset (R)" data-action="sim-reset"><svg><use href="#i-reset"/></svg></button>
+        <button class="tbtn tbtn-play" title="Start (Leertaste)" data-action="sim-start"><svg><use href="#i-play"/></svg></button>
+        <button class="tbtn" title="Pause (Leertaste)" data-action="sim-pause"><svg><use href="#i-pause"/></svg></button>
+        <button class="tbtn" title="Einzelschritt (S)" data-action="sim-step"><svg><use href="#i-step"/></svg></button>
         <span class="state-lamp" id="state-lamp" title="Zustand">STOP</span>
       </div>
     </header>
@@ -131,9 +131,9 @@
       <div class="ribbon-page" data-page="komponenten" hidden>
         <div class="rgroup">
           <div class="rgroup-items">
-            <button class="rbtn" data-stage="2"><svg><use href="#i-source"/></svg><span>Quelle</span></button>
-            <button class="rbtn" data-stage="2"><svg><use href="#i-conveyor"/></svg><span>Förderband</span></button>
-            <button class="rbtn" data-stage="2"><svg><use href="#i-sink"/></svg><span>Senke</span></button>
+            <button class="rbtn" data-stage="später"><svg><use href="#i-source"/></svg><span>Quelle</span></button>
+            <button class="rbtn" data-stage="später"><svg><use href="#i-conveyor"/></svg><span>Förderband</span></button>
+            <button class="rbtn" data-stage="später"><svg><use href="#i-sink"/></svg><span>Senke</span></button>
           </div>
           <div class="rgroup-label">Materialfluss</div>
         </div>
@@ -170,10 +170,10 @@
       <div class="ribbon-page" data-page="simulation" hidden>
         <div class="rgroup">
           <div class="rgroup-items">
-            <button class="rbtn" data-stage="2"><svg><use href="#i-play"/></svg><span>Start</span></button>
-            <button class="rbtn" data-stage="2"><svg><use href="#i-pause"/></svg><span>Pause</span></button>
-            <button class="rbtn" data-stage="2"><svg><use href="#i-step"/></svg><span>Schritt</span></button>
-            <button class="rbtn" data-stage="2"><svg><use href="#i-reset"/></svg><span>Reset</span></button>
+            <button class="rbtn" data-action="sim-start"><svg><use href="#i-play"/></svg><span>Start</span></button>
+            <button class="rbtn" data-action="sim-pause"><svg><use href="#i-pause"/></svg><span>Pause</span></button>
+            <button class="rbtn" data-action="sim-step"><svg><use href="#i-step"/></svg><span>Schritt</span></button>
+            <button class="rbtn" data-action="sim-reset"><svg><use href="#i-reset"/></svg><span>Reset</span></button>
           </div>
           <div class="rgroup-label">Ablauf</div>
         </div>
@@ -181,15 +181,31 @@
           <div class="rgroup-items">
             <label class="rfield">
               <svg><use href="#i-clock"/></svg>
-              <select id="timescale" data-stage="2">
-                <option>0,5×</option>
-                <option selected>1×</option>
-                <option>2×</option>
-                <option>5×</option>
+              <select id="timescale" title="Wie schnell die Simulationszeit gegenüber der echten Zeit läuft">
+                <option value="0.25">0,25×</option>
+                <option value="0.5">0,5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+                <option value="5">5×</option>
+                <option value="10">10×</option>
               </select>
             </label>
           </div>
           <div class="rgroup-label">Zeitfaktor</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <label class="rfield">
+              <svg><use href="#i-signal"/></svg>
+              <select id="dtms" title="Länge eines Rechenschritts – nur in der Pause änderbar">
+                <option value="10">10 ms</option>
+                <option value="20">20 ms</option>
+                <option value="50" selected>50 ms</option>
+                <option value="100">100 ms</option>
+              </select>
+            </label>
+          </div>
+          <div class="rgroup-label">Zeitschritt</div>
         </div>
       </div>
 
@@ -264,6 +280,9 @@
       <span class="sb-msg" id="sb-msg"></span>
       <span class="sb-item">Zeit <strong id="sb-time">00:00</strong></span>
       <span class="sb-item">Faktor <strong id="sb-scale">1×</strong></span>
+      <span class="sb-item">Takt <strong id="sb-dt">50 ms</strong></span>
+      <span class="sb-item">Tick <strong id="sb-tick">0</strong></span>
+      <span class="sb-item">Kisten <strong id="sb-boxes">0</strong></span>
       <span class="sb-item">Elemente <strong id="sb-count">0</strong></span>
       <span class="sb-item" id="sb-cursor">x –  y –</span>
       <span class="sb-state">Zustand <strong class="state-chip" id="sb-state">Gestoppt</strong></span>
@@ -274,6 +293,8 @@
   <!-- Klassische Skripte (keine ES-Module), damit die Seite per Doppelklick läuft -->
   <script src="sim/model.js"></script>
   <script src="sim/sim.js"></script>
+  <script src="sim/clock.js"></script>
+  <script src="sim/engine.js"></script>
   <script src="logic/logic.js"></script>
   <script src="ui/ui.js"></script>
   <script src="ui/tree.js"></script>

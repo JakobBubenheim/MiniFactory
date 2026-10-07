@@ -106,6 +106,7 @@ MF.sim = {
     MF.model.elements.forEach(function (el) {
       if (el.visible) self.drawElement(el);
     });
+    this.drawBoxes();
     ctx.restore();
 
     if (this.showTags) this.drawTags();
@@ -164,13 +165,25 @@ MF.sim = {
       case 'conveyor':
         ctx.fillStyle = el.color;
         ctx.fillRect(x, y + 0.15, w, h - 0.3);
+        // Querstreifen wandern mit der Bandgeschwindigkeit (nur bei Laufrichtung rechts/links)
+        var shift = 0;
+        var dirSign = el.props.direction === 'links' ? -1 : el.props.direction === 'rechts' ? 1 : 0;
+        if (dirSign) {
+          var meters = this.simTime() * el.props.speed / MF.model.settings.cellM;
+          shift = ((meters * dirSign) % 0.5 + 0.5) % 0.5;
+        }
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x, y + 0.15, w, h - 0.3);
+        ctx.clip();
         ctx.strokeStyle = 'rgba(244, 242, 236, 0.35)';
         ctx.beginPath();
-        for (var i = 0.5; i < w; i += 0.5) {
+        for (var i = shift; i < w; i += 0.5) {
           ctx.moveTo(x + i, y + 0.2);
           ctx.lineTo(x + i, y + h - 0.2);
         }
         ctx.stroke();
+        ctx.restore();
         // Laufrichtung
         ctx.fillStyle = '#D9701A';
         var mid = y + h / 2;
@@ -218,6 +231,32 @@ MF.sim = {
         ctx.stroke();
         break;
     }
+  },
+
+  // Simulationszeit inklusive des angefangenen Schritts (für flüssige Animation)
+  simTime: function () {
+    var e = MF.engine;
+    return e.state === 'running' ? e.time + e.alpha() * e.dt() : e.time;
+  },
+
+  // Kisten: zwischen alter und neuer Position interpoliert
+  drawBoxes: function () {
+    var ctx = this.ctx;
+    var a = MF.engine.alpha();
+    var s = MF.engine.BOX;
+    var lw = 1.5 / this.cellSize();
+    MF.engine.boxes.forEach(function (b) {
+      var x = b.px + (b.x - b.px) * a - s / 2;
+      var y = b.py + (b.y - b.py) * a - s / 2;
+      ctx.fillStyle = '#C79A5B';
+      ctx.fillRect(x, y, s, s);
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = '#1B2430';
+      ctx.strokeRect(x, y, s, s);
+      // Klebeband
+      ctx.fillStyle = 'rgba(27, 36, 48, 0.25)';
+      ctx.fillRect(x + s / 2 - 0.04, y, 0.08, s);
+    });
   },
 
   // Namen (IDs) der Elemente als kleine Schilder
