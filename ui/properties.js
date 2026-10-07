@@ -269,9 +269,10 @@ MF.props = {
       var s3 = this.section(body, 'Verhalten');
       type.props.forEach(function (p) {
         var input = self.field(s3, p, el.props[p.key], function (v) {
-          // Laufrichtung des Bands = Drehung: das Band dreht sich mit
-          if (el.type === 'conveyor' && p.key === 'direction') {
-            MF.editor.setRotation(el, MF.DIR_ROT[v]);
+          // Richtung von Band und Schieber = Drehung: das Element dreht sich mit
+          if (p.key === 'direction' && MF.ROT_ZERO_DIR[el.type] && v in MF.DIR_ROT &&
+              MF.rotForDir(el.type, v) !== (el.rot || 0)) {
+            MF.editor.setRotation(el, MF.rotForDir(el.type, v));
             self.render();
             return;
           }

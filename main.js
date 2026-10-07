@@ -2,6 +2,9 @@
 (function () {
   var canvas = document.getElementById('canvas');
 
+  // Zuletzt bearbeitete Anlage aus dem Autosave, sonst bleibt die Beispielanlage
+  var restored = MF.file.restoreAutosave();
+
   MF.sim.init(canvas);
   MF.engine.init();
   MF.logic.init();
@@ -9,6 +12,8 @@
   MF.tree.init();
   MF.props.init();
   MF.editor.init(canvas);
+  MF.file.init();
+  MF.history.init();
 
   // Jede Änderung oder Auswahl zeichnet Fläche und Statusleiste neu.
   MF.store.on(function () {
@@ -21,7 +26,13 @@
     if (e.key === 'Escape' && e.target.tagName !== 'INPUT') MF.store.select(null);
   });
 
-  // Start: Anlage einpassen und das Förderband auswählen
-  MF.sim.fit();
-  MF.store.select('B1');
+  // Start: gesicherte Ansicht übernehmen bzw. Beispielanlage einpassen und das Förderband auswählen
+  if (restored) {
+    MF.file.applyView(restored.view);
+    MF.sim.draw();
+    MF.ui.updateStatus();
+  } else {
+    MF.sim.fit();
+    MF.store.select('B1');
+  }
 })();

@@ -82,13 +82,15 @@ MF.editor = {
   // ---------- Drehen ----------
 
   // Element auf eine Drehung (0/90/180/270) bringen. Es dreht sich um seine Mitte,
-  // w und h werden bei 90°/270° getauscht. Beim Förderband folgt die Laufrichtung.
+  // w und h werden bei 90°/270° getauscht. Beim Förderband folgt die Laufrichtung,
+  // beim Schieber die Schubrichtung.
   // Bei gerader Länge fällt die Mitte zwischen zwei Zellen; dann rundet 0°/180°
   // auf und 90°/270° ab – so landet das Element nach vier Drehungen wieder am Ausgangspunkt.
   setRotation: function (el, rot) {
     rot = ((rot % 360) + 360) % 360;
     var old = el.rot || 0;
-    if (rot === old) return false;
+    var follows = !!MF.ROT_ZERO_DIR[el.type];   // Richtung folgt der Drehung
+    if (rot === old && !(follows && el.props.direction !== MF.dirForRot(el.type, rot))) return false;
     if (el.locked) { MF.ui.message(el.name + ' ist gesperrt.'); return false; }
     var cx = el.x + el.w / 2, cy = el.y + el.h / 2;
     if ((rot - old) % 180 !== 0) { var w = el.w; el.w = el.h; el.h = w; }
@@ -96,15 +98,24 @@ MF.editor = {
     el.x = this.snapValue(cx - el.w / 2, halfDown);
     el.y = this.snapValue(cy - el.h / 2, halfDown);
     el.rot = rot;
-    if (el.type === 'conveyor') el.props.direction = MF.dirForRot(rot);
+    if (follows) el.props.direction = MF.dirForRot(el.type, rot);
     MF.store.changed();
     return true;
   },
 
   rotateElement: function (el) {
-    if (this.setRotation(el, (el.rot || 0) + 90)) {
+    var rot = el.rot || 0;
+    // Schieber auf "auto": von der tatsächlichen Schubrichtung aus weiterdrehen
+    if (el.type === 'pusher' && !(el.props.direction in MF.DIR_ROT)) {
+      var v = MF.engine.pusherDir(el);
+      for (var d in MF.engine.DIRS) {
+        if (MF.engine.DIRS[d][0] === v[0] && MF.engine.DIRS[d][1] === v[1]) rot = MF.rotForDir('pusher', d);
+      }
+    }
+    if (this.setRotation(el, rot + 90)) {
       MF.ui.message(el.name + ' auf ' + el.rot + '° gedreht' +
-        (el.type === 'conveyor' ? ', läuft nach ' + el.props.direction : '') + '.');
+        (el.type === 'conveyor' ? ', läuft nach ' + el.props.direction :
+         el.type === 'pusher' ? ', schiebt nach ' + el.props.direction : '') + '.');
     }
   },
 

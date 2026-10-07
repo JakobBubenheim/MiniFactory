@@ -36,7 +36,7 @@ MF.types = {
     defaults: { invert: false, debounce: 0 },
     props: [
       { key: 'invert', label: 'Invertieren', type: 'bool', onText: 'Ja', offText: 'Nein', hint: 'Meldet "belegt", wenn der Strahl frei ist' },
-      { key: 'debounce', label: 'Entprellzeit', type: 'number', unit: 'ms', step: 10, min: 0, max: 5000, hint: 'Wirkt ab Etappe 3' }
+      { key: 'debounce', label: 'Entprellzeit', type: 'number', unit: 'ms', step: 10, min: 0, max: 5000, hint: 'Belegt/frei wechselt erst, wenn der Strahl so lange unverändert ist' }
     ],
     io: [
       { name: 'Belegt', dir: 'out', type: 'BOOL' }
@@ -44,11 +44,12 @@ MF.types = {
   },
   pusher: {
     label: 'Schieber', icon: 'i-pusher', prefix: 'S', size: [1, 1], color: '#1B2430',
-    defaults: { stroke: 400, speed: 0.3, returnDelay: 0.5 },
+    defaults: { stroke: 400, speed: 0.3, returnDelay: 0.5, direction: 'auto' },
     props: [
-      { key: 'stroke', label: 'Hub', type: 'number', unit: 'mm', step: 10, min: 0, max: 2000, hint: 'Wie weit der Schieber ausfährt (wirkt ab Etappe 3)' },
-      { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0.1, max: 5, hint: 'Ausfahrgeschwindigkeit (wirkt ab Etappe 3)' },
-      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren (wirkt ab Etappe 3)' }
+      { key: 'stroke', label: 'Hub', type: 'number', unit: 'mm', step: 10, min: 0, max: 2000, hint: 'Wie weit der Schieber ausfährt' },
+      { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0.1, max: 5, hint: 'Ausfahrgeschwindigkeit' },
+      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren' },
+      { key: 'direction', label: 'Richtung', type: 'select', options: ['auto', 'rechts', 'links', 'oben', 'unten'], hint: 'Schubrichtung; auto = vom Schieber weg über das angrenzende Band' }
     ],
     io: [
       { name: 'Ausfahren', dir: 'in', type: 'BOOL' },
@@ -70,7 +71,7 @@ MF.types = {
 };
 
 // Beispielanlage, damit Baum und Eigenschaften etwas zeigen.
-// Positionen und Größen in Rasterzellen.
+// Positionen und Größen in Rasterzellen, Drehung (rot) in Grad: 0, 90, 180 oder 270.
 MF.model = {
   name: 'Beispielanlage',
   settings: {
@@ -85,10 +86,10 @@ MF.model = {
     { id: 'LS1', type: 'sensor',   name: 'Lichtschranke 1', group: 'Förderstrecke 1', x: 8, y: 4, w: 1, h: 1,
       props: { invert: false, debounce: 0 } },
     { id: 'S1',  type: 'pusher',   name: 'Schieber 1',    group: 'Förderstrecke 1', x: 9,  y: 3, w: 1, h: 1,
-      props: { stroke: 400, speed: 0.3, returnDelay: 0.5 } },
+      props: { stroke: 600, speed: 0.3, returnDelay: 0.5, direction: 'unten' } },
     { id: 'SE1', type: 'sink',     name: 'Senke 1',       group: 'Förderstrecke 1', x: 12, y: 4, w: 1, h: 1,
       props: { count: 0 } },
-    { id: 'SE2', type: 'sink',     name: 'Senke 2',       group: 'Ausschleusung',   x: 9,  y: 6, w: 1, h: 1,
+    { id: 'SE2', type: 'sink',     name: 'Senke 2',       group: 'Ausschleusung',   x: 9,  y: 5, w: 1, h: 1,
       props: { count: 0 } }
   ],
   rules: [
@@ -108,27 +109,32 @@ MF.initIo = function (el) {
   });
 };
 
-// Drehung im Uhrzeigersinn (Grad) je Laufrichtung des Förderbands.
-// Ein Band in Grundstellung (0°) läuft nach rechts; 90° heißt nach unten usw.
+// Himmelsrichtungen als Winkel im Uhrzeigersinn, 0° = rechts
 MF.DIR_ROT = { rechts: 0, unten: 90, links: 180, oben: 270 };
 
-MF.dirForRot = function (rot) {
-  for (var d in MF.DIR_ROT) if (MF.DIR_ROT[d] === rot) return d;
-  return 'rechts';
+// Typen, deren Eigenschaft "Richtung" der Drehung folgt (und umgekehrt), und
+// wohin sie in Grundstellung (0°) zeigen: Band läuft nach rechts, Schieber drückt nach unten.
+MF.ROT_ZERO_DIR = { conveyor: 'rechts', pusher: 'unten' };
+
+MF.rotForDir = function (type, dir) {
+  return (MF.DIR_ROT[dir] - MF.DIR_ROT[MF.ROT_ZERO_DIR[type]] + 360) % 360;
 };
 
-// Drehung ergänzen bzw. aus der Laufrichtung ableiten (für Elemente ohne rot,
-// z. B. aus älteren Dateien). w und h sind immer die Maße MIT Drehung, also
-// das Rechteck, das das Element auf der Fläche belegt.
+MF.dirForRot = function (type, rot) {
+  var a = (rot + MF.DIR_ROT[MF.ROT_ZERO_DIR[type]]) % 360;
+  for (var d in MF.DIR_ROT) if (MF.DIR_ROT[d] === a) return d;
+  return MF.ROT_ZERO_DIR[type];
+};
+
+// Drehung prüfen bzw. aus der Richtung ableiten, z. B. nach dem Laden einer Datei.
+// w und h sind immer die Maße MIT Drehung, also das Rechteck, das das Element
+// auf der Fläche belegt. Ein Band liegt deshalb bei 90°/270° hochkant.
 MF.normalizeElement = function (el) {
-  if (el.type === 'conveyor') {
-    var rot = MF.DIR_ROT[el.props.direction] || 0;
-    if (el.rot === undefined && rot % 180 !== 0 && el.w > el.h) {
-      var w = el.w; el.w = el.h; el.h = w;   // altes Band quer, läuft aber hoch/runter
-    }
-    el.rot = rot;
-  } else {
-    el.rot = [0, 90, 180, 270].indexOf(el.rot) >= 0 ? el.rot : 0;
+  var dir = el.props.direction;
+  if (MF.ROT_ZERO_DIR[el.type] && dir in MF.DIR_ROT) el.rot = MF.rotForDir(el.type, dir);
+  else if ([0, 90, 180, 270].indexOf(el.rot) < 0) el.rot = 0;   // Schieber "auto" behält seine Drehung
+  if (el.type === 'conveyor' && (el.rot % 180 !== 0 ? el.w > el.h : el.h > el.w)) {
+    var w = el.w; el.w = el.h; el.h = w;
   }
 };
 
@@ -212,7 +218,7 @@ MF.store = {
     var el = this.createElement(src.type, src.x + 1, src.y + 1, src.group);
     el.w = src.w;
     el.h = src.h;
-    el.rot = src.rot;
+    el.rot = src.rot || 0;
     el.props = JSON.parse(JSON.stringify(src.props));
     if (src.type === 'sink') el.props.count = 0;
     el.color = src.color;

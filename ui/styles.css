@@ -118,7 +118,7 @@ button, input, select {
   cursor: pointer;
 }
 
-.qbtn:hover, .tbtn:hover, .vbtn:hover {
+.qbtn:hover:not(:disabled), .tbtn:hover, .vbtn:hover {
   color: var(--light);
   background: var(--dark-3);
   border-color: var(--line);
@@ -206,7 +206,7 @@ button, input, select {
   color: var(--dark) !important;
 }
 
-.tbtn:disabled, .rbtn:disabled, .rfield select:disabled {
+.qbtn:disabled, .tbtn:disabled, .rbtn:disabled, .rfield select:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -1077,6 +1077,18 @@ body.is-dragging, body.is-dragging * {
   color: var(--light);
   font-family: var(--mono);
   font-weight: 500;
+}
+
+/* Anlagenname; orange, solange ungespeicherte Änderungen vorliegen */
+.sb-name {
+  color: var(--light);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-name.is-dirty {
+  color: var(--accent);
 }
 
 .sb-path {
