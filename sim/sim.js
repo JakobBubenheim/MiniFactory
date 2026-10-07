@@ -233,10 +233,14 @@ MF.sim = {
     }
   },
 
-  // Simulationszeit inklusive des angefangenen Schritts (für flüssige Animation)
+  // Angezeigte Simulationszeit, passend zu den interpolierten Kisten:
+  // Kisten werden zwischen vorletztem (alpha 0) und letztem Schritt (alpha 1)
+  // gezeichnet, also liegt die Anzeige bis zu einen Schritt hinter e.time.
+  // In der Pause ist alpha 1 – Anzeige = Zustand des letzten Schritts.
   simTime: function () {
     var e = MF.engine;
-    return e.state === 'running' ? e.time + e.alpha() * e.dt() : e.time;
+    if (!e.clock) return 0;
+    return e.time - (1 - e.alpha()) * e.dt();
   },
 
   // Kisten: zwischen alter und neuer Position interpoliert

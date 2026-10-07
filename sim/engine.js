@@ -209,16 +209,18 @@ MF.engine = {
   },
 
   // Aktueller Wert eines Signals, z. B. signal(B1, 'Läuft') -> 1.
+  // Signale hängen nur vom Zustand der Anlage ab, nie davon, ob die Uhr läuft:
+  // Eine Pause friert die Zeit ein, die Zustände bleiben wie im letzten Schritt.
   // Schieber und Regeln steuern noch nichts (Etappe 3 und 4), daher 0.
   signal: function (el, name) {
     var p = el.props, rt = el.rt || {};
-    var running = this.state === 'running';
+    var on = rt.on !== false;
     switch (el.type + '.' + name) {
       case 'source.Freigabe':  return p.enabled ? 1 : 0;
       case 'source.Erzeugt':   return rt.made || 0;
       case 'conveyor.Ein':     return rt.on === false ? 0 : 1;
-      case 'conveyor.Läuft':   return running && rt.on !== false && p.speed > 0 ? 1 : 0;
-      case 'conveyor.Tempo':   return running && rt.on !== false ? p.speed : 0;
+      case 'conveyor.Läuft':   return on && p.speed > 0 ? 1 : 0;
+      case 'conveyor.Tempo':   return on ? p.speed : 0;
       case 'sensor.Belegt':    return (!!rt.occupied !== !!p.invert) ? 1 : 0;  // Wert aus dem letzten Schritt
       case 'sink.Anzahl':      return p.count;
       default:                 return 0;
