@@ -1079,6 +1079,18 @@ body.is-dragging, body.is-dragging * {
   font-weight: 500;
 }
 
+/* Anlagenname; orange, solange ungespeicherte Änderungen vorliegen */
+.sb-name {
+  color: var(--light);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-name.is-dirty {
+  color: var(--accent);
+}
+
 .sb-path {
   font-family: var(--mono);
   color: var(--light-dim);

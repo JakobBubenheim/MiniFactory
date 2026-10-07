@@ -68,9 +68,9 @@
       </div>
 
       <div class="quick">
-        <button class="qbtn" title="Neu (Strg+N)" data-stage="4"><svg><use href="#i-new"/></svg></button>
-        <button class="qbtn" title="Öffnen (Strg+O)" data-stage="4"><svg><use href="#i-open"/></svg></button>
-        <button class="qbtn" title="Speichern (Strg+S)" data-stage="4"><svg><use href="#i-save"/></svg></button>
+        <button class="qbtn" title="Neu (Strg+N)" data-action="file-new"><svg><use href="#i-new"/></svg></button>
+        <button class="qbtn" title="Öffnen (Strg+O)" data-action="file-open"><svg><use href="#i-open"/></svg></button>
+        <button class="qbtn" title="Speichern (Strg+S)" data-action="file-save"><svg><use href="#i-save"/></svg></button>
         <span class="qsep"></span>
         <button class="qbtn" title="Rückgängig (Strg+Z)" data-stage="später"><svg><use href="#i-undo"/></svg></button>
         <button class="qbtn" title="Wiederholen (Strg+Y)" data-stage="später"><svg><use href="#i-redo"/></svg></button>
@@ -121,8 +121,8 @@
         </div>
         <div class="rgroup">
           <div class="rgroup-items">
-            <button class="rbtn" data-stage="4"><svg><use href="#i-open"/></svg><span>Laden</span></button>
-            <button class="rbtn" data-stage="4"><svg><use href="#i-save"/></svg><span>Speichern</span></button>
+            <button class="rbtn" data-action="file-open" title="Öffnen (Strg+O)"><svg><use href="#i-open"/></svg><span>Laden</span></button>
+            <button class="rbtn" data-action="file-save" title="Speichern (Strg+S)"><svg><use href="#i-save"/></svg><span>Speichern</span></button>
           </div>
           <div class="rgroup-label">Datei</div>
         </div>
@@ -288,6 +288,7 @@
 
     <!-- Statusleiste -->
     <footer class="statusbar">
+      <span class="sb-name" id="sb-name" title="Anlagenname">Beispielanlage</span>
       <span class="sb-path" id="sb-path">/Beispielanlage</span>
       <span class="sb-msg" id="sb-msg"></span>
       <span class="sb-item">Zeit <strong id="sb-time">00:00</strong></span>
@@ -312,6 +313,7 @@
   <script src="ui/tree.js"></script>
   <script src="ui/editor.js"></script>
   <script src="ui/properties.js"></script>
+  <script src="sim/file.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

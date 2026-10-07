@@ -70,7 +70,7 @@ MF.types = {
 };
 
 // Beispielanlage, damit Baum und Eigenschaften etwas zeigen.
-// Positionen und Größen in Rasterzellen.
+// Positionen und Größen in Rasterzellen, Drehung (rot) in Grad: 0, 90, 180 oder 270.
 MF.model = {
   name: 'Beispielanlage',
   settings: {
@@ -108,9 +108,10 @@ MF.initIo = function (el) {
   });
 };
 
-// Standardwerte für Darstellung und Laufzeitdaten (rt = runtime)
+// Standardwerte für Drehung, Darstellung und Laufzeitdaten (rt = runtime)
 MF.model.elements.forEach(function (el) {
   MF.initIo(el);
+  el.rot = 0;
   el.rt = {};
   el.visible = true;
   el.locked = false;
@@ -168,7 +169,7 @@ MF.store = {
     var next = this.nextId(t.prefix);
     var el = {
       id: next.id, type: type, name: t.label + ' ' + next.n, group: group,
-      x: x, y: y, w: t.size[0], h: t.size[1],
+      x: x, y: y, w: t.size[0], h: t.size[1], rot: 0,
       props: JSON.parse(JSON.stringify(t.defaults)),
       rt: {}, visible: true, locked: false, color: t.color
     };
@@ -186,6 +187,7 @@ MF.store = {
     var el = this.createElement(src.type, src.x + 1, src.y + 1, src.group);
     el.w = src.w;
     el.h = src.h;
+    el.rot = src.rot || 0;
     el.props = JSON.parse(JSON.stringify(src.props));
     if (src.type === 'sink') el.props.count = 0;
     el.color = src.color;
