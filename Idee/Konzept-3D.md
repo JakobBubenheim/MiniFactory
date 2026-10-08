@@ -1,6 +1,6 @@
 # Konzept: Umbau auf 3D-Physik („2,5D“)
 
-Stand: 08.10.2026 (Phase 3 eingetragen). Dieses Dokument ist der gemeinsame Plan für alle Branches des Umbaus.
+Stand: 09.10.2026 (Phase 4 eingetragen – der Umbau ist fertig, siehe Abschnitt 5). Dieses Dokument ist der gemeinsame Plan für alle Branches des Umbaus.
 Wer an einer Phase arbeitet, liest es zuerst und hält sich an die Entscheidungen hier.
 Ändert sich eine Entscheidung, wird zuerst dieses Dokument angepasst.
 
@@ -65,7 +65,7 @@ Linear: Werte in m. Rotatorisch: Werte in Grad.
 **Kopplung:** Ein Körper kann einen anderen Körper als Eltern haben (im Strukturbaum darunter
 gezogen). Seine Lage ist dann relativ zum Elternkörper, und er bewegt sich mit ihm mit. Beispiel:
 Greifer (kinematisch, linear) auf Drehtisch (kinematisch, rotatorisch). Ordner haben keine Lage
-und beeinflussen die Bewegung nicht.
+und beeinflussen die Bewegung nicht. Einzelheiten (Datenmodell, Grenzen): Festlegungen Phase 4 in Abschnitt 3.
 
 ## 3. Datenmodell (Dateiformat Version 3)
 
@@ -117,6 +117,8 @@ Version 3 ist der Umbau. `MF.file.migrate()` rechnet 1 → 2 → 3 schrittweise 
 - Die Eigenschaften der Vorlagen (Tempo, Richtung, Takt, Hub …) lesen und schreiben die Funktionen
   (`MF.getProp`/`MF.setProp`); „Richtung“ dreht den Körper (`pose.rot`), der lokale `dir` bleibt.
 - `axis`: `{ "type": "linear"|"rotary", "origin": [x,y,z], "dir": [x,y,z], "min", "max", "vmax", "mode", "returnDelay" }`, lokal zum Körper.
+  `mode`: `zweipunkt` | `position` | `geschwindigkeit`. Rotatorisch nur mit `dir = [0, 0, ±1]` (Phase 4).
+- `parent` (Phase 4): Ordner-ID, `null` oder **Körper-ID** (Kopplung, nur bei Körpern).
 - `spawner`: `{ "interval", "maxCount", "enabled", "template": { shape, material, look } }`.
 - Laufzeitdaten (Rapier-Handles, erzeugte Kisten, Zähler, `force`) werden **nie** gespeichert.
 
@@ -164,6 +166,28 @@ Festgelegt in Phase 3 (frei gestaltete Körper; `sim/model.js`, `sim/geom.js`, `
 | Fangen | Punkte und Maße auf `snap.pos`, Drehung (Griff, Panel-Schritt) auf `snap.angle`; **Alt** hält Fangen beim Zeichnen und Ziehen aus (dann 1 mm), beim Polygon fängt **Shift** Kantenwinkel und -länge ab dem letzten Punkt. Reine Funktionen in `MF.geom` (`snapPoint`, `snapAngle`, `snapPolar`) |
 | Bedienung | Werkzeuge Rechteck **E**, Kreis **K**, Polygon **P** (R ist Reset). Griffe in Auswählen/Verschieben: Drehgriff über der lokalen Oberkante, Rechteck Ecken/Kanten (Gegenseite bleibt stehen), Kreis Radius, Polygonpunkte; Doppelklick auf eine Kante fügt einen Punkt ein, auf einen Punkt löscht ihn. Jede Mausbearbeitung ist **ein** Schritt im Verlauf (`MF.history.begin()/end()`) |
 
+Festgelegt in Phase 4 (Achsen, Kopplung, neue Vorlagen; `sim/model.js`, `sim/engine.js`, `sim/sim.js`, `ui/editor.js`):
+
+| Thema | Festlegung |
+|---|---|
+| Achse linear | verschiebt den Körper um Stellung · `dir` (normiert), auch senkrecht (`dir = [0, 0, 1]`, Hubtisch). `origin` verschiebt **nicht** mehr (bisher immer `[0, 0, 0]`), er ist nur Anzeige- und Griffpunkt |
+| Achse rotatorisch | dreht den Körper um `origin` (lokal) um die Hochachse; `dir = [0, 0, 1]`: positive Stellung dreht in der Draufsicht im Uhrzeigersinn (wie `pose.rot`), `[0, 0, −1]` dagegen. Rapier: `setNextKinematicRotation` zusätzlich zur Translation (nur bei Drehachse oder Kopplung, Schieber unverändert) |
+| Betriebsarten | `zweipunkt` wie Phase 2. `position`: mit `Freigabe` = 1 auf `Soll`, höchstens `vmax`. `geschwindigkeit`: mit `Freigabe` = 1 mit `Soll`, begrenzt auf ±`vmax`. Ohne `Freigabe` steht die Achse. Grenzen `min`/`max` gelten immer: ein Sollwert außerhalb wird an der Grenze gestoppt; liegt die Achse nach einer Änderung außerhalb, fährt sie mit `vmax` zurück |
+| Grundstellung | nach Reset: `zweipunkt` bei `min` (wie bisher), sonst 0 (in die Grenzen geklemmt) |
+| `InPosition` | \|Ist − Soll\| ≤ **1 mm** (linear) bzw. **0,1°** (rotatorisch) (`MF.AXIS.TOL`), unabhängig von `Freigabe`. Ein Soll außerhalb der Grenzen wird nie „in Position“ |
+| Signale | `Soll` und `Ist` sind `FLOAT32` (m bzw. Grad; `Soll` in `geschwindigkeit` m/s bzw. °/s), `Freigabe` und `InPosition` `BOOL`. Startwert von `Soll` und `Freigabe` 0 |
+| Panel | Typ und Betriebsart wählbar; Felder hängen von der Achse ab (Einheit, Schritt, Grenzen, `when`) und kommen aus `MF.fieldsOf(body, fn)`; ändern über `MF.setField` bzw. `MF.setAxis` (prüft mit `MF.axisError`). Ändern sich dabei die Signale, werden sie angeglichen (`MF.syncIo`), Regeln auf weggefallene Signale verlieren den Bezug. Vorlagen mit eigenen Eigenschaften (Schieber) zeigen Typ und Betriebsart zusätzlich (`core`) |
+| Typ wechseln | setzt Richtung, Grenzen und Tempo auf Standardwerte des Typs (linear `[0,1,0]`, 0 … 0,4 m, 0,3 m/s; rotatorisch `[0,0,1]`, 0 … 90°, 45 °/s) |
+| Kopplung im Modell | `parent` eines Körpers darf eine Körper-ID sein. `pose` gilt dann relativ zur **aktuellen** Lage des Elternkörpers (mit dessen Achse); `MF.poseInWorld` rechnet die Kette (Engine, Draufsicht, 3D, Hüllquader). Im Baum hängt der Körper unter dem Elternkörper, sein Ordner ist der des Elternkörpers (`MF.store.folderOf`). Neue Körper neben einem gekoppelten Körper werden nicht gekoppelt |
+| Kopplung bedienen | im Baum einen Körper auf die Mitte eines Körpers ziehen oder im Panel „Gekoppelt an“. Koppeln, Lösen und Löschen des Elternkörpers lassen den Körper **dort, wo er gerade ist** (Lage wird umgerechnet, Achsen in ihrer aktuellen Stellung); Kinder eines gelöschten Körpers hängen eine Ebene höher. Ein Schritt im Verlauf |
+| Grenzen der Kopplung | höchstens **zwei Ebenen** (ein gekoppelter Körper trägt keine Körper), keine Kreise, keine dynamischen Körper (weder als Kind noch als Eltern). Wird ein beteiligter Körper dynamisch, löst sich die Kopplung nach Rückfrage. `validate()` prüft alles; Dateien ohne Kopplung bleiben unverändert gültig, **Version bleibt 3** |
+| Kopplung in Rapier | ein fester Körper an einem Körper wird in Rapier kinematisch (er bewegt sich mit und trägt Kisten); bewegte Körper fahren je Physik-Unterschritt mit `setNextKinematic*`. Ändert sich das Modell in der Pause (Elternkörper verschoben), setzt `sync()` den Rapier-Körper an seine neue Lage |
+| Transportfläche auf bewegtem Körper | Die Bandoberfläche hat Reibung 0, daher rechnet die Nachführung die Bewegung des Körpers ein: Ziel = Geschwindigkeit des Oberflächenpunkts unter der Kiste (Lage vor/nach dem Unterschritt, also v + ω × r) + Bandgeschwindigkeit; die Laufrichtung dreht mit dem Körper, die Drehung der Kiste wird zu ω des Körpers gezogen (gleiche Coulomb-Grenze). Unbewegte Bänder rechnen wie bisher |
+| Kontakte nach Anhalten | Gleitet ein kinematischer Körper an einer Kiste entlang (Stopper fährt ein, die gestaute Kiste drückt seitlich), schreibt parry die Kontaktpunkte nur fort – auch über die Kante hinaus –, und die Kiste hing an einem Kontakt, den es nicht mehr gab. Darum: kommt ein bewegter Körper zum Stehen, werden seine Kontakte neu berechnet (`refreshContacts`) |
+| Achse in der Draufsicht | für den gewählten Körper in Blau: linear Linie von min bis max mit Pfeil und Marke der Stellung, senkrecht ein Kreis mit Punkt (hoch) bzw. Kreuz (runter) und Text, rotatorisch Bogen von min bis max mit Zeiger. Griffe: Ursprung, min, max, Richtung (nur linear in der Ebene); Fangen wie bei Formen (Lage `snap.pos`, Winkel `snap.angle`, Alt aus). Jede Geste ein Schritt im Verlauf, Esc bricht ab. Bearbeiten (Griffe, Verschieben, Pfeiltasten) rechnet bei gekoppelten und gedrehten Körpern ins Koordinatensystem der Lage zurück |
+| Katalog | entsteht aus `MF.templates` (`MF.templateGroups()`); jede Vorlage hat `label`, `icon`, `prefix`, `color`, `group`, `hint`, `make()`, `props`. Keine Sonderfälle je Vorlage in Oberfläche oder Engine |
+| Neue Vorlagen | **Drehtisch** `DT` (Gruppe Tische): Kreis r 0,4 m, kinematisch, Band 0,5 m/s, Drehachse `position` −180 … 180°, 90 °/s. **Hubtisch** `HT` (Tische): 0,6 × 0,5 m mit Band, linear z, `zweipunkt`, Hub 0,3 m, 0,2 m/s. Beide Oberkante 0,698 m (2 mm unter dem Band). **Stopper** `ST` (Aktoren): Leiste 0,05 × 0,4 m, eingefahren 2 cm unter der Bandoberkante, linear z, `zweipunkt`, 0,14 m, 0,5 m/s, Gleitbelag. **Weiche** `W` (Aktoren): Arm 0,8 × 0,05 m, 2 cm über dem Band, Drehachse am linken Ende, `zweipunkt` 0 … 45°, 90 °/s, Gleitbelag; an die obere Bandkante gelegt lenkt sie ausgefahren auf ein nach unten abgehendes Band. Portal/Greifer: nicht in diesem Umbau (Greifen fehlt) |
+
 ## 4. Simulationszyklus
 
 Gleiche Reihenfolge wie bisher, fester Zeitschritt. Der **SPS-Zyklus** dauert `settings.dtMs`
@@ -201,7 +225,7 @@ Weitere Festlegungen aus Phase 2:
 - **Kisten** sind dynamische Rapier-Körper mit Lage im Mittelpunkt; die Senke prüft diesen Punkt.
 - **Achse zweipunkt**: `Ausfahren` = 1 → mit `vmax` nach `max`; = 0 → `returnDelay` warten, dann
   nach `min`. Stellung je Physik-Unterschritt, `setNextKinematicTranslation`. Weitere Betriebsarten
-  und rotatorische Achsen ergänzt Phase 4 in `MF.engine.stepAxis` und `MF.FUNCTIONS.axis.MODES`.
+  und rotatorische Achsen: Phase 4 (Abschnitt 3) in `MF.engine.stepAxis` und `MF.FUNCTIONS.axis.MODES`.
 - **Schieber-Vorlage: Stößel mit Fangwinkel.** In echter Physik zieht ein laufendes Band (0,5 m/s)
   eine Kiste seitlich an einem langsamen Schieber (0,3 m/s) vorbei – die alte Raster-Engine hatte den
   ausgefahrenen Schieber stillschweigend als Sperre behandelt. Darum: Platte über die ganze Zellbreite,
@@ -237,7 +261,7 @@ das Verhalten der Anlage.
 | 1 | `feature/3d-spike` | ✅ `lib/rapier.js` + `lib/three.js` bauen, Rapier + Three per Doppelklick laden, Demo `spike-3d.html`; Transportflächen-Methode festgelegt (siehe Abschnitt 4, Spike-3D-Ergebnis.md) | 0a |
 | 2 | `feature/physik-kern` | ✅ Datenmodell v3 + Migration (`sim/migrate.js`), neue Engine auf Rapier (`sim/engine.js`), alle Katalog-Elemente als Vorlagen mit Funktionen, Draufsicht zeichnet Körper (`sim/geom.js`, `sim/sim.js`); alte Raster-Engine entfernt. Festlegungen siehe Abschnitte 1, 3 und 4 | 0a, 0b, 1 |
 | 3 | `feature/formen` | ✅ Rechteck/Kreis/Polygon zeichnen, Höhe, freie Lage und Drehung, Körperart und Funktionen im Eigenschaften-Panel, Fangen; geneigte Oberseite `shape.h2` für Rutschen. Festlegungen siehe Abschnitt 3 | 2 |
-| 4 | `feature/achsen` | Achsen linear/rotatorisch mit allen Betriebsarten, Kopplung über den Baum, Achse in der Draufsicht anzeigen und ziehen. Vorbereitet in Phase 3: Achse lässt sich an jeden kinematischen Körper hängen (`MF.addFunction`), Felder im Panel aus `MF.FUNCTIONS.axis.fields` (bisher Richtung, min, max, vmax, returnDelay) – dort ergänzen | 2 (besser nach 3) |
+| 4 | `feature/achsen` | ✅ Achsen linear/rotatorisch mit allen Betriebsarten, Kopplung über den Baum (Körper unter Körper), Achse in der Draufsicht anzeigen und ziehen, neue Vorlagen Drehtisch, Hubtisch, Stopper, Weiche; Katalog aus `MF.templates`. Festlegungen siehe Abschnitt 3 | 2 (besser nach 3) |
 | 5 | `feature/3d-ansicht` | ✅ Three.js-Ansicht zum Zuschauen (`ui/view3d-core.js`, `ui/view3d.js`): Orbit-Kamera, Licht, Schatten, Auswahl per Klick, Draufsicht und 3D nebeneinander. Festlegungen siehe Abschnitt 5a | 2 |
 
 Phasen 3 und 5 können parallel laufen.
@@ -283,10 +307,20 @@ Phasen 3 und 5 können parallel laufen.
 **Für Phase 3/4:** Neue Formfelder in `MF.view3dCore.prism()`/`topZ()` und `bodyKey()` nachtragen.
 Kinematische Körper erscheinen an `MF.sim.drawPose(b)` – rotatorische Achsen und Kopplung (Phase 4)
 müssen dort bzw. in `MF.engine.worldPose()` die Drehung liefern, dann folgt die 3D-Ansicht von selbst.
+Phase 4: erledigt über `MF.poseInWorld` (interpoliert alle Achsen der Kette); der Hüllquader nutzt die Weltlage.
 
 **Fertig ist der Umbau, wenn:** die Beispielanlage aus einer alten `.mfab`-Datei lädt, mit der
 Regel R1 Kisten über den Schieber in SE2 landen, eine selbst gezeichnete schräge Rutsche Kisten
 per Schwerkraft weiterleitet und ein Drehtisch per SCL auf 90° fährt.
+
+**Stand nach Phase 4 (09.10.2026): alle vier erfüllt**, jeweils mit Test:
+
+| Kriterium | Test | Ergebnis |
+|---|---|---|
+| alte Beispielanlage (Version 1) lädt | `migration.test.js` „Migration 1 → 3 …“ | ✅ |
+| R1: Kisten über den Schieber in SE2 | `physik.test.js` „Beispielanlage: mit R1 …“ (eingebaute Beispielanlage mit 1-m/s-Schieber; die alte Datei behält 0,3 m/s und staut bei Überlast, siehe Abschnitt 4) | ✅ |
+| gezeichnete schräge Rutsche | `formen.test.js` „Selbst gezeichnete schräge Rutsche …“ | ✅ |
+| Drehtisch per SCL auf 90° | `achsen.test.js` „Drehtisch per SCL auf 90° …“ (`DT1.Soll := 90.0; DT1.Freigabe := TRUE;`, 90° ± 0,1°, `InPosition`, nie über `vmax`) | ✅ |
 
 ## 6. Später (bewusst nicht im Umbau)
 
