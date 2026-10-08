@@ -321,7 +321,7 @@ test('Einpassen: die ganze Anlage liegt im Bild', function () {
   assert.ok(C.fitCamera(null, 1));
 });
 
-test('Umschalter 2D / 2D + 3D / 3D steht immer sichtbar in der Titelleiste', function () {
+test('Umschalter 2D / 3D / nebeneinander steht immer sichtbar in der Titelleiste', function () {
   const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
   const titel = html.slice(html.indexOf('<header class="titlebar">'), html.indexOf('</header>'));
   assert.ok(titel.length > 0, 'Titelleiste gefunden');

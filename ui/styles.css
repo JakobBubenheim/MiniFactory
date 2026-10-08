@@ -169,21 +169,27 @@ button, input, select {
 .vsbtn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 14px;
+  justify-content: center;
+  height: 24px;
+  min-width: 34px;
+  padding: 0 8px;
   background: var(--dark-2);
   border: 1px solid var(--line);
   margin-left: -1px;
   color: var(--light-dim);
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   cursor: pointer;
 }
 
+.vsbtn-icon {
+  padding: 0 6px;
+}
+
 .vsbtn svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 .vsbtn:hover {
