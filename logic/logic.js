@@ -136,6 +136,14 @@ MF.logic = {
     });
   },
 
+  // Neue Anlage geladen: gemerkte Ziele und übersetzter Code gehören zur alten
+  // Anlage. Sonst würden gleichnamige Eingänge der neuen Anlage (z. B. ein
+  // gespeichertes S1.Ausfahren = 1) beim nächsten Zyklus auf den Startwert fallen.
+  clear: function () {
+    this.owned = {};
+    this.units = {};
+  },
+
   // Regel als lesbarer Satz, z. B. "WENN LS1.Belegt DANN S1.Ausfahren"
   describe: function (rule) {
     return { when: rule.when || '–', then: rule.then || '–' };
