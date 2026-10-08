@@ -3,7 +3,7 @@
 //   wenn er sich vom aktuellen unterscheidet.
 // - Änderungen kurz hintereinander (Tippen, Ziehen) ergeben einen Eintrag.
 // - Zurückholen setzt weder die Simulation zurück noch löscht es Kisten:
-//   Laufzeitdaten (el.rt, Zählerstand der Senken) bleiben erhalten.
+//   Laufzeitdaten (body.rt mit Achsstellung und Zählerständen, Kisten) bleiben erhalten.
 window.MF = window.MF || {};
 
 MF.history = {
@@ -36,34 +36,12 @@ MF.history = {
   // ---------- Schnappschuss ----------
 
   // Modell ohne Ansicht und ohne Laufzeitwerte, als JSON-Text.
+  // Das Dateiformat entspricht dem Modell im Speicher (Körper mit look, Funktionen …);
+  // Laufzeitwerte (rt, force, Kisten) schreibt serialize() ohnehin nicht.
   snapshot: function () {
-    var data;
-    if (MF.file && MF.file.serialize) {
-      data = MF.file.serialize();
-      if (typeof data === 'string') data = JSON.parse(data);
-      else data = JSON.parse(JSON.stringify(data));
-      delete data.view;
-      // Dateiformat (look) zurück in die flachen Felder des Modells
-      (data.elements || []).forEach(function (el) {
-        var look = el.look || {};
-        el.color = look.color; el.visible = look.visible; el.locked = look.locked;
-        delete el.look;
-      });
-    } else {
-      data = {
-        name: MF.model.name,
-        settings: MF.model.settings,
-        folders: MF.model.folders,
-        elements: MF.model.elements,
-        rules: MF.model.rules
-      };
-      data = JSON.parse(JSON.stringify(data));
-    }
-    // Laufzeitwerte, die die Engine ändert, gehören nicht in den Verlauf
-    (data.elements || []).forEach(function (el) {
-      delete el.rt;
-      if (el.type === 'sink' && el.props) delete el.props.count;
-    });
+    var data = MF.file.serialize();
+    data = JSON.parse(JSON.stringify(data));
+    delete data.view;
     return JSON.stringify(data);
   },
 
@@ -130,16 +108,14 @@ MF.history = {
     }
 
     var old = {};
-    model.elements.forEach(function (el) { old[el.id] = el; });
-    model.elements = (data.elements || []).map(function (src) {
-      var el = old[src.id];
-      var rt = el ? el.rt : {};
-      var count = el && el.type === 'sink' ? el.props.count : 0;
-      el = this.assign(el || {}, src);
-      el.rt = rt || {};
-      if (!el.force) el.force = {};
-      if (el.type === 'sink') el.props.count = count || 0;
-      return el;
+    model.bodies.forEach(function (b) { old[b.id] = b; });
+    model.bodies = (data.bodies || []).map(function (src) {
+      var b = old[src.id];
+      var rt = b ? b.rt : {};
+      b = this.assign(b || {}, src);
+      b.rt = rt || {};
+      if (!b.force) b.force = {};
+      return b;
     }, this);
 
     // Ordner (Strukturbaum): vorhandene Objekte weiterverwenden

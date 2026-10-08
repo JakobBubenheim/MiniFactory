@@ -281,14 +281,16 @@ MF.ui = {
 
   // ---------- Statusleiste ----------
 
-  setCursor: function (cell) {
-    document.getElementById('sb-cursor').textContent = cell
-      ? 'x ' + cell.x + '  y ' + cell.y
+  // Mausposition in Metern (oder null außerhalb der Fläche)
+  setCursor: function (p) {
+    function fmt(v) { return (Math.round(v * 100) / 100).toFixed(2).replace('.', ','); }
+    document.getElementById('sb-cursor').textContent = p
+      ? 'x ' + fmt(p.x) + ' m  y ' + fmt(p.y) + ' m'
       : 'x –  y –';
   },
 
   updateStatus: function () {
-    document.getElementById('sb-count').textContent = MF.model.elements.length;
+    document.getElementById('sb-count').textContent = MF.model.bodies.length;
     document.getElementById('zoom-label').textContent = Math.round(MF.sim.zoom * 100) + ' %';
 
     // Anlagenname im Fenstertitel; Stern = ungespeicherte Änderungen

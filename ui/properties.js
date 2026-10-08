@@ -1,5 +1,7 @@
 // Eigenschaften-Panel: zeigt den im Baum oder auf der Fläche gewählten Knoten.
-// Elemente haben die Tabs Eigenschaften | I/O | Darstellung.
+// Körper haben die Tabs Eigenschaften | I/O | Darstellung. Die Eigenschaften der
+// Vorlage (Tempo, Richtung, Hub …) werden aus den Funktionen des Körpers gelesen
+// und dorthin geschrieben (MF.getProp/MF.setProp in sim/model.js).
 window.MF = window.MF || {};
 
 MF.props = {
@@ -24,11 +26,11 @@ MF.props = {
 
   render: function () {
     var id = MF.store.selectedId;
-    var el = MF.store.findElement(id);
+    var el = MF.store.findBody(id);
     var rule = MF.store.findRule(id);
     this.root.innerHTML = '';
 
-    if (el) this.renderElement(el);
+    if (el) this.renderBody(el);
     else if (rule) this.renderRule(rule);
     else if (id) this.renderContainer(id);
     else this.renderEmpty();
@@ -239,12 +241,15 @@ MF.props = {
     return input;
   },
 
-  // ---------- Element ----------
+  // ---------- Körper ----------
 
-  renderElement: function (el) {
+  KIND_LABELS: { ghost: 'immateriell', static: 'fest', kinematic: 'kinematisch', dynamic: 'dynamisch' },
+
+  renderBody: function (el) {
     var self = this;
-    var type = MF.types[el.type];
-    this.header(type.icon, el.name, el.id + ' · ' + type.label);
+    var t = MF.templates[el.template];
+    var typeLabel = t ? t.label : 'Körper';
+    this.header(MF.bodyIcon(el), el.name, el.id + ' · ' + typeLabel);
     this.tabs([['props', 'Eigenschaften'], ['io', 'I/O'], ['look', 'Darstellung']]);
     var body = this.body();
 
@@ -252,49 +257,52 @@ MF.props = {
       var s1 = this.section(body, 'Allgemein');
       this.field(s1, { label: 'Name', type: 'text' }, el.name, function (v) { el.name = v; self.commit(); self.render(); });
       this.field(s1, { label: 'ID', type: 'text', readonly: true }, el.id);
-      this.field(s1, { label: 'Typ', type: 'text', readonly: true }, type.label);
+      this.field(s1, { label: 'Vorlage', type: 'text', readonly: true }, typeLabel);
+      this.field(s1, { label: 'Körperart', type: 'text', readonly: true,
+        hint: 'immateriell: keine Kollision · fest: bewegt sich nie · kinematisch: nur über die Achse · dynamisch: Schwerkraft und Stöße' },
+        this.KIND_LABELS[el.kind] || el.kind);
       this.folderField(s1, el, 'plant');
 
-      var s2 = this.section(body, 'Position');
-      var locked = { readonly: el.locked };
-      // Schrittweite folgt dem Fangen: ganze Zellen oder 0,1 Zellen
+      var s2 = this.section(body, 'Lage');
+      var locked = el.look.locked;
+      // Schrittweite folgt dem Fangen
       var step = MF.editor.snapStep();
-      this.field(s2, { label: 'X', type: 'number', unit: 'Zelle', step: step, quantize: true, readonly: locked.readonly }, el.x,
-        function (v) { el.x = MF.editor.snapValue(v); self.commit(); });
-      this.field(s2, { label: 'Y', type: 'number', unit: 'Zelle', step: step, quantize: true, readonly: locked.readonly }, el.y,
-        function (v) { el.y = MF.editor.snapValue(v); self.commit(); });
-      this.field(s2, { label: 'Drehung', type: 'select', options: ['0', '90', '180', '270'], unit: '°',
-        readonly: locked.readonly, hint: 'Im Uhrzeigersinn; beim Förderband auch die Laufrichtung' },
-        String(el.rot || 0), function (v) { MF.editor.setRotation(el, parseInt(v, 10)); self.render(); });
-      if (el.type === 'conveyor') {
-        // Länge liegt bei 90°/270° in h statt in w
-        var len = (el.rot || 0) % 180 ? 'h' : 'w';
-        this.field(s2, { label: 'Länge', type: 'number', unit: 'Zelle', step: 1, min: 1, readonly: locked.readonly }, el[len], function (v) { el[len] = Math.max(1, Math.round(v)); self.commit(); });
+      this.field(s2, { label: 'X', type: 'number', unit: 'm', step: step, quantize: true, readonly: locked }, el.pose.x,
+        function (v) { el.pose.x = MF.editor.snapValue(v); self.commit(); });
+      this.field(s2, { label: 'Y', type: 'number', unit: 'm', step: step, quantize: true, readonly: locked }, el.pose.y,
+        function (v) { el.pose.y = MF.editor.snapValue(v); self.commit(); });
+      var rots = ['0', '90', '180', '270'];
+      if (rots.indexOf(String(el.pose.rot)) < 0) rots.push(String(el.pose.rot));
+      this.field(s2, { label: 'Drehung', type: 'select', options: rots, unit: '°',
+        readonly: locked, hint: 'Im Uhrzeigersinn um die Lage; Lauf- bzw. Schubrichtung drehen mit' },
+        String(el.pose.rot), function (v) { MF.editor.setRotation(el, parseFloat(v)); self.render(); });
+      this.field(s2, { label: 'Höhe (z)', type: 'number', unit: 'm', readonly: true,
+        hint: 'Unterseite über dem Boden; frei änderbar ab Phase 3' }, el.pose.z);
+      if (el.surface && el.shape.type === 'rect') {
+        // Länge in Laufrichtung (lokal x bei 0°/180°, sonst y)
+        var len = Math.abs(Math.cos(el.surface.dir * Math.PI / 180)) > 0.5 ? 'w' : 'd';
+        this.field(s2, { label: 'Länge', type: 'number', unit: 'm', step: 0.5, min: 0.5, readonly: locked }, el.shape[len],
+          function (v) { el.shape[len] = Math.max(0.1, v); self.commit(); });
       }
 
       var s3 = this.section(body, 'Verhalten');
-      type.props.forEach(function (p) {
-        var input = self.field(s3, p, el.props[p.key], function (v) {
-          // Richtung von Band und Schieber = Drehung: das Element dreht sich mit
-          if (p.key === 'direction' && MF.ROT_ZERO_DIR[el.type] && v in MF.DIR_ROT &&
-              MF.rotForDir(el.type, v) !== (el.rot || 0)) {
-            MF.editor.setRotation(el, MF.rotForDir(el.type, v));
-            self.render();
-            return;
-          }
-          el.props[p.key] = v;
+      MF.propsOf(el).forEach(function (p) {
+        var input = self.field(s3, p, MF.getProp(el, p.key), function (v) {
+          MF.setProp(el, p.key, v);
+          // Richtung dreht den Körper: Lage und Panel neu zeigen
+          if (p.key === 'direction') { MF.store.changed(); self.render(); return; }
           self.commit();
         });
-        if (p.readonly) input.dataset.live = p.key;  // z. B. Zählerstand läuft mit
+        if (p.live) input.dataset.live = p.key;  // z. B. Zählerstand läuft mit
       });
 
-      if (el.type === 'sink') {
+      if (el.sink) {
         var reset = document.createElement('button');
         reset.type = 'button';
         reset.className = 'props-action';
         reset.textContent = 'Zähler zurücksetzen';
         reset.addEventListener('click', function () {
-          el.props.count = 0;
+          el.rt.count = 0;
           self.commit();
           self.refreshLive();
         });
@@ -307,7 +315,7 @@ MF.props = {
       table.className = 'io-table';
       table.innerHTML = '<thead><tr><th></th><th>Name</th><th>Richtung</th><th>Typ</th><th>Wert</th><th>Funktion</th></tr></thead>';
       var tbody = document.createElement('tbody');
-      type.io.forEach(function (s) {
+      MF.io(el).forEach(function (s) {
         var sig = el.id + '.' + s.name;
         var users = s.dir === 'in' ? MF.logic.rulesSetting(sig) : MF.logic.rulesReading(sig);
         var byRule = s.dir === 'in' ? MF.logic.activeSetting(sig) : [];
@@ -341,9 +349,9 @@ MF.props = {
 
     if (this.tab === 'look') {
       var s4 = this.section(body, 'Darstellung');
-      this.field(s4, { label: 'Farbe', type: 'color' }, el.color, function (v) { el.color = v; self.commit(); });
-      this.field(s4, { label: 'Sichtbar', type: 'bool' }, el.visible, function (v) { el.visible = v; self.commit(); });
-      this.field(s4, { label: 'Gesperrt', type: 'bool' }, el.locked, function (v) { el.locked = v; self.commit(); self.render(); });
+      this.field(s4, { label: 'Farbe', type: 'color' }, el.look.color, function (v) { el.look.color = v; self.commit(); });
+      this.field(s4, { label: 'Sichtbar', type: 'bool' }, el.look.visible, function (v) { el.look.visible = v; self.commit(); });
+      this.field(s4, { label: 'Gesperrt', type: 'bool' }, el.look.locked, function (v) { el.look.locked = v; self.commit(); self.render(); });
     }
   },
 
@@ -510,7 +518,7 @@ MF.props = {
   // ---------- Projekt, Anlage, Ordner, Logik ----------
 
   renderContainer: function (id) {
-    var els = MF.model.elements;
+    var els = MF.model.bodies;
     var title, sub, icon, list, folder = MF.store.findFolder(id);
     var area = id === 'logic' || (folder && folder.area === 'logic') ? 'logic' : 'plant';
 
@@ -566,17 +574,23 @@ MF.props = {
       var sSim = this.section(body, 'Simulation');
       this.field(sSim, { label: 'Zeitschritt', type: 'select', options: ['10', '20', '50', '100'], unit: 'ms' },
         String(MF.model.settings.dtMs), function (v) { MF.ui.changeDtMs(parseInt(v, 10)); self.render(); });
-      this.field(sSim, { label: 'Rasterzelle', type: 'number', unit: 'm', step: 0.1, min: 0.1 },
-        MF.model.settings.cellM, function (v) { if (v > 0) { MF.model.settings.cellM = v; self.commit(); } });
+      this.field(sSim, { label: 'Schwerkraft', type: 'number', unit: 'm/s²', step: 0.1, min: -30, max: 0,
+        hint: 'Beschleunigung nach unten (z), Erde: −9,81' },
+        MF.model.settings.gravity, function (v) { MF.model.settings.gravity = v; self.commit(); });
+      this.field(sSim, { label: 'Fangraster', type: 'number', unit: 'm', step: 0.01, min: 0.01, max: 1,
+        hint: 'Schritt beim Verschieben mit "Fangen"; nur Zeichenhilfe' },
+        MF.model.settings.snap.pos, function (v) { MF.model.settings.snap.pos = v; self.commit(); });
     }
 
     if (list.length || (folder && area === 'plant')) {
       var s1 = this.section(body, folder ? 'Inhalt (mit Unterordnern)' : 'Inhalt');
-      if (!list.length) this.field(s1, { label: 'Elemente', type: 'text', readonly: true }, 0);
-      Object.keys(MF.types).forEach(function (t) {
-        var n = list.filter(function (el) { return el.type === t; }).length;
-        if (n) self.field(s1, { label: MF.types[t].label, type: 'text', readonly: true }, n);
+      if (!list.length) this.field(s1, { label: 'Körper', type: 'text', readonly: true }, 0);
+      Object.keys(MF.templates).forEach(function (t) {
+        var n = list.filter(function (el) { return el.template === t; }).length;
+        if (n) self.field(s1, { label: MF.templates[t].label, type: 'text', readonly: true }, n);
       });
+      var free = list.filter(function (el) { return !MF.templates[el.template]; }).length;
+      if (free) self.field(s1, { label: 'Ohne Vorlage', type: 'text', readonly: true }, free);
     }
     if (id === 'logic' || id === 'project') {
       var s2 = this.section(body, 'Logik');
@@ -664,16 +678,15 @@ MF.props = {
   // Laufende Werte aktualisieren, ohne das Panel neu aufzubauen (wird pro Bild aufgerufen)
   refreshLive: function () {
     if (!this.root) return;
-    var el = MF.store.findElement(MF.store.selectedId);
+    var el = MF.store.findBody(MF.store.selectedId);
     if (!el) return;
     this.root.querySelectorAll('[data-live]').forEach(function (input) {
-      input.value = MF.props.formatNumber(el.props[input.dataset.live]);
+      input.value = MF.props.formatNumber(MF.getProp(el, input.dataset.live));
     });
-    var type = MF.types[el.type];
     this.root.querySelectorAll('tr[data-signal]').forEach(function (tr) {
       var name = tr.dataset.signal;
       var v = MF.engine.signal(el, name);
-      var def = type.io.filter(function (s) { return s.name === name; })[0];
+      var def = MF.ioDef(el, name);
       var forced = MF.engine.isForced(el, name);
       tr.children[0].firstChild.classList.toggle('is-on', !!v);
       tr.classList.toggle('is-forced', forced);
@@ -689,7 +702,7 @@ MF.props = {
   renderEmpty: function () {
     var d = document.createElement('div');
     d.className = 'props-empty';
-    d.innerHTML = '<strong>Nichts ausgewählt</strong>Wähle ein Element im Strukturbaum oder auf der Fläche.';
+    d.innerHTML = '<strong>Nichts ausgewählt</strong>Wähle einen Körper im Strukturbaum oder auf der Fläche.';
     this.root.appendChild(d);
   }
 };

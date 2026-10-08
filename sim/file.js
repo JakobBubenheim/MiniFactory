@@ -1,18 +1,19 @@
 // Datei: Anlage als .mfab (JSON) speichern und laden, Autosave im Browser.
 //
 // Gespeichert wird nur, was die Anlage beschreibt – keine Laufzeitdaten
-// (el.rt), keine geforcten Ausgänge (el.force) und keine Kisten der Engine.
+// (body.rt, Rapier-Handles, Zählerstände), keine geforcten Ausgänge (body.force)
+// und keine Kisten der Engine. Ältere Dateien (Version 1 und 2, Raster in Zellen)
+// werden beim Laden mit migrate() umgerechnet, auch ein alter Autosave.
 window.MF = window.MF || {};
 
 (function () {
   MF.file = {
     FORMAT: 'mini-fabrik',
-    VERSION: 2,     // 2: Ordner im Strukturbaum (folders, parent statt group)
+    VERSION: 3,     // 2: Ordner im Strukturbaum; 3: Körper in Metern (3D-Physik)
     EXT: '.mfab',
     AUTOSAVE_KEY: 'mf.autosave',
     DIRTY_KEY: 'mf.autosave.dirty',
     AUTOSAVE_MS: 1000,
-    ROTATIONS: [0, 90, 180, 270],
 
     dirty: false,     // ungespeicherte Änderungen seit dem letzten Speichern/Laden
     handle: null,     // Datei-Handle der geöffneten Datei (File System Access API)
@@ -33,27 +34,32 @@ window.MF = window.MF || {};
 
     // ---------- Modell -> Datei ----------
 
+    // Körper ohne Laufzeitdaten (rt, force), Felder in fester Reihenfolge
+    BODY_KEYS: ['id', 'name', 'parent', 'template', 'kind', 'shape', 'pose', 'material',
+      'surface', 'axis', 'sensor', 'spawner', 'sink', 'inputs', 'look'],
+
+    serializeBody: function (b) {
+      var out = {};
+      this.BODY_KEYS.forEach(function (k) {
+        var v = b[k];
+        out[k] = v === undefined ? null : clone(v);
+      });
+      out.parent = b.parent || null;
+      out.template = b.template || null;
+      return out;
+    },
+
     serialize: function () {
-      var m = MF.model;
+      var m = MF.model, s = m.settings, self = this;
       return {
         format: this.FORMAT,
         version: this.VERSION,
         name: m.name,
-        settings: { dtMs: m.settings.dtMs, cellM: m.settings.cellM },
+        settings: { dtMs: s.dtMs, gravity: s.gravity, snap: clone(s.snap) },
         folders: (m.folders || []).map(function (f) {
           return { id: f.id, name: f.name, parent: f.parent || null, area: f.area };
         }),
-        elements: m.elements.map(function (el) {
-          var props = clone(el.props);
-          if (el.type === 'sink') props.count = 0;   // Zählerstand gehört zur Laufzeit
-          return {
-            id: el.id, type: el.type, name: el.name, parent: el.parent || null,
-            x: el.x, y: el.y, w: el.w, h: el.h, rot: el.rot || 0,
-            props: props,
-            inputs: clone(el.inputs || {}),
-            look: { color: el.color, visible: el.visible !== false, locked: !!el.locked }
-          };
-        }),
+        bodies: m.bodies.map(function (b) { return self.serializeBody(b); }),
         rules: m.rules.map(function (r) {
           var out = {
             id: r.id, name: r.name, parent: r.parent || null, kind: r.kind === 'scl' ? 'scl' : 'rule',
@@ -66,14 +72,18 @@ window.MF = window.MF || {};
         view: {
           zoom: MF.sim.zoom, panX: MF.sim.offsetX, panY: MF.sim.offsetY,
           grid: MF.sim.showGrid, tags: MF.sim.showTags,
-          folded: MF.tree ? MF.tree.foldedIds() : []   // zugeklappte Ordner
+          folded: MF.tree ? MF.tree.foldedIds() : [],   // zugeklappte Ordner
+          camera3d: null                                // 3D-Ansicht (Phase 5)
         }
       };
     },
 
     // ---------- Prüfen ----------
 
+    KINDS: ['ghost', 'static', 'kinematic', 'dynamic'],
+
     // Gibt eine Liste deutscher Fehlertexte zurück; leer = Datei ist in Ordnung.
+    // Ältere Versionen erst mit migrate() anheben.
     validate: function (obj) {
       var errors = [];
       if (!isObject(obj)) return ['Die Datei enthält keine Mini-Fabrik-Anlage.'];
@@ -84,6 +94,11 @@ window.MF = window.MF || {};
         errors.push('Die Datei stammt aus einer neueren Version (' + obj.version + '), unterstützt wird bis ' + this.VERSION + '.');
       }
       if (errors.length) return errors;
+      // Ältere Versionen werden geprüft, wie sie nach dem Umrechnen aussehen
+      if (obj.version < this.VERSION) {
+        obj = this.migrate(obj);
+        if (obj.version !== this.VERSION) return ['Version ' + obj.version + ' lässt sich nicht umrechnen.'];
+      }
 
       if (obj.name !== undefined && typeof obj.name !== 'string') errors.push('Der Anlagenname muss ein Text sein.');
 
@@ -92,7 +107,9 @@ window.MF = window.MF || {};
         if (!isObject(s)) errors.push('"settings" muss ein Objekt sein.');
         else {
           if (s.dtMs !== undefined && !(isNum(s.dtMs) && s.dtMs > 0 && s.dtMs === Math.round(s.dtMs))) errors.push('Zeitschritt (dtMs) muss eine ganze Zahl > 0 sein.');
-          if (s.cellM !== undefined && !(isNum(s.cellM) && s.cellM > 0)) errors.push('Rasterzelle (cellM) muss eine Zahl > 0 sein.');
+          if (s.gravity !== undefined && !isNum(s.gravity)) errors.push('Schwerkraft (gravity) muss eine Zahl sein.');
+          if (s.snap !== undefined && !(isObject(s.snap) && (s.snap.pos === undefined || isNum(s.snap.pos) && s.snap.pos > 0) &&
+              (s.snap.angle === undefined || isNum(s.snap.angle) && s.snap.angle > 0))) errors.push('"snap" muss { on, pos > 0, angle > 0 } sein.');
         }
       }
 
@@ -135,22 +152,40 @@ window.MF = window.MF || {};
         }
       });
 
-      if (!Array.isArray(obj.elements)) errors.push('Die Liste der Elemente fehlt.');
-      else obj.elements.forEach(function (el, i) {
-        var what = 'Element ' + (i + 1);
-        if (!isObject(el)) { errors.push(what + ' ist kein Objekt.'); return; }
-        if (checkId(el.id, what)) what = 'Element "' + el.id + '"';
-        if (!MF.types.hasOwnProperty(el.type)) errors.push(what + ': unbekannter Typ "' + el.type + '".');
-        ['x', 'y', 'w', 'h'].forEach(function (k) {
-          if (!isNum(el[k])) errors.push(what + ': "' + k + '" fehlt oder ist keine Zahl.');
+      var self = this;
+      if (!Array.isArray(obj.bodies)) errors.push('Die Liste der Körper fehlt.');
+      else obj.bodies.forEach(function (b, i) {
+        var what = 'Körper ' + (i + 1);
+        if (!isObject(b)) { errors.push(what + ' ist kein Objekt.'); return; }
+        if (checkId(b.id, what)) what = 'Körper "' + b.id + '"';
+        if (b.name !== undefined && typeof b.name !== 'string') errors.push(what + ': Name muss ein Text sein.');
+        checkParent(b, 'plant', what);
+        if (b.template !== undefined && b.template !== null && !MF.templates.hasOwnProperty(b.template)) {
+          errors.push(what + ': unbekannte Vorlage "' + b.template + '".');
+        }
+        if (self.KINDS.indexOf(b.kind) < 0) errors.push(what + ': Körperart (kind) muss ghost, static, kinematic oder dynamic sein.');
+        self.checkShape(b.shape, what, errors);
+        if (!isObject(b.pose)) errors.push(what + ': Lage (pose) fehlt.');
+        else ['x', 'y', 'z', 'rot'].forEach(function (k) {
+          if (!isNum(b.pose[k])) errors.push(what + ': Lage "' + k + '" fehlt oder ist keine Zahl.');
         });
-        if (isNum(el.w) && el.w <= 0 || isNum(el.h) && el.h <= 0) errors.push(what + ': Breite und Höhe müssen > 0 sein.');
-        if (el.rot !== undefined && MF.file.ROTATIONS.indexOf(el.rot) < 0) errors.push(what + ': Drehung muss 0, 90, 180 oder 270 sein.');
-        if (el.name !== undefined && typeof el.name !== 'string') errors.push(what + ': Name muss ein Text sein.');
-        checkParent(el, 'plant', what);
-        if (el.props !== undefined && !isObject(el.props)) errors.push(what + ': "props" muss ein Objekt sein.');
-        if (el.inputs !== undefined && !isObject(el.inputs)) errors.push(what + ': "inputs" muss ein Objekt sein.');
-        if (el.look !== undefined && !isObject(el.look)) errors.push(what + ': "look" muss ein Objekt sein.');
+        if (b.material !== undefined && b.material !== null) {
+          if (!isObject(b.material)) errors.push(what + ': "material" muss ein Objekt sein.');
+          else ['friction', 'restitution', 'density'].forEach(function (k) {
+            if (b.material[k] !== undefined && !(isNum(b.material[k]) && b.material[k] >= 0)) errors.push(what + ': Werkstoff "' + k + '" muss eine Zahl ≥ 0 sein.');
+          });
+        }
+        MF.FN_KEYS.forEach(function (fn) {
+          var v = b[fn];
+          if (v === undefined || v === null) return;
+          if (!isObject(v)) { errors.push(what + ': "' + fn + '" muss ein Objekt oder null sein.'); return; }
+          if (MF.FUNCTIONS[fn].kinds.indexOf(b.kind) < 0) {
+            errors.push(what + ': ' + MF.FUNCTIONS[fn].label + ' ist bei Körperart "' + b.kind + '" nicht erlaubt.');
+          }
+        });
+        if (isObject(b.axis)) self.checkAxis(b.axis, what, errors);
+        if (b.inputs !== undefined && b.inputs !== null && !isObject(b.inputs)) errors.push(what + ': "inputs" muss ein Objekt sein.');
+        if (b.look !== undefined && b.look !== null && !isObject(b.look)) errors.push(what + ': "look" muss ein Objekt sein.');
       });
 
       if (obj.rules !== undefined && !Array.isArray(obj.rules)) errors.push('"rules" muss eine Liste sein.');
@@ -168,6 +203,41 @@ window.MF = window.MF || {};
 
       if (obj.view !== undefined && !isObject(obj.view)) errors.push('"view" muss ein Objekt sein.');
       return errors;
+    },
+
+    // Form: Rechteck (w × d), Kreis (r) oder Polygon (points), immer mit Höhe h
+    checkShape: function (sh, what, errors) {
+      if (!isObject(sh)) { errors.push(what + ': Form (shape) fehlt.'); return; }
+      function pos(k) {
+        if (!(isNum(sh[k]) && sh[k] > 0)) errors.push(what + ': Form "' + k + '" muss eine Zahl > 0 sein.');
+      }
+      if (sh.type === 'rect') { pos('w'); pos('d'); }
+      else if (sh.type === 'circle') pos('r');
+      else if (sh.type === 'polygon') {
+        var ok = Array.isArray(sh.points) && sh.points.length >= 3 && sh.points.every(function (p) {
+          return Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]);
+        });
+        if (!ok) errors.push(what + ': Polygon braucht mindestens drei Punkte [x, y].');
+        else if (Math.abs(MF.geom.signedArea(sh.points)) < 1e-9) errors.push(what + ': Polygon hat keine Fläche.');
+      } else errors.push(what + ': Form muss "rect", "circle" oder "polygon" sein.');
+      pos('h');
+    },
+
+    // Achse: in Phase 2 nur linear mit Betriebsart "zweipunkt"
+    checkAxis: function (ax, what, errors) {
+      if (ax.type !== 'linear') errors.push(what + ': Achse muss linear sein (rotatorisch folgt später).');
+      if (!MF.FUNCTIONS.axis.MODES.hasOwnProperty(ax.mode)) errors.push(what + ': unbekannte Betriebsart "' + ax.mode + '".');
+      ['min', 'max', 'vmax', 'returnDelay'].forEach(function (k) {
+        if (!isNum(ax[k])) errors.push(what + ': Achse "' + k + '" muss eine Zahl sein.');
+      });
+      if (isNum(ax.min) && isNum(ax.max) && ax.max < ax.min) errors.push(what + ': Achse "max" ist kleiner als "min".');
+      if (isNum(ax.vmax) && ax.vmax <= 0) errors.push(what + ': Achse "vmax" muss > 0 sein.');
+      ['origin', 'dir'].forEach(function (k) {
+        if (!(Array.isArray(ax[k]) && ax[k].length === 3 && ax[k].every(isNum))) errors.push(what + ': Achse "' + k + '" muss [x, y, z] sein.');
+      });
+      if (Array.isArray(ax.dir) && ax.dir.every(isNum) && Math.abs(ax.dir[0]) + Math.abs(ax.dir[1]) + Math.abs(ax.dir[2]) < 1e-9) {
+        errors.push(what + ': Achsrichtung ist null.');
+      }
     },
 
     // ---------- Ältere Versionen ----------
@@ -193,7 +263,9 @@ window.MF = window.MF || {};
           if (isObject(r)) r.parent = null;
         });
         o.version = 2;
-      }
+      },
+      // 2 -> 3: Raster-Elemente werden Körper in Metern (sim/migrate.js)
+      2: function (o) { MF.migrate23(o); }
     },
 
     migrate: function (obj) {
@@ -218,37 +290,18 @@ window.MF = window.MF || {};
       if (errors.length) return { model: null, errors: errors };
 
       var s = obj.settings || {};
+      var snap = isObject(s.snap) ? s.snap : {};
       var model = {
         name: obj.name || 'Anlage',
-        settings: { dtMs: s.dtMs || 50, cellM: s.cellM || 0.5 },
+        settings: {
+          dtMs: s.dtMs || 20,
+          gravity: isNum(s.gravity) ? s.gravity : -9.81,
+          snap: { on: snap.on !== false, pos: snap.pos || 0.05, angle: snap.angle || 5 }
+        },
         folders: (obj.folders || []).map(function (f) {
           return { id: f.id, name: f.name, parent: f.parent || null, area: f.area };
         }),
-        elements: obj.elements.map(function (f) {
-          var t = MF.types[f.type];
-          var look = f.look || {};
-          var el = {
-            id: f.id, type: f.type, name: f.name || f.id, parent: f.parent || null,
-            x: f.x, y: f.y, w: f.w, h: f.h, rot: f.rot || 0,
-            props: clone(t.defaults),
-            rt: {},
-            color: typeof look.color === 'string' ? look.color : t.color,
-            visible: look.visible !== false,
-            locked: !!look.locked
-          };
-          // Fehlende Eigenschaften aus den Standardwerten, danach die Werte der Datei
-          var props = f.props || {};
-          Object.keys(props).forEach(function (k) { el.props[k] = props[k]; });
-          if (el.type === 'sink') el.props.count = 0;
-          // Eingänge: Startwerte des Typs, darüber die gespeicherten Werte
-          MF.initIo(el);
-          MF.normalizeElement(el);   // Drehung passend zur Richtung, Band ggf. hochkant
-          var inputs = f.inputs || {};
-          Object.keys(el.inputs).forEach(function (k) {
-            if (isNum(inputs[k])) el.inputs[k] = inputs[k];
-          });
-          return el;
-        }),
+        bodies: obj.bodies.map(function (f) { return MF.file.buildBody(f); }),
         // Ältere Dateien ohne enabled/kind: Regel ist aktiv und vom Typ Wenn-dann
         rules: (obj.rules || []).map(function (r) {
           return {
@@ -259,6 +312,32 @@ window.MF = window.MF || {};
         })
       };
       return { model: model, errors: [], view: isObject(obj.view) ? obj.view : null };
+    },
+
+    // Körper aus der Datei: fehlende Teile aus Vorlage bzw. Standardwerten,
+    // Eingänge = Startwerte, darüber die gespeicherten Werte
+    buildBody: function (f) {
+      var t = MF.templates[f.template];
+      var look = isObject(f.look) ? f.look : {};
+      var b = {
+        id: f.id, name: f.name || f.id, parent: f.parent || null, template: f.template || null,
+        kind: f.kind, shape: clone(f.shape), pose: clone(f.pose),
+        material: clone(isObject(f.material) ? f.material : MF.MATERIALS[f.kind === 'dynamic' ? 'box' : f.kind === 'ghost' ? 'ghost' : 'steel'])
+      };
+      MF.FN_KEYS.forEach(function (k) { b[k] = isObject(f[k]) ? clone(f[k]) : null; });
+      if (b.spawner && !isObject(b.spawner.template)) b.spawner.template = clone(MF.templates.source.make().spawner.template);
+      b.look = {
+        color: typeof look.color === 'string' ? look.color : (t ? t.color : '#8A93A0'),
+        visible: look.visible !== false,
+        locked: !!look.locked
+      };
+      b.rt = {};
+      MF.initIo(b);
+      var inputs = isObject(f.inputs) ? f.inputs : {};
+      Object.keys(b.inputs).forEach(function (k) {
+        if (isNum(inputs[k])) b.inputs[k] = inputs[k];
+      });
+      return b;
     },
 
     // Ersetzt MF.model komplett. Bei ungültiger Datei bleibt das alte Modell erhalten.
@@ -278,8 +357,8 @@ window.MF = window.MF || {};
       MF.engine.reset();
       MF.model = model;
       MF.logic.clear();
-      MF.engine.resetWorld();
       MF.engine.setDtMs(model.settings.dtMs);
+      MF.engine.resetWorld();
       MF.store.selectedId = null;
       this.applyView(view);
       if (MF.tree) MF.tree.setFolded(view && view.folded);
@@ -316,7 +395,8 @@ window.MF = window.MF || {};
 
     newPlant: function () {
       if (!this.confirmDiscard()) return;
-      this.deserialize({ format: this.FORMAT, version: this.VERSION, name: 'Neue Anlage', folders: [], elements: [], rules: [] });
+      this.deserialize({ format: this.FORMAT, version: this.VERSION, name: 'Neue Anlage',
+        settings: { dtMs: 20, gravity: -9.81, snap: { on: true, pos: 0.05, angle: 5 } }, folders: [], bodies: [], rules: [] });
       this.handle = null;
       this.setDirty(false);
       MF.ui.message('Neue Anlage angelegt.');

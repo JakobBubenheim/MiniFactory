@@ -29,7 +29,7 @@ MF.logic = {
     if (!sig) return null;
     var i = sig.indexOf('.');
     if (i < 0) return null;
-    var el = MF.store.findElement(sig.slice(0, i));
+    var el = MF.store.findBody(sig.slice(0, i));
     return el ? { el: el, name: sig.slice(i + 1) } : null;
   },
 

@@ -134,7 +134,7 @@ test('Prüfen meldet kaputte Ordner-Verweise und Zyklen', function () {
   const d = a.datei();
 
   const unbekannt = kopie(d);
-  unbekannt.elements[0].parent = 'F99';
+  unbekannt.bodies[0].parent = 'F99';
   assert.match(a.pruefen(unbekannt).join('\n'), /F99/);
 
   const falscherBereich = kopie(d);
@@ -146,6 +146,6 @@ test('Prüfen meldet kaputte Ordner-Verweise und Zyklen', function () {
     { id: 'F1', name: 'A', parent: 'F2', area: 'plant' },
     { id: 'F2', name: 'B', parent: 'F1', area: 'plant' }
   ];
-  zyklus.elements.forEach(function (e) { e.parent = null; });
+  zyklus.bodies.forEach(function (e) { e.parent = null; });
   assert.ok(a.pruefen(zyklus).length > 0, 'Zyklus F1 → F2 → F1');
 });

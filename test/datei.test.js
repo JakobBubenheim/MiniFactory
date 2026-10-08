@@ -54,8 +54,8 @@ test('Laufzeitdaten werden nicht gespeichert', function () {
   a.laufen(10);
   assert.ok(a.signal('SE2.Anzahl') > 0 || a.kistenAnzahl() > 0);
   const d = a.datei();
-  const se2 = d.elements.filter(function (e) { return e.id === 'SE2'; })[0];
-  assert.equal(se2.props.count, 0, 'Zählerstand');
+  const se2 = d.bodies.filter(function (e) { return e.id === 'SE2'; })[0];
+  assert.equal(JSON.stringify(se2).indexOf('count'), -1, 'Zählerstand');
   assert.equal(JSON.stringify(d).indexOf('force'), -1, 'geforcte Ausgänge');
   assert.equal(JSON.stringify(d).indexOf('boxes'), -1, 'Kisten');
 
@@ -93,12 +93,13 @@ test('validate meldet kaputte Dateien', function () {
     'falsches Format': mit(function (d) { d.format = 'tabelle'; }),
     'neuere Version': mit(function (d) { d.version = 99; }),
     'Version kein Zahl': mit(function (d) { d.version = '1'; }),
-    'Elemente fehlen': mit(function (d) { delete d.elements; }),
-    'doppelte ID': mit(function (d) { d.elements[1].id = d.elements[0].id; }),
-    'unbekannter Typ': mit(function (d) { d.elements[0].type = 'roboter'; }),
-    'x ist Text': mit(function (d) { d.elements[0].x = '2'; }),
-    'Breite 0': mit(function (d) { d.elements[0].w = 0; }),
-    'Drehung 45°': mit(function (d) { d.elements[0].rot = 45; }),
+    'Körper fehlen': mit(function (d) { delete d.bodies; }),
+    'doppelte ID': mit(function (d) { d.bodies[1].id = d.bodies[0].id; }),
+    'unbekannte Vorlage': mit(function (d) { d.bodies[0].template = 'roboter'; }),
+    'unbekannte Körperart': mit(function (d) { d.bodies[0].kind = 'fest'; }),
+    'x ist Text': mit(function (d) { d.bodies[0].pose.x = '2'; }),
+    'Breite 0': mit(function (d) { d.bodies[0].shape.w = 0; }),
+    'Drehung als Text': mit(function (d) { d.bodies[0].pose.rot = '45'; }),
     'Zeitschritt 0': mit(function (d) { d.settings.dtMs = 0; }),
     'Regel ohne ID': mit(function (d) { delete d.rules[0].id; }),
     'enabled als Text': mit(function (d) { d.rules[0].enabled = 'ja'; }),

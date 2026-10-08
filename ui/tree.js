@@ -1,4 +1,4 @@
-// Strukturbaum: Projekt > Anlage > Ordner > Elemente, Projekt > Logik > Ordner > Regeln.
+// Strukturbaum: Projekt > Anlage > Ordner > Körper, Projekt > Logik > Ordner > Regeln.
 // Ordner sind frei anlegbar und beliebig verschachtelbar (MF.model.folders).
 // Aufbau nach WAI-ARIA "tree": Pfeiltasten, F2 zum Umbenennen, Suche filtert.
 // - Strg/Cmd+Klick und Shift+Klick wählen mehrere Einträge (für Ziehen, Strg+G, Löschen).
@@ -90,7 +90,7 @@ MF.tree = {
         seen[f.id] = true;   // Schutz vor Zyklen
         return { id: f.id, label: f.name, icon: 'i-folder', kind: 'folder', folder: f, area: area, children: kids(area, f.id) };
       }).concat(c.items.map(function (o) {
-        if (area === 'plant') return { id: o.id, label: o.name, icon: MF.types[o.type].icon, kind: o.type, el: o, area: area };
+        if (area === 'plant') return { id: o.id, label: o.name, icon: MF.bodyIcon(o), kind: o.template || o.kind, el: o, area: area };
         return { id: o.id, label: o.name, icon: 'i-rule', kind: 'rule', rule: o, area: area, sclNo: sclNo[o.id] };
       }));
     }
@@ -193,7 +193,7 @@ MF.tree = {
     var hasKids = node.children && node.children.length;
     var open = hasKids && (this.isOpen(node.id) || node.forceOpen);
     if (hasKids) li.setAttribute('aria-expanded', String(!!open));
-    if (node.el && !node.el.visible) li.classList.add('is-hidden-el');
+    if (node.el && !node.el.look.visible) li.classList.add('is-hidden-el');
     if (node.rule && node.rule.enabled === false) li.classList.add('is-off-rule');
     if (node.kind === 'folder') li.classList.add('is-folder');
 
@@ -213,10 +213,10 @@ MF.tree = {
     if (node.el) {
       html +=
         '<span class="tree-id">' + node.el.id + '</span>' +
-        '<button class="tree-act' + (node.el.locked ? ' is-on' : '') + '" data-act="lock" tabindex="-1" title="Sperren">' +
-          '<svg><use href="#' + (node.el.locked ? 'i-lock' : 'i-unlock') + '"/></svg></button>' +
-        '<button class="tree-act' + (!node.el.visible ? ' is-on' : '') + '" data-act="eye" tabindex="-1" title="Ein-/Ausblenden">' +
-          '<svg><use href="#' + (node.el.visible ? 'i-eye' : 'i-eye-off') + '"/></svg></button>';
+        '<button class="tree-act' + (node.el.look.locked ? ' is-on' : '') + '" data-act="lock" tabindex="-1" title="Sperren">' +
+          '<svg><use href="#' + (node.el.look.locked ? 'i-lock' : 'i-unlock') + '"/></svg></button>' +
+        '<button class="tree-act' + (!node.el.look.visible ? ' is-on' : '') + '" data-act="eye" tabindex="-1" title="Ein-/Ausblenden">' +
+          '<svg><use href="#' + (node.el.look.visible ? 'i-eye' : 'i-eye-off') + '"/></svg></button>';
     } else if (node.rule && node.rule.kind === 'scl') {
       // Nummer = Stelle in der Ausführungsreihenfolge der SCL-Bausteine
       html += node.sclNo
@@ -255,9 +255,9 @@ MF.tree = {
 
     var act = e.target.closest('.tree-act');
     if (act) {
-      var el = MF.store.findElement(id);
-      if (act.dataset.act === 'eye') el.visible = !el.visible;
-      if (act.dataset.act === 'lock') el.locked = !el.locked;
+      var el = MF.store.findBody(id);
+      if (act.dataset.act === 'eye') el.look.visible = !el.look.visible;
+      if (act.dataset.act === 'lock') el.look.locked = !el.look.locked;
       MF.store.changed();
       return;
     }
@@ -466,9 +466,9 @@ MF.tree = {
       var n = MF.store.findNode(id);
       if (!n) return;
       if (n.kind === 'folder') { MF.store.deleteFolder(id); done++; folders++; }
-      else if (n.kind === 'element') {
-        if (n.obj.locked) { MF.ui.message(n.obj.name + ' ist gesperrt.'); return; }
-        MF.store.deleteElement(id); done++;
+      else if (n.kind === 'body') {
+        if (n.obj.look.locked) { MF.ui.message(n.obj.name + ' ist gesperrt.'); return; }
+        MF.store.deleteBody(id); done++;
       } else { MF.store.deleteRule(id); done++; }
     });
     self.marked = {};

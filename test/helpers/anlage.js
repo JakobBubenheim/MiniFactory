@@ -6,9 +6,18 @@
 // - Zeiten in Sekunden, Längen in Metern (nicht in Rasterzellen)
 // - Signale mit ihrem Namen wie in der App, z. B. 'LS1.Belegt'
 // - Rückgabewerte sind einfache Daten (Zahlen, Texte, JSON-Kopien)
+//
+// Seit dem Umbau (Phase 2) übersetzt die Fassade auf Körper mit Funktionen:
+// eigenschaft('B1', 'speed') liest surface.speed (über die Eigenschaften der
+// Vorlage), kisten() liefert die Mittelpunkte aus Rapier, anlegen() legt einen
+// Körper aus dem Katalog mit Mitte (x, y) in Metern an.
 'use strict';
 
-const { laden: ladeKontext } = require('./load');
+const { before } = require('node:test');
+const { laden: ladeKontext, vorbereiten } = require('./load');
+
+// Rapier (WASM) einmal je Testprozess laden, bevor der erste Test läuft
+before(vorbereiten);
 
 // Kopie im Node-Kontext: Objekte aus dem vm-Kontext haben eigene Prototypen,
 // assert.deepStrictEqual würde sie sonst als verschieden ansehen.
@@ -23,8 +32,8 @@ function neueAnlage(datei) {
   const MF = win.MF;
 
   function el(id) {
-    const e = MF.store.findElement(id);
-    if (!e) throw new Error('Element "' + id + '" gibt es nicht');
+    const e = MF.store.findBody(id);
+    if (!e) throw new Error('Körper "' + id + '" gibt es nicht');
     return e;
   }
   function sig(name) {
@@ -139,33 +148,43 @@ function neueAnlage(datei) {
     // ---------- Kisten ----------
 
     kistenAnzahl() { return MF.engine.boxes.length; },
-    /** Mittelpunkte der Kisten in Metern, [{ x, y }] */
+    /** Mittelpunkte der Kisten in Metern, [{ x, y }] (in der Reihenfolge des Erzeugens) */
     kisten() {
-      const m = MF.model.settings.cellM;
-      return kopie(MF.engine.boxes.map(function (b) { return { x: b.x * m, y: b.y * m }; }));
+      return kopie(MF.engine.boxes.map(function (b) { return { x: b.cur.x, y: b.cur.y }; }));
+    },
+    /** Mittelpunkte mit Höhe, [{ x, y, z }] */
+    kisten3d() {
+      return kopie(MF.engine.boxes.map(function (b) { return { x: b.cur.x, y: b.cur.y, z: b.cur.z }; }));
+    },
+    /** Geschwindigkeiten der Kisten in m/s, [{ x, y, z }] */
+    kistenTempo() {
+      return kopie(MF.engine.boxes.map(function (b) { const v = b.rb.linvel(); return { x: v.x, y: v.y, z: v.z }; }));
     },
     /** Kantenlänge einer Kiste in Metern */
-    kistenGroesse() { return MF.engine.BOX * MF.model.settings.cellM; },
+    kistenGroesse() { return MF.BOX_SIZE; },
 
-    // ---------- Elemente ----------
+    // ---------- Körper (früher "Elemente") ----------
 
-    elemente() { return kopie(MF.model.elements.map(function (e) { return e.id; })); },
-    /** Eigenschaft lesen (wert weglassen) oder wie im Eigenschaften-Panel setzen */
+    elemente() { return kopie(MF.model.bodies.map(function (e) { return e.id; })); },
+    /** Eigenschaft der Vorlage lesen (wert weglassen) oder wie im Eigenschaften-Panel setzen */
     eigenschaft(id, key, wert) {
       const e = el(id);
-      if (arguments.length < 3) return kopie(e.props[key]);
-      e.props[key] = wert;
+      if (!MF.propDef(e, key)) throw new Error('Eigenschaft "' + key + '" gibt es bei ' + id + ' nicht');
+      if (arguments.length < 3) return kopie(MF.getProp(e, key));
+      MF.setProp(e, key, wert);
       geaendert();
     },
-    /** Neues Element aus der Bibliothek; gibt die ID zurück */
+    /** Körper als Dateiinhalt (Form, Lage, Funktionen …) */
+    koerper(id) { return kopie(MF.file.serializeBody(el(id))); },
+    /** Neuer Körper aus dem Katalog (Vorlage), Mitte bei (x, y) in Metern; gibt die ID zurück */
     anlegen(typ, x, y) {
-      const e = MF.store.createElement(typ, x, y, null);
+      const e = MF.store.createBody(typ, x, y, null);
       MF.history.canMerge = false;
       return e.id;
     },
     loeschen(id) {
       el(id);
-      MF.store.deleteElement(id);
+      MF.store.deleteBody(id);
       MF.history.canMerge = false;
     },
     umbenennen(id, name) { el(id).name = name; geaendert(); },
