@@ -281,6 +281,25 @@ function neueAnlage(datei) {
       geaendert();
       return true;
     },
+    /**
+     * Griff ziehen wie im Editor: eine Geste mit mehreren Zwischenständen
+     * (z. B. [{ w: 1.2 }, { w: 1.5 }, { w: 1.8 }]), dazwischen vergeht echte Zeit.
+     * Gibt die Anzahl abgelehnter Zwischenstände zurück.
+     */
+    griffZiehen(id, staende) {
+      const e = el(id);
+      let abgelehnt = 0;
+      MF.history.begin();
+      staende.forEach(function (st) {
+        const f = kopie(st);
+        if (f.punkte) { f.points = f.punkte; delete f.punkte; }
+        if (MF.setForm(e, f)) abgelehnt++;
+        else MF.store.changed();
+        MF.history.lastTime -= 10000;   // wie eine lange Pause beim Ziehen
+      });
+      MF.history.end();
+      return abgelehnt;
+    },
     /** Werkstoff lesen oder ändern, z. B. { friction: 0.1 } */
     material(id, felder) {
       const e = el(id);

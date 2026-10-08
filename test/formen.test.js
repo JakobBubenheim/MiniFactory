@@ -249,6 +249,29 @@ test('Form ändern -> Rückgängig stellt den alten Zustand her', function () {
   assert.equal(a.koerperart(k), 'ghost');
 });
 
+test('Griff ziehen ist ein Schritt im Verlauf, auch mit Pausen und abgelehnten Zwischenständen', function () {
+  const a = leer();
+  const k = a.formAnlegen('polygon', { punkte: [[0, 0], [1, 0], [1, 1], [0, 1]] }, { x: 0, y: 0 });
+  const vorher = a.form(k);
+  // Punkt 3 wandert; ein Zwischenstand schneidet sich selbst und wird übersprungen
+  const abgelehnt = a.griffZiehen(k, [
+    { punkte: [[0, 0], [1, 0], [0.8, 0.8], [0, 1]] },
+    { punkte: [[0, 0], [1, 0], [-0.5, 0.5], [0, 1]] },
+    { punkte: [[0, 0], [1, 0], [0.5, 0.5], [0, 1]] }
+  ]);
+  assert.equal(abgelehnt, 1);
+  assert.deepEqual(a.form(k).punkte, [[0, 0], [1, 0], [0.5, 0.5], [0, 1]]);
+  a.griffZiehen(k, [{ rot: 10 }, { rot: 20 }, { rot: 30 }]);
+  assert.equal(a.form(k).rot, 30);
+
+  a.rueckgaengig();
+  assert.equal(a.form(k).rot, 0);
+  assert.deepEqual(a.form(k).punkte, [[0, 0], [1, 0], [0.5, 0.5], [0, 1]]);
+  a.rueckgaengig();
+  assert.deepEqual(a.form(k), vorher);
+  assert.deepEqual(a.elemente(), [k], 'Anlegen ist ein eigener Schritt');
+});
+
 test('Speichern und Laden behalten Form, Höhe, Neigung, Lage, Körperart, Werkstoff und Funktionen', function () {
   const a = leer();
   const r = a.formAnlegen('rect', { w: 2, d: 0.6, h: 1 }, { x: 0.5, y: 1, z: 0, rot: 15 });
