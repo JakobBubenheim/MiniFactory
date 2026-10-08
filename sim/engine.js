@@ -50,6 +50,9 @@ MF.engine = {
     });
     this.resetWorld();
     this.clock.start(); // Zeichenschleife läuft ab jetzt dauerhaft
+    // Änderungen an Form, Lage, Körperart, Werkstoff und Funktionen wirken sofort,
+    // auch in der Pause (die Draufsicht zeigt dynamische Körper aus der Physik)
+    MF.store.on(function (reason) { if (reason === 'change' && self.world) self.sync(); });
   },
 
   // ---------- Zustand (aus der Uhr gelesen) ----------
@@ -124,10 +127,27 @@ MF.engine = {
       .setRestitutionCombineRule(R.CoefficientCombineRule.Min);
   },
 
+  SLOPED_CIRCLE_SEGMENTS: 32,
+
   // Rapier-Formen eines Körpers, lokal zur Lage (Unterseite des Grundrisses):
   // [{ shape, t: {x,y,z}, q: {x,y,z,w} }]. Konkave Polygone werden zerlegt.
+  // Geneigte Oberseite (shape.h2, Konzept Abschnitt 3): jedes konvexe Teil wird ein
+  // Prisma mit schräger Oberseite (ConvexPolyhedron) – auch Rechteck und Kreis.
   shapeParts: function (sh) {
     var R = this.R, h = sh.h, ID = { x: 0, y: 0, z: 0, w: 1 };
+    if (MF.geom.isSloped(sh)) {
+      var polys = sh.type === 'polygon' ? MF.geom.convexParts(sh.points)
+        : sh.type === 'circle' ? [this.circlePoly(sh.r)] : [MF.geom.outline(sh)];
+      return polys.map(function (poly) {
+        var v = [];
+        poly.forEach(function (p) {
+          v.push(p[0], p[1], 0);
+          var top = MF.geom.topAt(sh, p[0]);
+          if (top > 1e-6) v.push(p[0], p[1], top);   // Keil bis auf 0: Kante statt Fläche
+        });
+        return { shape: new R.ConvexPolyhedron(new Float32Array(v), null), t: { x: 0, y: 0, z: 0 }, q: ID };
+      });
+    }
     if (sh.type === 'rect') return [{ shape: new R.Cuboid(sh.w / 2, sh.d / 2, h / 2), t: { x: 0, y: 0, z: h / 2 }, q: ID }];
     if (sh.type === 'circle') {
       // Rapier-Zylinder stehen auf y; um x gedreht stehen sie auf z
@@ -139,6 +159,12 @@ MF.engine = {
       poly.forEach(function (p) { v.push(p[0], p[1], 0, p[0], p[1], h); });
       return { shape: new R.ConvexPolyhedron(new Float32Array(v), null), t: { x: 0, y: 0, z: 0 }, q: ID };
     });
+  },
+
+  circlePoly: function (r) {
+    var out = [], n = this.SLOPED_CIRCLE_SEGMENTS;
+    for (var i = 0; i < n; i++) out.push([r * Math.cos(2 * Math.PI * i / n), r * Math.sin(2 * Math.PI * i / n)]);
+    return out;
   },
 
   // Drehung um z (Grad) als Quaternion
@@ -155,11 +181,29 @@ MF.engine = {
     return { x: w.x, y: w.y, z: ax.origin[2] + d[2] / len * pos };
   },
 
-  // Aktuelle Lage eines Körpers in der Welt (kinematisch: mit Achsstellung)
+  // Aktuelle Lage eines Körpers in der Welt (kinematisch: mit Achsstellung,
+  // dynamisch: wo die Physik ihn gerade hat)
   worldPose: function (b, pos) {
+    if (b.kind === 'dynamic') return this.dynamicPose(b, 1);
     if (!b.axis || b.kind !== 'kinematic') return b.pose;
     var o = this.axisOffset(b, pos === undefined ? this.axisPos(b) : pos);
     return { x: b.pose.x + o.x, y: b.pose.y + o.y, z: b.pose.z + o.z, rot: b.pose.rot };
+  },
+
+  // Dynamischer Körper aus dem Modell (gezeichnet, fällt und rutscht): Lage aus
+  // Rapier, zwischen den letzten beiden Schritten mit alpha (0..1) interpoliert.
+  // Nach Reset (rt leer) liegt er an seiner gezeichneten Lage. Die Draufsicht zeigt
+  // nur die Drehung um z; kippt er im Raum, bleibt der Grundriss gleich.
+  dynamicPose: function (b, alpha) {
+    var rt = b.rt || {}, c = rt.cur;
+    if (!c) return b.pose;
+    var p = rt.prev || c;
+    var y0 = MF.sim.yawOf(p.q), y1 = MF.sim.yawOf(c.q);
+    var dy = Math.atan2(Math.sin(y1 - y0), Math.cos(y1 - y0));
+    return {
+      x: p.x + (c.x - p.x) * alpha, y: p.y + (c.y - p.y) * alpha, z: p.z + (c.z - p.z) * alpha,
+      rot: MF.geom.normDeg((y0 + dy * alpha) * 180 / Math.PI)
+    };
   },
 
   axisPos: function (b) {
@@ -187,6 +231,8 @@ MF.engine = {
       if (p && p.rb) world.removeRigidBody(p.rb);
       rebuilt = true;
       p = self.phys[b.id] = { sig: sig, rb: null, parts: self.shapeParts(b.shape) };
+      delete b.rt.cur;    // dynamischer Körper: neu an seiner gezeichneten Lage
+      delete b.rt.prev;
       if (b.kind === 'ghost') return;   // nur Abfragen (Sensor, Erzeuger, Senke), keine Kollision
       var pose = self.worldPose(b);
       var desc = b.kind === 'kinematic' ? R.RigidBodyDesc.kinematicPositionBased()
@@ -268,6 +314,12 @@ MF.engine = {
       this.world.step();
     }
     this.boxes.forEach(function (bx) { bx.cur = self.boxState(bx.rb); });
+    bodies.forEach(function (b) {
+      var p = self.phys[b.id];
+      if (b.kind !== 'dynamic' || !p || !p.rb) return;
+      b.rt.prev = b.rt.cur || self.boxState(p.rb);
+      b.rt.cur = self.boxState(p.rb);
+    });
 
     // 5. Erzeuger und Senken
     bodies.forEach(function (b) { if (b.spawner) self.stepSpawner(b, dt); });

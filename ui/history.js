@@ -2,6 +2,8 @@
 // - Nach jeder Modelländerung (MF.store.changed) wird ein Schnappschuss abgelegt,
 //   wenn er sich vom aktuellen unterscheidet.
 // - Änderungen kurz hintereinander (Tippen, Ziehen) ergeben einen Eintrag.
+// - Eine Bearbeitung mit der Maus (Griff ziehen, Form zeichnen) ist genau ein
+//   Eintrag, egal wie lange sie dauert: begin() ... end().
 // - Zurückholen setzt weder die Simulation zurück noch löscht es Kisten:
 //   Laufzeitdaten (body.rt mit Achsstellung und Zählerständen, Kisten) bleiben erhalten.
 window.MF = window.MF || {};
@@ -15,6 +17,7 @@ MF.history = {
   lastTime: 0,      // Zeitpunkt der letzten aufgezeichneten Änderung
   canMerge: false,  // darf die nächste Änderung den aktuellen Eintrag ersetzen?
   restoring: false, // true, während undo/redo selbst MF.store.changed() auslöst
+  gesture: 0,       // 0 = keine Geste, 1 = Geste ohne Änderung, 2 = Geste hat einen Eintrag
 
   init: function () {
     var self = this;
@@ -50,8 +53,9 @@ MF.history = {
     var snap = this.snapshot();
     if (snap === this.entries[this.pos]) return;
     var now = Date.now();
+    var merge = this.gesture ? this.gesture === 2 : this.canMerge && now - this.lastTime < this.MERGE_MS;
 
-    if (this.canMerge && this.pos > 0 && now - this.lastTime < this.MERGE_MS) {
+    if (merge && this.pos > 0) {
       this.entries[this.pos] = snap;
     } else {
       this.entries.length = this.pos + 1;   // Wiederholen-Zweig verwerfen
@@ -61,7 +65,19 @@ MF.history = {
     }
     this.lastTime = now;
     this.canMerge = true;
+    if (this.gesture) this.gesture = 2;
     this.updateButtons();
+  },
+
+  // Geste beginnen: alle Änderungen bis end() ergeben einen Eintrag
+  begin: function () {
+    this.gesture = 1;
+  },
+
+  // Geste beenden: die nächste Änderung ist wieder ein eigener Eintrag
+  end: function () {
+    this.gesture = 0;
+    this.canMerge = false;
   },
 
   // ---------- Rückgängig / Wiederholen ----------

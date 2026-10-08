@@ -76,10 +76,52 @@ MF.geom = {
   },
 
   // Liegt der Weltpunkt p {x, y, z} im Körper mit Lage pose (Grundriss × Höhe)?
+  // Bei geneigter Oberseite (shape.h2) zählt die Höhe an dieser Stelle.
   containsPoint: function (shape, pose, p) {
-    if (p.z < pose.z - 1e-9 || p.z > pose.z + shape.h + 1e-9) return false;
     var l = this.toLocal(pose, p.x, p.y);
+    if (p.z < pose.z - 1e-9 || p.z > pose.z + this.topAt(shape, l.x) + 1e-9) return false;
     return this.inOutline(shape, l.x, l.y);
+  },
+
+  // ---------- Neigung (Keil) ----------
+  //
+  // Ein Körper kann eine geneigte Oberseite haben (Konzept, Abschnitt 3): die Höhe
+  // läuft entlang der lokalen x-Achse linear von shape.h (am kleinsten x des
+  // Grundrisses) nach shape.h2 (am größten x). Unterseite bleibt waagrecht auf pose.z.
+  // Fehlt h2 (oder ist gleich h), ist die Oberseite eben.
+
+  isSloped: function (shape) {
+    return typeof shape.h2 === 'number' && Math.abs(shape.h2 - shape.h) > 1e-9;
+  },
+
+  // Kleinstes und größtes lokales x des Grundrisses
+  xRange: function (shape) {
+    if (shape.type === 'rect') return { x0: -shape.w / 2, x1: shape.w / 2 };
+    if (shape.type === 'circle') return { x0: -shape.r, x1: shape.r };
+    var x0 = Infinity, x1 = -Infinity;
+    (shape.points || []).forEach(function (p) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); });
+    return { x0: x0, x1: x1 };
+  },
+
+  // Höhe der Oberseite über der Unterseite an der lokalen Stelle lx
+  topAt: function (shape, lx) {
+    if (!this.isSloped(shape)) return shape.h;
+    var r = this.xRange(shape);
+    var t = r.x1 - r.x0 > 1e-12 ? (lx - r.x0) / (r.x1 - r.x0) : 0;
+    t = Math.max(0, Math.min(1, t));
+    return shape.h + (shape.h2 - shape.h) * t;
+  },
+
+  // Größte Höhe des Körpers (für Hüllquader, Zeichnen)
+  maxHeight: function (shape) {
+    return this.isSloped(shape) ? Math.max(shape.h, shape.h2) : shape.h;
+  },
+
+  // Neigungswinkel der Oberseite in Grad (0 = eben)
+  slopeDeg: function (shape) {
+    if (!this.isSloped(shape)) return 0;
+    var r = this.xRange(shape);
+    return Math.atan2(Math.abs(shape.h2 - shape.h), r.x1 - r.x0) * 180 / Math.PI;
   },
 
   // Nur der Grundriss (Draufsicht), z. B. für die Maus
@@ -129,11 +171,73 @@ MF.geom = {
     return true;
   },
 
-  // Polygon in konvexe Teile zerlegen: konvex bleibt es ganz, sonst Dreiecke
-  // (Ohrenschneiden). Rapier braucht konvexe Formen; Phase 3 kann das verfeinern.
+  // Polygon in konvexe Teile zerlegen: konvex bleibt es ganz, sonst erst Dreiecke
+  // (Ohrenschneiden), die danach zu möglichst großen konvexen Teilen verschmolzen
+  // werden (Hertel-Mehlhorn). Rapier braucht konvexe Formen; wenige große Teile
+  // haben weniger innere Kanten, an denen eine rutschende Kiste hängen bleiben kann.
+  // Punkte auf einer geraden Kante (z. B. frisch eingefügt) stören dabei nicht.
   convexParts: function (pts) {
+    pts = this.withoutCollinear(pts);
     if (pts.length < 3) return [];
     if (this.isConvex(pts)) return [pts.slice()];
+    return this.mergeConvex(this.triangulate(pts));
+  },
+
+  // Punkte entfernen, die doppelt sind oder auf der Geraden ihrer Nachbarn liegen
+  withoutCollinear: function (pts) {
+    var out = pts.slice(), changed = true;
+    while (changed && out.length >= 3) {
+      changed = false;
+      for (var i = 0; i < out.length; i++) {
+        var a = out[(i + out.length - 1) % out.length], b = out[i], c = out[(i + 1) % out.length];
+        var cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+        var len = Math.abs(c[0] - a[0]) + Math.abs(c[1] - a[1]) + 1e-12;
+        if (Math.abs(cross) / len < 1e-9) { out.splice(i, 1); changed = true; break; }
+      }
+    }
+    return out;
+  },
+
+  // Dreiecke zu konvexen Teilen verschmelzen: zwei Teile mit gemeinsamer Kante
+  // werden eins, solange das Ergebnis konvex bleibt.
+  mergeConvex: function (polys) {
+    var self = this;
+    function key(p) { return p[0] + ',' + p[1]; }
+    var merged = true;
+    polys = polys.map(function (p) { return p.slice(); });
+    while (merged) {
+      merged = false;
+      for (var i = 0; i < polys.length && !merged; i++) {
+        for (var j = i + 1; j < polys.length && !merged; j++) {
+          var m = joinAt(polys[i], polys[j]);
+          if (m && self.isConvex(m)) {
+            polys[i] = m;
+            polys.splice(j, 1);
+            merged = true;
+          }
+        }
+      }
+    }
+    return polys;
+
+    // Gemeinsame Kante a->b in P (b->a in Q): Q ohne die Kante in P einsetzen
+    function joinAt(P, Q) {
+      for (var i = 0; i < P.length; i++) {
+        var a = key(P[i]), b = key(P[(i + 1) % P.length]);
+        for (var k = 0; k < Q.length; k++) {
+          if (key(Q[k]) === b && key(Q[(k + 1) % Q.length]) === a) {
+            var out = P.slice(0, i + 1);
+            for (var n = 2; n < Q.length; n++) out.push(Q[(k + n) % Q.length]);
+            return out.concat(P.slice(i + 1));
+          }
+        }
+      }
+      return null;
+    }
+  },
+
+  // Ohrenschneiden: Polygon (ohne Selbstschnitt) in Dreiecke, gegen den Uhrzeigersinn
+  triangulate: function (pts) {
     var idx = pts.map(function (p, i) { return i; });
     if (this.signedArea(pts) < 0) idx.reverse();   // gegen den Uhrzeigersinn (mathematisch)
     var tris = [], guard = 0;
@@ -166,5 +270,121 @@ MF.geom = {
     var d1 = side(p, a, b), d2 = side(p, b, c), d3 = side(p, c, a);
     var neg = d1 < 0 || d2 < 0 || d3 < 0, pos = d1 > 0 || d2 > 0 || d3 > 0;
     return !(neg && pos);
+  },
+
+  // Schneiden sich zwei Kanten des Polygons (außer an gemeinsamen Ecken)?
+  // Auch doppelte Punkte und Kanten, die auf einer anderen liegen, zählen.
+  selfIntersects: function (pts) {
+    var n = pts.length;
+    if (n < 3) return false;
+    for (var i = 0; i < n; i++) {
+      var a = pts[i], b = pts[(i + 1) % n];
+      if (Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9) return true;
+      for (var j = i + 1; j < n; j++) {
+        if (j === i + 1 || (i === 0 && j === n - 1)) continue;   // Nachbarkanten
+        if (this.segmentsTouch(a, b, pts[j], pts[(j + 1) % n])) return true;
+      }
+    }
+    // Nachbarkanten, die zurücklaufen (Spitze mit Winkel 0)
+    for (var k = 0; k < n; k++) {
+      var p = pts[(k + n - 1) % n], q = pts[k], r = pts[(k + 1) % n];
+      var cross = (q[0] - p[0]) * (r[1] - q[1]) - (q[1] - p[1]) * (r[0] - q[0]);
+      var dot = (q[0] - p[0]) * (r[0] - q[0]) + (q[1] - p[1]) * (r[1] - q[1]);
+      if (Math.abs(cross) < 1e-12 && dot < 0) return true;
+    }
+    return false;
+  },
+
+  // Berühren oder schneiden sich die Strecken ab und cd?
+  segmentsTouch: function (a, b, c, d) {
+    function orient(p, q, r) {
+      var v = (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+      return Math.abs(v) < 1e-12 ? 0 : v > 0 ? 1 : -1;
+    }
+    function onSeg(p, q, r) {
+      return Math.min(p[0], r[0]) - 1e-12 <= q[0] && q[0] <= Math.max(p[0], r[0]) + 1e-12 &&
+        Math.min(p[1], r[1]) - 1e-12 <= q[1] && q[1] <= Math.max(p[1], r[1]) + 1e-12;
+    }
+    var o1 = orient(a, b, c), o2 = orient(a, b, d), o3 = orient(c, d, a), o4 = orient(c, d, b);
+    if (o1 !== o2 && o3 !== o4) return true;
+    return (o1 === 0 && onSeg(a, c, b)) || (o2 === 0 && onSeg(a, d, b)) ||
+      (o3 === 0 && onSeg(c, a, d)) || (o4 === 0 && onSeg(c, b, d));
+  },
+
+  // ---------- Fangen (Zeichenhilfe) ----------
+  //
+  // snap = settings.snap { on, pos, angle }. Mit off = true (Alt gedrückt) oder
+  // snap.on = false wird nur auf 1 mm gerundet, damit keine Rechenreste entstehen.
+  FREE_POS: 0.001,
+
+  round6: function (v) { return Math.round(v * 1e6) / 1e6; },
+
+  snapStep: function (snap, off) {
+    return !off && snap && snap.on !== false ? snap.pos || 0.05 : this.FREE_POS;
+  },
+
+  // Länge bzw. Koordinate auf das Fangraster
+  snapLen: function (v, snap, off) {
+    var step = this.snapStep(snap, off);
+    return this.round6(Math.round(v / step) * step);
+  },
+
+  snapPoint: function (x, y, snap, off) {
+    return { x: this.snapLen(x, snap, off), y: this.snapLen(y, snap, off) };
+  },
+
+  // Winkel auf snap.angle (Grad); ohne Fangen auf 0,1°
+  snapAngle: function (deg, snap, off) {
+    var step = !off && snap && snap.on !== false ? snap.angle || 5 : 0.1;
+    return this.normDeg(Math.round(deg / step) * step) + 0;   // + 0: nie −0
+  },
+
+  // Punkt b so legen, dass die Strecke von a einen gefangenen Winkel und eine
+  // gefangene Länge hat (Polygon zeichnen mit Shift)
+  snapPolar: function (a, b, snap, off) {
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var len = this.snapLen(Math.sqrt(dx * dx + dy * dy), snap, off);
+    var ang = this.rad(this.snapAngle(Math.atan2(dy, dx) * 180 / Math.PI, snap, off));
+    return { x: this.round6(a.x + len * Math.cos(ang)), y: this.round6(a.y + len * Math.sin(ang)) };
+  },
+
+  // ---------- Formen aus gezeichneten Punkten ----------
+
+  // Rechteck aus zwei gegenüberliegenden Ecken (Welt): { shape: { w, d }, x, y }
+  rectFromCorners: function (a, b) {
+    return {
+      w: this.round6(Math.abs(b.x - a.x)), d: this.round6(Math.abs(b.y - a.y)),
+      x: this.round6((a.x + b.x) / 2), y: this.round6((a.y + b.y) / 2)
+    };
+  },
+
+  // Polygon aus Weltpunkten: Lage = Mitte des Hüllrechtecks, Punkte lokal dazu
+  polygonFromWorld: function (pts) {
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, self = this;
+    pts.forEach(function (p) {
+      x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y);
+      x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+    });
+    var cx = this.round6((x0 + x1) / 2), cy = this.round6((y0 + y1) / 2);
+    return {
+      x: cx, y: cy,
+      points: pts.map(function (p) { return [self.round6(p.x - cx), self.round6(p.y - cy)]; })
+    };
+  },
+
+  // Längen der Kanten eines Polygons [[x, y], …] (geschlossen)
+  edgeLengths: function (pts) {
+    return pts.map(function (p, i) {
+      var q = pts[(i + 1) % pts.length];
+      return Math.sqrt((q[0] - p[0]) * (q[0] - p[0]) + (q[1] - p[1]) * (q[1] - p[1]));
+    });
+  },
+
+  // Abstand des Punkts p zur Strecke ab und der nächste Punkt darauf
+  nearestOnSegment: function (p, a, b) {
+    var dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+    var t = l2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+    var q = { x: a.x + t * dx, y: a.y + t * dy };
+    return { x: q.x, y: q.y, t: t, dist: Math.sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y)) };
   }
 };
