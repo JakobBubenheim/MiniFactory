@@ -15,9 +15,10 @@ Wer an einer Phase arbeitet, liest es zuerst und hält sich an die Entscheidunge
 | Bearbeiten | in der **Draufsicht** (der 2D-Editor bleibt). Ein Körper = Grundriss (Skizze) + Höhe, wie Skizze + Extrusion im CAD |
 | Simulieren | echtes **3D mit Schwerkraft** |
 | Raum | **kein Raster mehr in der Simulation.** Einheiten: Meter, Grad, Sekunden. Das Raster ist nur noch Zeichenhilfe („Fangen“, z. B. 0,05 m / 5°) |
-| Koordinaten | x nach rechts, y in der Draufsicht nach unten, **z nach oben**, Boden bei z = 0. Die Umrechnung ins y-oben-System von Three.js passiert nur in der 3D-Ansicht |
+| Koordinaten | x nach rechts, y in der Draufsicht nach unten, **z nach oben**, Boden bei z = 0. Das ist (von oben gesehen) linkshändig; Rapier rechnet damit ohne Umrechnung. Die 3D-Ansicht hängt alles in eine Gruppe mit `scale.y = −1` und setzt `camera.up = (0, 0, 1)` – sonst wäre sie spiegelverkehrt zur Draufsicht (Spike Phase 1) |
 | Katalog | bleibt, wird aber zu **Vorlagen**: ein Förderband ist ein vorkonfigurierter Körper, den man danach frei ändern kann |
-| Start per Doppelklick | **bleibt.** Three.js und Rapier werden einmal mit esbuild zu `lib/vendor.js` (IIFE, setzt `window.THREE` und `window.RAPIER`) gebündelt und **ins Repo committet**. Node braucht man nur zum Aktualisieren der Bibliotheken und für Tests |
+| Start per Doppelklick | **bleibt** (in Phase 1 geprüft). Rapier und Three.js werden mit esbuild zu zwei Skripten gebündelt und **ins Repo committet**: `lib/rapier.js` (setzt `window.RAPIER`, WASM eingebettet, `RAPIER.init()` nötig, 4,3 MB) und `lib/three.js` (setzt `window.THREE` und `window.THREE_ADDONS`, 0,8 MB). Getrennt, damit Tests nur die Physik laden. Bauen in `tools/vendor/` (eigene `package.json`). Node braucht man nur zum Aktualisieren der Bibliotheken und für Tests |
+| Physik-Parameter | Zeitschritt 20 ms, Solver-Iterationen 4 (Standard), **Kontaktsteifigkeit 60 Hz** (`contact_natural_frequency`, Standard 30 Hz lässt gestaute Kisten 5 mm ineinander rutschen). Reibung: Kiste 0,6, Boden 0,6, Stahl 0,3, Rutsche 0,1; Dichte Kiste 200 kg/m³. Ergebnisse: [Spike-3D-Ergebnis.md](Spike-3D-Ergebnis.md) |
 | Code-Stil | bleibt: ES5, Namensraum `MF`, deutsche Kommentare, klassische `<script>`-Tags |
 
 Was **unverändert** bleibt: Signale und I/O-Tab, Wenn-dann-Regeln, SCL-Interpreter und -Editor,
@@ -125,10 +126,29 @@ Gleiche Reihenfolge wie bisher, fester Zeitschritt (Standard 20 ms, damit die Ph
 4. **Physik-Schritt** – `world.step()`; Transportflächen wirken auf aufliegende dynamische Körper
 5. **Erzeuger und Senken**
 
-Transportfläche: Rapier kennt in JS keine Oberflächengeschwindigkeit. Ansatz: Für jeden dynamischen
-Körper, der eine Transportfläche berührt, die Geschwindigkeit entlang der Fläche reibungsähnlich zur
-Bandgeschwindigkeit hinziehen (`v += k · (v_band − v)`, begrenzt). Phase 1 prüft, ob das sauber
-läuft, und legt die Methode fest.
+Transportfläche (festgelegt in Phase 1): Rapier kennt in JS keine Oberflächengeschwindigkeit.
+Methode **„Geschwindigkeit nachführen“**: vor `world.step()` für jeden dynamischen Körper mit
+Auflagekontakt (|Normale z| > 0,7) auf Transportflächen
+
+- Zielgeschwindigkeit = Mittel der Bandgeschwindigkeiten, **gewichtet mit dem Kontaktimpuls J**
+  des letzten Schritts (trägt ein Band mehr Gewicht, zieht es stärker),
+- `v += k · (v_ziel − v)` in der Flächenebene, k = 1, **begrenzt auf μ · ΣJ / m** (Coulomb, μ = 0,8),
+- Drehung um die Hochachse mit derselben Grenze abbremsen.
+
+Die Bandoberfläche hat in Rapier Reibung 0 (Kombination `Min`), damit nichts doppelt bremst.
+Funktioniert auf `static` und `kinematic` Körpern gleich. Verglichen wurde der „Laufband-Trick“
+(kinematischer Körper mit Geschwindigkeit, Lage jeden Schritt zurückgesetzt) – gleich gut, aber
+schlecht kombinierbar mit Achsen und wirkt auf alle Seiten. Messwerte: Spike-3D-Ergebnis.md.
+
+Aus Phase 1 außerdem:
+
+- Aneinanderstoßende Transportflächen **nie exakt bündig**: das abnehmende Band 1–2 mm tiefer,
+  sonst hakt die Kiste an der Kante ein und springt.
+- Sensoren über Rapier-Schnittabfragen (`intersectionsWithShape`, nur dynamische Körper), keine
+  Sensor-Collider. Erzeuger legen nur auf, wenn der Platz frei ist.
+- Simulation ist bitgenau deterministisch (Node, Chromium, Firefox gleich). Tests prüfen trotzdem
+  vor allem Verhalten (Zähler, Signale); Positions-Hashes nur gezielt.
+- Rapier im node:vm-Kontext braucht die Globals `TextDecoder` und `performance`.
 
 ## 5. Phasen
 
@@ -140,7 +160,7 @@ das Verhalten der Anlage.
 |---|---|---|---|
 | 0a | `feature/tests` | Headless-Tests, Prüf-Agent, CI | – |
 | 0b | `feature/baum-ordner` | freie Ordner im Strukturbaum, Dateiformat v2 | – |
-| 1 | `feature/3d-spike` | `lib/vendor.js` bauen, Rapier + Three per Doppelklick laden, Kiste fällt auf ein Band und wird transportiert; Transportflächen-Methode festlegen | 0a |
+| 1 | `feature/3d-spike` | ✅ `lib/rapier.js` + `lib/three.js` bauen, Rapier + Three per Doppelklick laden, Demo `spike-3d.html`; Transportflächen-Methode festgelegt (siehe Abschnitt 4, Spike-3D-Ergebnis.md) | 0a |
 | 2 | `feature/physik-kern` | Datenmodell v3 + Migration, neue Engine auf Rapier, alle Katalog-Elemente als Vorlagen, Draufsicht zeichnet Körper; alte Raster-Engine entfällt | 0a, 0b, 1 |
 | 3 | `feature/formen` | Rechteck/Kreis/Polygon zeichnen, Höhe, freie Lage und Drehung, Körperart und Funktionen im Eigenschaften-Panel, Fangen | 2 |
 | 4 | `feature/achsen` | Achsen linear/rotatorisch mit allen Betriebsarten, Kopplung über den Baum, Achse in der Draufsicht anzeigen und ziehen | 2 (besser nach 3) |
