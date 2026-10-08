@@ -53,6 +53,7 @@ MF.history = {
       data = {
         name: MF.model.name,
         settings: MF.model.settings,
+        folders: MF.model.folders,
         elements: MF.model.elements,
         rules: MF.model.rules
       };
@@ -141,6 +142,13 @@ MF.history = {
       return el;
     }, this);
 
+    // Ordner (Strukturbaum): vorhandene Objekte weiterverwenden
+    var oldFolders = {};
+    (model.folders || []).forEach(function (f) { oldFolders[f.id] = f; });
+    model.folders = (data.folders || []).map(function (src) {
+      return this.assign(oldFolders[src.id] || {}, src);
+    }, this);
+
     var oldRules = {};
     model.rules.forEach(function (r) { oldRules[r.id] = r; });
     model.rules = (data.rules || []).map(function (src) {
@@ -149,9 +157,8 @@ MF.history = {
 
     // Auswahl nur behalten, wenn es den Knoten noch gibt
     var id = MF.store.selectedId;
-    var keep = !id || id === 'plant' || id === 'logic' ||
-      MF.store.findElement(id) || MF.store.findRule(id) ||
-      (id.indexOf('grp:') === 0 && model.elements.some(function (el) { return 'grp:' + el.group === id; }));
+    var keep = !id || id === 'project' || id === 'plant' || id === 'logic' ||
+      MF.store.findNode(id);
     if (!keep) MF.store.selectedId = null;
 
     this.restoring = true;

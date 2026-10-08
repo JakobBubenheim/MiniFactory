@@ -7,7 +7,8 @@
 //   Drehen     – Klick dreht das Element um 90° im Uhrzeigersinn
 //   Die Werkzeuge greifen auch, während die Simulation läuft.
 // - Fangen an: ganze Rasterzellen; aus: 0,1-Zellen-Schritte.
-// - Löschen mit Entf/Rücktaste, Duplizieren mit Strg/Cmd+D,
+// - Löschen mit Entf/Rücktaste, Duplizieren mit Strg/Cmd+D, Strg/Cmd+G packt
+//   die im Strukturbaum ausgewählten Einträge in einen neuen Ordner,
 //   Pfeiltasten verschieben um eine Zelle (mit Shift um fünf).
 // - Freie Fläche ziehen verschiebt die Ansicht, Mausrad zoomt.
 // Einfügen, Löschen und Duplizieren sind gesperrt, solange die Simulation läuft.
@@ -126,14 +127,11 @@ MF.editor = {
     return false;
   },
 
-  // Gruppe für neue Elemente: die des gewählten Elements bzw. Ordners
-  currentGroup: function () {
-    var id = MF.store.selectedId;
-    var el = MF.store.findElement(id);
-    if (el) return el.group;
-    if (id && id.indexOf('grp:') === 0) return id.slice(4);
-    var first = MF.model.elements[0];
-    return first ? first.group : 'Förderstrecke 1';
+  // Ordner für neue Elemente bzw. Regeln: der gewählte Ordner oder der Ordner des
+  // gewählten Elements bzw. der Regel – nur im passenden Bereich, sonst oberste Ebene.
+  currentParent: function (area) {
+    var t = MF.tree.target(MF.store.selectedId);
+    return t && t.area === area ? t.parent : null;
   },
 
   canvasPos: function (e) {
@@ -223,7 +221,7 @@ MF.editor = {
   },
 
   place: function (type, cell) {
-    var el = MF.store.createElement(type, cell.x, cell.y, this.currentGroup());
+    var el = MF.store.createElement(type, cell.x, cell.y, this.currentParent('plant'));
     MF.ui.message(el.name + ' (' + el.id + ') eingefügt.');
     return el;
   },
@@ -323,6 +321,12 @@ MF.editor = {
     var id = MF.store.selectedId;
     var el = MF.store.findElement(id);
     var rule = MF.store.findRule(id);
+    // Mehrfachauswahl oder Ordner im Strukturbaum
+    var sel = MF.tree.selection();
+    if (sel.length > 1 || MF.store.findFolder(id)) {
+      MF.tree.deleteNodes(sel.length ? sel : [id]);
+      return;
+    }
     if (el) {
       if (el.locked) { MF.ui.message(el.name + ' ist gesperrt.'); return; }
       if (!this.canEdit()) return;
@@ -333,7 +337,7 @@ MF.editor = {
       MF.store.deleteRule(id);
       MF.ui.message(rule.name + ' gelöscht.');
     } else {
-      MF.ui.message('Zum Löschen ein Element oder eine Regel auswählen.');
+      MF.ui.message('Zum Löschen ein Element, eine Regel oder einen Ordner auswählen.');
     }
   },
 
@@ -342,7 +346,7 @@ MF.editor = {
     if (!this.canEdit()) return;
     MF.tree.expanded.project = MF.tree.expanded.logic = true;
     MF.props.tab = 'props';
-    var rule = MF.store.createRule(kind);
+    var rule = MF.store.createRule(kind, this.currentParent('logic'));
     if (kind === 'scl') {
       MF.sclEditor.open(rule);
       MF.ui.message(rule.name + ' (' + rule.id + ') angelegt – Signale links in den Code ziehen.');
@@ -370,7 +374,14 @@ MF.editor = {
 
   duplicateSelected: function () {
     var el = MF.store.findElement(MF.store.selectedId);
-    if (!el) { MF.ui.message('Zum Duplizieren ein Element auswählen.'); return; }
+    var rule = MF.store.findRule(MF.store.selectedId);
+    if (rule) {
+      if (!this.canEdit()) return;
+      var r = MF.store.duplicateRule(rule.id);
+      MF.ui.message(r.name + ' (' + r.id + ') als Kopie angelegt.');
+      return;
+    }
+    if (!el) { MF.ui.message('Zum Duplizieren ein Element oder eine Regel auswählen.'); return; }
     if (!this.canEdit()) return;
     var copy = MF.store.duplicateElement(el.id);
     MF.ui.message(copy.name + ' (' + copy.id + ') als Kopie eingefügt.');
@@ -402,6 +413,11 @@ MF.editor = {
       }
       if (mod && (e.key === 'd' || e.key === 'D')) {
         self.duplicateSelected();
+        e.preventDefault();
+        return;
+      }
+      if (mod && !e.shiftKey && (e.key === 'g' || e.key === 'G')) {
+        MF.tree.groupSelected();
         e.preventDefault();
         return;
       }

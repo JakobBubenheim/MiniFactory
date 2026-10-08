@@ -6,7 +6,7 @@
 //   auf dasselbe Ziel sind ODER-verknüpft.
 // - 'scl': rule.code ist Structured Text (siehe logic/scl.js) und läuft in
 //   jedem Zyklus einmal von oben nach unten – nach den einfachen Regeln, in
-//   der Reihenfolge des Strukturbaums.
+//   der Reihenfolge des Strukturbaums (Tiefensuche, siehe order()).
 //
 // Ziele, die keine aktive Regel mehr schreibt (abgeschaltet, gelöscht,
 // umgestellt), fallen auf ihren Startwert zurück, statt hängen zu bleiben.
@@ -75,10 +75,23 @@ MF.logic = {
     return u.prog ? u.prog.reads : [];
   },
 
+  // Regeln in Ausführungsreihenfolge = Reihenfolge im Strukturbaum von oben nach
+  // unten (Tiefensuche): Ordner einer Ebene samt Inhalt zuerst, dann die Regeln
+  // dieser Ebene, jeweils in der Reihenfolge, in der sie im Baum stehen.
+  order: function () {
+    return MF.store.treeOrder('logic');
+  },
+
+  // Aktive SCL-Bausteine in Ausführungsreihenfolge
+  sclOrder: function () {
+    var self = this;
+    return this.order().filter(function (r) { return self.isScl(r) && self.isActive(r); });
+  },
+
   // Ein Logik-Zyklus. dt in Sekunden (für Zeitglieder in SCL).
   run: function (dt) {
     var self = this;
-    var rules = MF.model.rules;
+    var rules = this.order();
 
     // 1. Einfache Regeln: erst alle lesen, dann schreiben (gleiches Prozessabbild)
     var targets = {};
