@@ -336,3 +336,15 @@ test('Vorlagen-Körper bleiben nach freier Änderung stimmig', function () {
   assert.equal(a.regel('R1').when, 'LS1.Belegt');
   assert.equal(a.eigenschaft('LS1', 'debounce'), 0);
 });
+
+test('Zeichenwerkzeuge haben einen eigenen Reiter "Design" neben "Modell"', function () {
+  const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
+  const reiter = html.match(/data-tab="[a-z]+"/g).map(function (t) { return t.slice(10, -1); });
+  assert.equal(reiter[reiter.indexOf('modell') + 1], 'design', 'Design steht direkt nach Modell: ' + reiter);
+  const start = html.indexOf('data-page="design"');
+  assert.ok(start >= 0, 'Seite "design" fehlt');
+  const seite = html.slice(start, html.indexOf('data-page=', start + 10));
+  ['tool-rect', 'tool-circle', 'tool-polygon'].forEach(function (aktion) {
+    assert.ok(seite.indexOf('data-action="' + aktion + '"') >= 0, aktion + ' fehlt im Reiter Design');
+  });
+});

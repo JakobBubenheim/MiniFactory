@@ -88,6 +88,7 @@
 
       <nav class="ribbon-tabs" role="tablist" aria-label="Funktionen">
         <button class="ribbon-tab" role="tab" aria-selected="true"  data-tab="modell">Modell</button>
+        <button class="ribbon-tab" role="tab" aria-selected="false" data-tab="design">Design</button>
         <button class="ribbon-tab" role="tab" aria-selected="false" data-tab="komponenten">Komponenten</button>
         <button class="ribbon-tab" role="tab" aria-selected="false" data-tab="logik">Logik</button>
         <button class="ribbon-tab" role="tab" aria-selected="false" data-tab="simulation">Simulation</button>
@@ -124,18 +125,28 @@
         </div>
         <div class="rgroup">
           <div class="rgroup-items">
+            <button class="rbtn" data-action="duplicate" title="Duplizieren (Strg+D)"><svg><use href="#i-copy"/></svg><span>Duplizieren</span></button>
+            <button class="rbtn" data-action="delete" title="Löschen (Entf)"><svg><use href="#i-delete"/></svg><span>Löschen</span></button>
+          </div>
+          <div class="rgroup-label">Körper</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
+            <button class="rbtn" data-action="toggle-grid"><svg><use href="#i-grid"/></svg><span>Raster</span></button>
+            <button class="rbtn is-active" data-action="toggle-snap" title="Fangen: Punkte auf das Fangraster (5 cm), Drehung auf 5° einrasten; Alt hält Fangen beim Ziehen aus"><svg><use href="#i-snap"/></svg><span>Fangen</span></button>
+          </div>
+          <div class="rgroup-label">Raster</div>
+        </div>
+      </div>
+
+      <div class="ribbon-page" data-page="design" hidden>
+        <div class="rgroup">
+          <div class="rgroup-items">
             <button class="rbtn" data-action="tool-rect" title="Rechteck zeichnen (E): von Ecke zu Ecke ziehen"><svg><use href="#i-draw-rect"/></svg><span>Rechteck</span></button>
             <button class="rbtn" data-action="tool-circle" title="Kreis zeichnen (K): vom Mittelpunkt aus ziehen"><svg><use href="#i-draw-circle"/></svg><span>Kreis</span></button>
             <button class="rbtn" data-action="tool-polygon" title="Polygon zeichnen (P): Punkte klicken, Doppelklick schließt"><svg><use href="#i-draw-polygon"/></svg><span>Polygon</span></button>
           </div>
           <div class="rgroup-label">Zeichnen</div>
-        </div>
-        <div class="rgroup">
-          <div class="rgroup-items">
-            <button class="rbtn" data-action="duplicate" title="Duplizieren (Strg+D)"><svg><use href="#i-copy"/></svg><span>Duplizieren</span></button>
-            <button class="rbtn" data-action="delete" title="Löschen (Entf)"><svg><use href="#i-delete"/></svg><span>Löschen</span></button>
-          </div>
-          <div class="rgroup-label">Körper</div>
         </div>
         <div class="rgroup">
           <div class="rgroup-items">
