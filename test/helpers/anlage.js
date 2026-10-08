@@ -159,7 +159,7 @@ function neueAnlage(datei) {
     },
     /** Neues Element aus der Bibliothek; gibt die ID zurück */
     anlegen(typ, x, y) {
-      const e = MF.store.createElement(typ, x, y, 'Anlage');
+      const e = MF.store.createElement(typ, x, y, null);
       MF.history.canMerge = false;
       return e.id;
     },
@@ -210,6 +210,38 @@ function neueAnlage(datei) {
       const zelle = u.state[teile[0].toUpperCase()];
       if (!zelle) throw new Error('Variable "' + name + '" gibt es nicht');
       return teile.length > 1 ? zelle.fb[teile[1].toUpperCase()] : zelle.value;
+    },
+
+    // ---------- Strukturbaum: Ordner ----------
+
+    /** Neuer Ordner in bereich ('plant' | 'logic') unter eltern (Ordner-ID oder null); gibt die ID zurück */
+    ordnerAnlegen(bereich, eltern, name) {
+      const f = MF.store.createFolder(bereich, eltern || null, name);
+      MF.history.canMerge = false;
+      return f.id;
+    },
+    ordnerLoeschen(id) {
+      if (!MF.store.findFolder(id)) throw new Error('Ordner "' + id + '" gibt es nicht');
+      MF.store.deleteFolder(id);
+      MF.history.canMerge = false;
+    },
+    /** Alle Ordner als [{ id, name, parent, area }] in Array-Reihenfolge */
+    ordnerListe() { return kopie(MF.model.folders || []); },
+    /** Eltern-Ordner eines Elements, einer Regel oder eines Ordners (null = oberste Ebene) */
+    eltern(id) {
+      const n = MF.store.findNode(id);
+      if (!n) throw new Error('Knoten "' + id + '" gibt es nicht');
+      return MF.store.parentOf(n.obj, n.area);
+    },
+    /** Knoten verschieben wie per Ziehen im Baum; gibt die Anzahl verschobener Knoten zurück */
+    verschieben(ids, bereich, eltern, vorId) {
+      const n = MF.store.moveNodes(ids, bereich, eltern || null, vorId || null);
+      MF.history.canMerge = false;
+      return n;
+    },
+    /** IDs der Elemente bzw. Regeln in Baum-Reihenfolge (Tiefensuche) */
+    baumReihenfolge(bereich) {
+      return kopie(MF.store.treeOrder(bereich).map(function (o) { return o.id; }));
     },
 
     // ---------- Rückgängig / Wiederholen ----------
