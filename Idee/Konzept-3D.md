@@ -269,7 +269,7 @@ Phasen 3 und 5 können parallel laufen.
   Anlage nicht „ungespeichert“**. Fehlt der Stand oder ist er ungültig, wird eingepasst (alle Ecken des
   Hüllquaders im Bild, Blick vom unteren Rand der Draufsicht schräg von oben).
 - **Layout:** Draufsicht und 3D nebeneinander (Teiler verschiebbar, Doppelklick = Hälfte), umschaltbar
-  auf nur Draufsicht / nur 3D (Ribbon „Ansicht“ und Knöpfe in beiden Ansichtsleisten). Wahl und Teilung
+  auf nur Draufsicht / nur 3D (großer Umschalter „2D / 2D + 3D / 3D“ in der Titelleiste, immer sichtbar; dazu Ribbon „Ansicht“ und Knöpfe in beiden Ansichtsleisten). Wahl und Teilung
   merkt sich der **Browser** (localStorage `mf.view.mode`, `mf.view.split`), nicht die Anlage.
 - **Rendern:** nur wenn die 3D-Ansicht sichtbar ist; läuft die Simulation, jedes Bild; sonst nur bei
   Modelländerung, Auswahl, Kamerabewegung (auch Nachlauf), Einzelschritt/Reset oder geänderten

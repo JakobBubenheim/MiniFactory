@@ -157,11 +157,51 @@ button, input, select {
   border-bottom-color: var(--accent);
 }
 
+/* Umschalter 2D / 2D + 3D / 3D – groß und immer sichtbar in der Titelleiste */
+.viewswitch {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 0 10px;
+  border-left: 1px solid var(--line);
+}
+
+.vsbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 14px;
+  background: var(--dark-2);
+  border: 1px solid var(--line);
+  margin-left: -1px;
+  color: var(--light-dim);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.vsbtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.vsbtn:hover {
+  color: var(--light);
+  background: var(--dark-3);
+}
+
+.vsbtn.is-active {
+  color: var(--dark);
+  background: var(--accent);
+  border-color: var(--accent);
+  position: relative;   /* aktive Kante liegt über den Nachbarn */
+}
+
 .transport {
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-left: auto;
   padding: 0 10px;
   border-left: 1px solid var(--line);
 }

@@ -94,6 +94,13 @@
         <button class="ribbon-tab" role="tab" aria-selected="false" data-tab="ansicht">Ansicht</button>
       </nav>
 
+      <!-- Ansicht umschalten: immer sichtbar, egal welcher Reiter offen ist -->
+      <div class="viewswitch" role="group" aria-label="Ansicht">
+        <button class="vsbtn" data-action="layout-2d" title="Nur die Draufsicht zeigen"><svg><use href="#i-view2d"/></svg><span>2D</span></button>
+        <button class="vsbtn" data-action="layout-split" title="Draufsicht und 3D nebeneinander"><svg><use href="#i-split"/></svg><span>2D + 3D</span></button>
+        <button class="vsbtn" data-action="layout-3d" title="Nur die 3D-Ansicht zeigen"><svg><use href="#i-view3d"/></svg><span>3D</span></button>
+      </div>
+
       <div class="transport" aria-label="Simulationssteuerung">
         <button class="tbtn" title="Aufnahme" data-stage="später"><svg class="rec"><use href="#i-record"/></svg></button>
         <button class="tbtn" title="Reset (R)" data-action="sim-reset"><svg><use href="#i-reset"/></svg></button>
