@@ -153,6 +153,9 @@ MF.ui = {
         case 'tool-select': MF.editor.setTool('select'); break;
         case 'tool-move':   MF.editor.setTool('move'); break;
         case 'tool-rotate': MF.editor.setTool('rotate'); break;
+        case 'tool-rect':    MF.editor.setTool('rect'); break;
+        case 'tool-circle':  MF.editor.setTool('circle'); break;
+        case 'tool-polygon': MF.editor.setTool('polygon'); break;
         case 'toggle-snap': MF.editor.toggleSnap(); break;
         case 'file-new':  MF.file.newPlant(); break;
         case 'file-open': MF.file.open(); break;
@@ -186,7 +189,7 @@ MF.ui = {
   // Markiert Raster-, Namen- und Fangen-Buttons als aktiv, wenn eingeschaltet,
   // und genau einen Werkzeug-Button.
   syncToggles: function () {
-    ['select', 'move', 'rotate'].forEach(function (t) {
+    Object.keys(MF.editor.TOOLS).forEach(function (t) {
       document.querySelectorAll('[data-action="tool-' + t + '"]').forEach(function (b) {
         b.classList.toggle('is-active', MF.editor.tool === t);
         b.setAttribute('aria-pressed', String(MF.editor.tool === t));

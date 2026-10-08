@@ -1,7 +1,11 @@
 // Eigenschaften-Panel: zeigt den im Baum oder auf der Fläche gewählten Knoten.
-// Körper haben die Tabs Eigenschaften | I/O | Darstellung. Die Eigenschaften der
-// Vorlage (Tempo, Richtung, Hub …) werden aus den Funktionen des Körpers gelesen
-// und dorthin geschrieben (MF.getProp/MF.setProp in sim/model.js).
+// Körper haben die Tabs Eigenschaften | I/O | Darstellung. Eigenschaften:
+//   Allgemein, Form & Lage (Maße, Höhe, Neigung, x/y/z, Drehung), Körperart,
+//   je Funktion ein Abschnitt (Felder, Entfernen), Funktion hinzufügen, Werkstoff.
+// Die Eigenschaften einer Vorlage (Tempo, Richtung, Hub …) erscheinen im Abschnitt
+// ihrer Funktion und werden über MF.getProp/MF.setProp gelesen und geschrieben;
+// frei gezeichnete Körper zeigen die allgemeinen Felder der Funktion (MF.FUNCTIONS).
+// Was erlaubt ist (Funktion je Körperart, Neigung), prüft das Modell (sim/model.js).
 window.MF = window.MF || {};
 
 MF.props = {
@@ -135,6 +139,15 @@ MF.props = {
         }
         input.appendChild(opt);
       });
+      // Aktueller Wert, der keine der Optionen ist (z. B. Band schräg gedreht): als "–" zeigen
+      var known = def.options.some(function (o) { return (o !== null && typeof o === 'object' ? o.value : o) === value; });
+      if (!known) {
+        var cur = document.createElement('option');
+        cur.value = value;
+        cur.textContent = value === '' ? '–' : value;
+        cur.disabled = true;
+        input.insertBefore(cur, input.firstChild);
+      }
       input.value = value;
       if (def.readonly) input.disabled = true;
       if (editable) input.addEventListener('change', function () { onChange(input.value); });
@@ -243,13 +256,16 @@ MF.props = {
 
   // ---------- Körper ----------
 
-  KIND_LABELS: { ghost: 'immateriell', static: 'fest', kinematic: 'kinematisch', dynamic: 'dynamisch' },
+  KIND_LABELS: MF.KIND_LABELS,
+  KIND_HINT: 'immateriell: keine Kollision (Sensor, Erzeuger, Senke) · fest: bewegt sich nie (Transportfläche, Neigung) · ' +
+    'kinematisch: nur über die Achse (Transportfläche, Achse) · dynamisch: fällt und rutscht mit der Physik',
+  SHAPE_LABELS: { rect: 'Rechteck', circle: 'Kreis', polygon: 'Polygon' },
 
   renderBody: function (el) {
     var self = this;
     var t = MF.templates[el.template];
     var typeLabel = t ? t.label : 'Körper';
-    this.header(MF.bodyIcon(el), el.name, el.id + ' · ' + typeLabel);
+    this.header(MF.bodyIcon(el), el.name, el.id + ' · ' + typeLabel + ' · ' + (this.KIND_LABELS[el.kind] || el.kind));
     this.tabs([['props', 'Eigenschaften'], ['io', 'I/O'], ['look', 'Darstellung']]);
     var body = this.body();
 
@@ -257,57 +273,14 @@ MF.props = {
       var s1 = this.section(body, 'Allgemein');
       this.field(s1, { label: 'Name', type: 'text' }, el.name, function (v) { el.name = v; self.commit(); self.render(); });
       this.field(s1, { label: 'ID', type: 'text', readonly: true }, el.id);
-      this.field(s1, { label: 'Vorlage', type: 'text', readonly: true }, typeLabel);
-      this.field(s1, { label: 'Körperart', type: 'text', readonly: true,
-        hint: 'immateriell: keine Kollision · fest: bewegt sich nie · kinematisch: nur über die Achse · dynamisch: Schwerkraft und Stöße' },
-        this.KIND_LABELS[el.kind] || el.kind);
+      this.field(s1, { label: 'Vorlage', type: 'text', readonly: true, hint: 'Vorlagen sind vorkonfigurierte Körper und lassen sich danach frei ändern' },
+        t ? t.label : 'keine (gezeichnet)');
       this.folderField(s1, el, 'plant');
 
-      var s2 = this.section(body, 'Lage');
-      var locked = el.look.locked;
-      // Schrittweite folgt dem Fangen
-      var step = MF.editor.snapStep();
-      this.field(s2, { label: 'X', type: 'number', unit: 'm', step: step, quantize: true, readonly: locked }, el.pose.x,
-        function (v) { el.pose.x = MF.editor.snapValue(v); self.commit(); });
-      this.field(s2, { label: 'Y', type: 'number', unit: 'm', step: step, quantize: true, readonly: locked }, el.pose.y,
-        function (v) { el.pose.y = MF.editor.snapValue(v); self.commit(); });
-      var rots = ['0', '90', '180', '270'];
-      if (rots.indexOf(String(el.pose.rot)) < 0) rots.push(String(el.pose.rot));
-      this.field(s2, { label: 'Drehung', type: 'select', options: rots, unit: '°',
-        readonly: locked, hint: 'Im Uhrzeigersinn um die Lage; Lauf- bzw. Schubrichtung drehen mit' },
-        String(el.pose.rot), function (v) { MF.editor.setRotation(el, parseFloat(v)); self.render(); });
-      this.field(s2, { label: 'Höhe (z)', type: 'number', unit: 'm', readonly: true,
-        hint: 'Unterseite über dem Boden; frei änderbar ab Phase 3' }, el.pose.z);
-      if (el.surface && el.shape.type === 'rect') {
-        // Länge in Laufrichtung (lokal x bei 0°/180°, sonst y)
-        var len = Math.abs(Math.cos(el.surface.dir * Math.PI / 180)) > 0.5 ? 'w' : 'd';
-        this.field(s2, { label: 'Länge', type: 'number', unit: 'm', step: 0.5, min: 0.5, readonly: locked }, el.shape[len],
-          function (v) { el.shape[len] = Math.max(0.1, v); self.commit(); });
-      }
-
-      var s3 = this.section(body, 'Verhalten');
-      MF.propsOf(el).forEach(function (p) {
-        var input = self.field(s3, p, MF.getProp(el, p.key), function (v) {
-          MF.setProp(el, p.key, v);
-          // Richtung dreht den Körper: Lage und Panel neu zeigen
-          if (p.key === 'direction') { MF.store.changed(); self.render(); return; }
-          self.commit();
-        });
-        if (p.live) input.dataset.live = p.key;  // z. B. Zählerstand läuft mit
-      });
-
-      if (el.sink) {
-        var reset = document.createElement('button');
-        reset.type = 'button';
-        reset.className = 'props-action';
-        reset.textContent = 'Zähler zurücksetzen';
-        reset.addEventListener('click', function () {
-          el.rt.count = 0;
-          self.commit();
-          self.refreshLive();
-        });
-        s3.appendChild(reset);
-      }
+      this.renderForm(body, el);
+      this.renderKind(body, el);
+      this.renderFunctions(body, el);
+      this.renderMaterial(body, el);
     }
 
     if (this.tab === 'io') {
@@ -352,6 +325,209 @@ MF.props = {
       this.field(s4, { label: 'Farbe', type: 'color' }, el.look.color, function (v) { el.look.color = v; self.commit(); });
       this.field(s4, { label: 'Sichtbar', type: 'bool' }, el.look.visible, function (v) { el.look.visible = v; self.commit(); });
       this.field(s4, { label: 'Gesperrt', type: 'bool' }, el.look.locked, function (v) { el.look.locked = v; self.commit(); self.render(); });
+    }
+  },
+
+  // Form und Lage über das Modell ändern (prüft z. B. Polygon, Neigung).
+  // Bei einem Fehler bleibt der alte Wert; die Meldung steht in der Statusleiste.
+  setForm: function (el, changes, rerender) {
+    var err = MF.setForm(el, changes);
+    if (err) { MF.ui.message(err); this.render(); return false; }
+    this.commit();
+    if (rerender) this.render();
+    return true;
+  },
+
+  // Form & Lage: Formtyp, Maße, Höhe, Neigung, x, y, z, Drehung (m bzw. Grad)
+  renderForm: function (body, el) {
+    var self = this, sh = el.shape;
+    var ro = el.look.locked;
+    var s = this.section(body, 'Form & Lage');
+    var step = MF.editor.snapStep();   // Schrittweite folgt dem Fangen
+    var len = { type: 'number', unit: 'm', step: step, min: 0.01, max: 100, readonly: ro };
+    function f(label, hint, extra) {
+      var d = {};
+      for (var k in len) d[k] = len[k];
+      d.label = label;
+      d.hint = hint;
+      for (var e in extra || {}) d[e] = extra[e];
+      return d;
+    }
+    this.field(s, { label: 'Form', type: 'text', readonly: true, hint: 'Grundriss in der Draufsicht; ändern über die Griffe auf der Fläche' },
+      this.SHAPE_LABELS[sh.type] + (sh.type === 'polygon' ? ' (' + sh.points.length + ' Punkte)' : ''));
+    if (sh.type === 'rect') {
+      this.field(s, f('Breite', 'Ausdehnung in lokaler x-Richtung'), sh.w, function (v) { self.setForm(el, { w: v }); });
+      this.field(s, f('Tiefe', 'Ausdehnung in lokaler y-Richtung'), sh.d, function (v) { self.setForm(el, { d: v }); });
+    } else if (sh.type === 'circle') {
+      this.field(s, f('Radius', 'Radius des Kreises'), sh.r, function (v) { self.setForm(el, { r: v }); });
+    }
+    var sloped = MF.geom.isSloped(sh);
+    this.field(s, f(sloped ? 'Höhe Anfang' : 'Höhe', sloped ? 'Höhe am Anfang (kleinstes lokales x)' : 'Höhe des Körpers (Extrusion)'),
+      sh.h, function (v) { self.setForm(el, { h: v }, sloped); });
+
+    // Neigung: nur bei festen Körpern ohne Transportfläche (Konzept, Abschnitt 3)
+    var slopeErr = sloped ? '' : MF.slopeError(el);
+    this.field(s, { label: 'Oberseite', type: 'select', readonly: ro || !!slopeErr,
+      options: [{ value: 'flat', label: 'eben' }, { value: 'slope', label: 'geneigt (Keil)' }],
+      hint: slopeErr || 'Geneigt: Höhe läuft entlang der lokalen x-Achse von "Höhe Anfang" nach "Höhe Ende" – z. B. für eine Rutsche' },
+      sloped ? 'slope' : 'flat', function (v) {
+        self.setForm(el, { h2: v === 'slope' ? Math.round(el.shape.h / 2 * 1e6) / 1e6 : null }, true);
+      });
+    if (sloped) {
+      this.field(s, f('Höhe Ende', 'Höhe am Ende (größtes lokales x)', { min: 0 }), sh.h2,
+        function (v) { self.setForm(el, { h2: v }, true); });
+      this.field(s, { label: 'Gefälle', type: 'text', readonly: true, hint: 'Neigung der Oberseite; bergab zeigt der Pfeil auf der Fläche' },
+        this.formatNumber(Math.round(MF.geom.slopeDeg(sh) * 10) / 10) + '°');
+    }
+
+    this.field(s, f('X', 'Lage in der Draufsicht (nach rechts)', { quantize: true, min: -1000, max: 1000 }), el.pose.x,
+      function (v) { self.setForm(el, { x: MF.editor.snapValue(v) }); });
+    this.field(s, f('Y', 'Lage in der Draufsicht (nach unten)', { quantize: true, min: -1000, max: 1000 }), el.pose.y,
+      function (v) { self.setForm(el, { y: MF.editor.snapValue(v) }); });
+    this.field(s, f('Z (Unterseite)', 'Höhe der Unterseite über dem Boden', { min: -10, max: 100 }), el.pose.z,
+      function (v) { self.setForm(el, { z: v }); });
+    this.field(s, { label: 'Drehung', type: 'number', unit: '°', step: MF.editor.snap ? MF.model.settings.snap.angle || 5 : 1,
+      min: -360, max: 720, readonly: ro, hint: 'Im Uhrzeigersinn um die Lage; Lauf- bzw. Schubrichtung drehen mit' },
+      el.pose.rot, function (v) { MF.editor.setRotation(el, v); });
+  },
+
+  // Körperart. Fallen dabei Funktionen weg, wird vorher gefragt.
+  renderKind: function (body, el) {
+    var self = this;
+    var s = this.section(body, 'Körperart');
+    var options = MF.file.KINDS.map(function (k) { return { value: k, label: self.KIND_LABELS[k] + ' (' + k + ')' }; });
+    this.field(s, { label: 'Körperart', type: 'select', options: options, readonly: el.look.locked, hint: this.KIND_HINT },
+      el.kind, function (v) { self.changeKind(el, v); });
+  },
+
+  changeKind: function (el, kind) {
+    var res = MF.setKind(el, kind, true);
+    var lost = res.fns.map(function (fn) { return MF.FUNCTIONS[fn].label; });
+    if (res.slope) lost.push('Neigung');
+    if (lost.length && !window.confirm('Als "' + this.KIND_LABELS[kind] + '" gibt es ' + lost.join(', ') +
+        ' nicht. Entfernen und Körperart wechseln?')) {
+      this.render();
+      return;
+    }
+    res = MF.setKind(el, kind);
+    MF.store.dropSignals(el.id, res.signals);
+    MF.store.changed();
+    this.render();
+    MF.ui.message(el.name + ' ist jetzt ' + this.KIND_LABELS[kind] + (lost.length ? ' – entfernt: ' + lost.join(', ') : '') +
+      (res.density ? ' – Dichte auf ' + res.density + ' kg/m³ gesetzt' : '') + '.');
+  },
+
+  // Je Funktion ein Abschnitt; darunter "Funktion hinzufügen" mit den erlaubten
+  renderFunctions: function (body, el) {
+    var self = this;
+    MF.FN_KEYS.forEach(function (fn) {
+      if (el[fn]) self.renderFunction(body, el, fn);
+    });
+
+    var s = this.section(body, 'Funktion hinzufügen');
+    var free = MF.allowedFns(el.kind).filter(function (fn) { return !el[fn]; });
+    var options = [{ value: '', label: free.length ? 'wählen …' : 'keine weitere möglich' }];
+    free.forEach(function (fn) {
+      var err = MF.fnError(el, fn);
+      options.push({ value: fn, label: MF.FUNCTIONS[fn].label + (err ? ' (nicht bei Neigung)' : '') });
+    });
+    var sel = this.field(s, { label: 'Funktion', type: 'select', options: options, readonly: !free.length,
+      hint: 'Transportfläche: fest/kinematisch · Achse: kinematisch · Sensor, Erzeuger, Senke: immateriell' }, '',
+      function (fn) {
+        if (!fn) return;
+        var err = MF.addFunction(el, fn);
+        if (err) { MF.ui.message(err); self.render(); return; }
+        MF.store.changed();
+        self.render();
+        MF.ui.message(MF.FUNCTIONS[fn].label + ' angelegt – Signale: ' +
+          MF.FUNCTIONS[fn].io(el[fn]).map(function (x) { return el.id + '.' + x.name; }).join(', ') + '.');
+      });
+    // Nicht mögliche Funktionen ausgrauen
+    Array.prototype.forEach.call(sel.options || [], function (o) {
+      if (o.value && MF.fnError(el, o.value)) o.disabled = true;
+    });
+    var note = document.createElement('div');
+    note.className = 'io-note';
+    var kinds = el.kind === 'dynamic' ? 'Dynamische Körper haben keine Funktionen.'
+      : 'Erlaubt bei "' + this.KIND_LABELS[el.kind] + '": ' + MF.allowedFns(el.kind).map(function (fn) { return MF.FUNCTIONS[fn].label; }).join(', ') + '.';
+    note.textContent = kinds;
+    s.appendChild(note);
+  },
+
+  renderFunction: function (body, el, fn) {
+    var self = this, F = MF.FUNCTIONS[fn];
+    var s = this.section(body, 'Funktion: ' + F.label);
+    // Vorlagen zeigen ihre eigenen Eigenschaften (z. B. Hub in mm), sonst die allgemeinen Felder
+    var tprops = MF.propsOf(el).filter(function (p) { return p.fn === fn; });
+    if (tprops.length) {
+      tprops.forEach(function (p) {
+        var input = self.field(s, p, MF.getProp(el, p.key), function (v) {
+          MF.setProp(el, p.key, v);
+          // Richtung dreht den Körper: Lage und Panel neu zeigen
+          if (p.key === 'direction') { MF.store.changed(); self.render(); return; }
+          self.commit();
+        });
+        if (p.live) input.dataset.live = p.key;
+      });
+    } else {
+      F.fields.forEach(function (d) {
+        var get = function () { return d.get ? d.get(d.body ? el : el[fn]) : el[fn][d.field]; };
+        var input = self.field(s, d, get(), d.readonly ? null : function (v) {
+          if (d.set) d.set(el[fn], v);
+          else el[fn][d.field] = v;
+          self.commit();
+        });
+        if (d.live) { input.dataset.live = d.key; input.dataset.liveFn = fn; }
+      });
+    }
+
+    if (fn === 'sink') {
+      var reset = document.createElement('button');
+      reset.type = 'button';
+      reset.className = 'props-action';
+      reset.textContent = 'Zähler zurücksetzen';
+      reset.addEventListener('click', function () {
+        el.rt.count = 0;
+        self.commit();
+        self.refreshLive();
+      });
+      s.appendChild(reset);
+    }
+
+    var rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'props-action';
+    rm.textContent = F.label + ' entfernen';
+    rm.disabled = el.look.locked;
+    rm.title = 'Funktion und ihre Signale entfernen; Regeln darauf verlieren den Bezug';
+    rm.addEventListener('click', function () {
+      var gone = MF.removeFunction(el, fn);
+      MF.store.dropSignals(el.id, gone);
+      MF.store.changed();
+      self.render();
+      MF.ui.message(F.label + ' von ' + el.name + ' entfernt' + (gone.length ? ' – Signale ' + gone.join(', ') + ' gibt es nicht mehr' : '') + '.');
+    });
+    s.appendChild(rm);
+  },
+
+  // Werkstoff: Reibung, Stoßzahl, Dichte (nur bei dynamischen Körpern wirksam)
+  renderMaterial: function (body, el) {
+    var self = this;
+    if (el.kind === 'ghost') return;   // keine Kollision, kein Werkstoff
+    if (!el.material) el.material = JSON.parse(JSON.stringify(MF.MATERIALS.body));
+    var m = el.material;
+    var s = this.section(body, 'Werkstoff');
+    var ro = el.look.locked;
+    this.field(s, { label: 'Reibung', type: 'number', step: 0.05, min: 0, max: 2, readonly: ro,
+      hint: 'Reibwert μ; zwischen zwei Körpern gilt der kleinere (Kiste 0,6, Rutsche 0,1). Bei Transportflächen: Haftung der Nachführung' },
+      m.friction, function (v) { m.friction = v; self.commit(); });
+    this.field(s, { label: 'Stoßzahl', type: 'number', step: 0.05, min: 0, max: 1, readonly: ro,
+      hint: '0 = kein Abprallen, 1 = voll elastisch; zwischen zwei Körpern gilt der kleinere' },
+      m.restitution || 0, function (v) { m.restitution = v; self.commit(); });
+    if (el.kind === 'dynamic') {
+      this.field(s, { label: 'Dichte', type: 'number', unit: 'kg/m³', step: 50, min: 10, max: 20000, readonly: ro,
+        hint: 'Masse je Volumen; nur bei dynamischen Körpern wirksam (Kiste 200, Holz 500, Stahl 7850)' },
+        m.density, function (v) { m.density = v; self.commit(); });
     }
   },
 
@@ -681,7 +857,13 @@ MF.props = {
     var el = MF.store.findBody(MF.store.selectedId);
     if (!el) return;
     this.root.querySelectorAll('[data-live]').forEach(function (input) {
-      input.value = MF.props.formatNumber(MF.getProp(el, input.dataset.live));
+      var fn = input.dataset.liveFn, v;
+      if (fn) {
+        // Allgemeines Feld einer Funktion (frei gezeichneter Körper)
+        var d = (MF.FUNCTIONS[fn].fields || []).filter(function (x) { return x.key === input.dataset.live; })[0];
+        v = d && el[fn] ? (d.get ? d.get(d.body ? el : el[fn]) : el[fn][d.field]) : undefined;
+      } else v = MF.getProp(el, input.dataset.live);
+      input.value = MF.props.formatNumber(v);
     });
     this.root.querySelectorAll('tr[data-signal]').forEach(function (tr) {
       var name = tr.dataset.signal;
