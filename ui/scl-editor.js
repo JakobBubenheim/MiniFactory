@@ -393,11 +393,10 @@ MF.sclEditor = {
     });
     if (lhtml) html += '<div class="scl-var-group">Eigene Variablen</div>' + lhtml;
 
-    // Signale der Anlage, je Element
-    MF.model.elements.forEach(function (el) {
-      var type = MF.types[el.type];
+    // Signale der Anlage, je Körper
+    MF.model.bodies.forEach(function (el) {
       var rows = '';
-      type.io.forEach(function (s) {
+      MF.io(el).forEach(function (s) {
         if (!match(el.id + ' ' + el.name + ' ' + s.name + ' ' + s.type)) return;
         var ins = '"' + el.id + '".' + s.name;
         rows += '<div class="scl-var" draggable="true" data-insert="' + self.attr(ins) + '" data-el="' + self.attr(el.id) + '" data-signal="' + self.attr(s.name) + '"' +
@@ -420,7 +419,7 @@ MF.sclEditor = {
     this.varList.querySelectorAll('.scl-var').forEach(function (row) {
       var v;
       if (row.dataset.el) {
-        var el = MF.store.findElement(row.dataset.el);
+        var el = MF.store.findBody(row.dataset.el);
         if (!el) return;
         v = MF.engine.signal(el, row.dataset.signal);
       } else {

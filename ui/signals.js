@@ -52,8 +52,8 @@ MF.signals = {
   // Alle Signale als flache Liste
   list: function () {
     var out = [];
-    MF.model.elements.forEach(function (el) {
-      MF.types[el.type].io.forEach(function (s) {
+    MF.model.bodies.forEach(function (el) {
+      MF.io(el).forEach(function (s) {
         var sig = el.id + '.' + s.name;
         var rules = s.dir === 'in' ? MF.logic.rulesSetting(sig) : MF.logic.rulesReading(sig);
         out.push({ el: el, def: s, sig: sig, rules: rules });
@@ -107,7 +107,7 @@ MF.signals = {
   refreshLive: function () {
     if (!this.dialog || !this.isOpen()) return;
     this.rows.querySelectorAll('tr[data-el]').forEach(function (tr) {
-      var el = MF.store.findElement(tr.dataset.el);
+      var el = MF.store.findBody(tr.dataset.el);
       if (!el) return;
       var name = tr.dataset.signal;
       var def = MF.engine.ioDef(el, name);
