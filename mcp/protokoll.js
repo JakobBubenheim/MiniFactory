@@ -6,8 +6,9 @@
 //   resultType "complete" und serverInfo in _meta. server/discover liefert Versionen,
 //   Fähigkeiten und instructions.
 // - alt ("legacy", 2025-11-25 bis 2024-11-05): initialize mit Versionsaushandlung,
-//   danach notifications/initialized. Claude Desktop und Claude Code sprechen (Stand
-//   Oktober 2026) noch diese Form.
+//   danach notifications/initialized. Für ältere Clients (z. B. Claude Desktop).
+// Claude Code 2.1 spricht bereits die neue Form und prüft dabei die Cache-Hinweise
+// (ttlMs, cacheScope), die Listen und resources/read tragen müssen.
 // Die Anfragen werden der Reihe nach abgearbeitet – die Sitzung ist ein Zustand
 // (die offene Anlage), zwei Werkzeuge dürfen nicht gleichzeitig daran ändern.
 'use strict';
@@ -21,6 +22,11 @@ const META = {
   caps: 'io.modelcontextprotocol/clientCapabilities',
   serverInfo: 'io.modelcontextprotocol/serverInfo'
 };
+
+// Cache-Hinweise (neue Form): Werkzeuge, Prompts und Ressourcen ändern sich nur mit
+// einer neuen Server-Version und sind für alle Nutzer gleich.
+const CACHEBAR = ['server/discover', 'tools/list', 'prompts/list', 'resources/list', 'resources/templates/list', 'resources/read'];
+const CACHE_MS = 3600000;
 
 const FEHLER = {
   parse: -32700, ungueltig: -32600, methode: -32601, params: -32602, intern: -32603,
@@ -127,6 +133,7 @@ function erzeugeServer(o) {
       const result = await m(params || {}, modern);
       if (modern) {
         result.resultType = 'complete';
+        if (CACHEBAR.indexOf(msg.method) >= 0) { result.ttlMs = CACHE_MS; result.cacheScope = 'public'; }
         result._meta = Object.assign({}, result._meta, { [META.serverInfo]: o.info });
       }
       return { jsonrpc: '2.0', id: msg.id, result: result };
