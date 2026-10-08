@@ -4,7 +4,9 @@
   "private": true,
   "description": "Mini-Fabrik: Förderanlage mit SPS-Logik im Browser",
   "scripts": {
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "mcp": "node mcp/server.js",
+    "mcp:pack": "node mcp/pack.js"
   },
   "engines": {
     "node": ">=22"

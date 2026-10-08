@@ -3,3 +3,6 @@
 
 # Lock-Dateien von super.engineering
 .superconductor-*.lock
+
+# Gebautes Claude-Desktop-Bündel (npm run mcp:pack)
+dist/
