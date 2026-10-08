@@ -42,7 +42,9 @@ const SKRIPTE = [
   'logic/logic.js',
   'sim/migrate.js',
   'sim/file.js',
-  'ui/history.js'
+  'ui/history.js',
+  'ui/view3d-core.js',  // 3D-Ansicht: reine Rechnung (Prisma, Interpolation, Kamera)
+  'ui/view3d.js'        // lädt ohne Three.js und DOM; Renderer erst in start(), hier nie
 ];
 
 // Quelltexte nur einmal lesen und übersetzen, ausgeführt wird je Kontext neu
