@@ -46,21 +46,45 @@ test('Kiste erreicht die Senke SE1 am Bandende', function () {
 });
 
 test('Kisten stauen sich am Bandende, statt sich zu überlappen', function () {
-  const a = neueAnlage(plaene.strecke({ senke: false, quelle: { interval: 0.5 } }));
+  // In echter Physik fallen Kisten vom offenen Bandende herunter. Den Stau bildet
+  // deshalb ein Anschlag: ein ausgefahrener Schieber über den letzten 0,5 m des Bands.
+  const d = plaene.strecke({ senke: false, quelle: { interval: 0.5 } });
+  const anschlag = plaene.element('S1', 'pusher', 8, -1, 1, 1, { stroke: 400, speed: 1, returnDelay: 0, direction: 'unten' });
+  anschlag.inputs = { Ausfahren: 1 };
+  d.elements.push(anschlag);
+  const a = neueAnlage(d);
   a.laufen(30);
   const kisten = a.kisten();
   const s = a.kistenGroesse();
+  // Kontakte geben in Rapier um gut 1 mm nach (Kontaktsteifigkeit 60 Hz, Spike-Ergebnis 4.1)
+  const spiel = 0.002;
   assert.ok(kisten.length >= 8, 'genug Kisten für einen Stau: ' + kisten.length);
   for (let i = 0; i < kisten.length; i++) {
     for (let j = i + 1; j < kisten.length; j++) {
       const dx = Math.abs(kisten[i].x - kisten[j].x), dy = Math.abs(kisten[i].y - kisten[j].y);
-      assert.ok(!(dx < s - 1e-6 && dy < s - 1e-6), 'Kisten ' + i + ' und ' + j + ' überlappen');
+      assert.ok(!(dx < s - spiel && dy < s - spiel), 'Kisten ' + i + ' und ' + j + ' überlappen');
     }
   }
-  // Der Stau steht: weitere Zeit ändert nichts mehr an den Lagen
+  // Der Stau steht: weitere Zeit ändert die Lagen höchstens um Bruchteile eines Millimeters
   a.laufen(2);
-  assert.deepEqual(a.kisten().slice(0, kisten.length), kisten);
+  a.kisten().slice(0, kisten.length).forEach(function (k, i) {
+    assert.ok(Math.abs(k.x - kisten[i].x) < 0.001 && Math.abs(k.y - kisten[i].y) < 0.001, 'Kiste ' + i + ' bewegt sich noch');
+  });
 });
+
+// Kisten stehen nach dem Abschalten still, höchstens nach kurzem Bremsweg
+// (das Band steht sofort, die Kiste rutscht wie in echt ein Stück nach).
+function stehenStill(a, vorher) {
+  const BREMSWEG = 0.03;
+  a.laufen(0.5);
+  const stand = a.kisten().slice(0, vorher.length);
+  stand.forEach(function (k, i) {
+    assert.ok(Math.abs(k.x - vorher[i].x) < BREMSWEG && Math.abs(k.y - vorher[i].y) < BREMSWEG,
+      'Kiste ' + i + ' ist zu weit gefahren: ' + JSON.stringify(vorher[i]) + ' -> ' + JSON.stringify(k));
+  });
+  a.laufen(2.5);
+  assert.deepEqual(a.kisten().slice(0, stand.length), stand, 'danach bewegt sich nichts mehr');
+}
 
 test('Band aus: Kisten bleiben stehen, Läuft = 0', function () {
   const a = neueAnlage(plaene.strecke());
@@ -69,17 +93,14 @@ test('Band aus: Kisten bleiben stehen, Läuft = 0', function () {
   a.setzen('B1.Ein', 0);
   const vorher = a.kisten();
   assert.ok(vorher.length > 0);
-  a.laufen(3);
+  stehenStill(a, vorher);
   assert.equal(a.signal('B1.Läuft'), 0);
-  assert.deepEqual(a.kisten().slice(0, vorher.length), vorher);
 
   // Gleiches über die Eigenschaft "Antrieb"
   const b = neueAnlage(plaene.strecke());
   b.laufen(3);
   b.eigenschaft('B1', 'running', false);
-  const vorherB = b.kisten();
-  b.laufen(3);
-  assert.deepEqual(b.kisten().slice(0, vorherB.length), vorherB);
+  stehenStill(b, b.kisten());
   assert.equal(b.signal('B1.Läuft'), 0);
 });
 
