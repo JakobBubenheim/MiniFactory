@@ -437,7 +437,7 @@ MF.scl = (function () {
         return ctx.state[e.v.name.toUpperCase()].value;
       case 'fbout': return ctx.state[e.v.name.toUpperCase()].fb[e.m];
       case 'sig': {
-        var el = MF.store.findElement(e.el);
+        var el = MF.store.findBody(e.el);
         if (!el) throw new RuntimeError('Element ' + e.el + ' gibt es nicht mehr', ctx.line);
         return MF.engine.signal(el, e.name);
       }
@@ -544,7 +544,7 @@ MF.scl = (function () {
           var cell = ctx.state[t.v.name.toUpperCase()];
           cell.value = coerce(cell.type, v);
         } else if (t.k === 'sig') {
-          var el = MF.store.findElement(t.el);
+          var el = MF.store.findBody(t.el);
           if (!el) throw new RuntimeError('Element ' + t.el + ' gibt es nicht mehr', s.line);
           MF.engine.setSignal(el, t.name, v);
         }
@@ -579,16 +579,17 @@ MF.scl = (function () {
   // Umgebung für den Parser: welche Elemente und Signale es gibt
   function env() {
     return {
-      elementIds: MF.model.elements.map(function (el) { return el.id; }),
+      elementIds: MF.model.bodies.map(function (el) { return el.id; }),
       ioDef: function (id, name) {
-        var el = MF.store.findElement(id);
+        var el = MF.store.findBody(id);
         if (!el) return null;
         // Groß-/Kleinschreibung beim Signalnamen egal
-        return MF.types[el.type].io.filter(function (s) { return s.name.toUpperCase() === name.toUpperCase(); })[0] || null;
+        return MF.io(el).filter(function (s) { return s.name.toUpperCase() === name.toUpperCase(); })[0] || null;
       },
       firstSignal: function (id) {
-        var el = MF.store.findElement(id);
-        return el ? MF.types[el.type].io[0].name : 'Signal';
+        var el = MF.store.findBody(id);
+        var io = el ? MF.io(el) : [];
+        return io.length ? io[0].name : 'Signal';
       }
     };
   }
