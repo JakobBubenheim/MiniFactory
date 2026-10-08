@@ -18,7 +18,8 @@ Wer an einer Phase arbeitet, liest es zuerst und hält sich an die Entscheidunge
 | Koordinaten | x nach rechts, y in der Draufsicht nach unten, **z nach oben**, Boden bei z = 0. Das ist (von oben gesehen) linkshändig; Rapier rechnet damit ohne Umrechnung. Die 3D-Ansicht hängt alles in eine Gruppe mit `scale.y = −1` und setzt `camera.up = (0, 0, 1)` – sonst wäre sie spiegelverkehrt zur Draufsicht (Spike Phase 1) |
 | Katalog | bleibt, wird aber zu **Vorlagen**: ein Förderband ist ein vorkonfigurierter Körper, den man danach frei ändern kann |
 | Start per Doppelklick | **bleibt** (in Phase 1 geprüft). Rapier und Three.js werden mit esbuild zu zwei Skripten gebündelt und **ins Repo committet**: `lib/rapier.js` (setzt `window.RAPIER`, WASM eingebettet, `RAPIER.init()` nötig, 4,3 MB) und `lib/three.js` (setzt `window.THREE` und `window.THREE_ADDONS`, 0,8 MB). Getrennt, damit Tests nur die Physik laden. Bauen in `tools/vendor/` (eigene `package.json`). Node braucht man nur zum Aktualisieren der Bibliotheken und für Tests |
-| Physik-Parameter | Zeitschritt 20 ms, Solver-Iterationen 4 (Standard), **Kontaktsteifigkeit 60 Hz** (`contact_natural_frequency`, Standard 30 Hz lässt gestaute Kisten 5 mm ineinander rutschen). Reibung: Kiste 0,6, Boden 0,6, Stahl 0,3, Rutsche 0,1; Dichte Kiste 200 kg/m³. Ergebnisse: [Spike-3D-Ergebnis.md](Spike-3D-Ergebnis.md) |
+| Physik-Parameter | Physik-Schritt höchstens 20 ms (siehe Abschnitt 4: SPS-Zyklus `dtMs`, Physik in Unterschritten), Solver-Iterationen 4 (Standard), **Kontaktsteifigkeit 60 Hz** (`contact_natural_frequency`, Standard 30 Hz lässt gestaute Kisten 5 mm ineinander rutschen). Reibung: Kiste 0,6, Boden 0,6, Stahl 0,3, Rutsche 0,1, **Gleitbelag am Schieber 0,05** (Phase 2), Band 0,8 (nur für die Nachführung); Reibung und Stoßzahl werden immer mit `Min` kombiniert. Dichte Kiste 200 kg/m³. Ergebnisse: [Spike-3D-Ergebnis.md](Spike-3D-Ergebnis.md) |
+| Rapier laden (Phase 2) | `RAPIER.init()` ist asynchron. **Browser:** `lib/rapier.js` ist ein klassisches Skript in `index.html`; `main.js` zeigt „Lade Physik …“ und startet die App erst nach `init()`. **Tests:** `test/helpers/load.js` lädt Rapier einmal je Testprozess in einen eigenen vm-Kontext (`vorbereiten()`, von der Fassade per `before()`-Hook aufgerufen) und reicht das fertige `RAPIER` in jeden neuen App-Kontext; jede Anlage hat ihre eigene Welt. Die Tests rechnen das WASM nur mit V8-Liftoff (`--liftoff-only` per `v8.setFlagsFromString`), sonst kostet das Nachoptimieren in sieben parallelen Prozessen mehr als der ganze Testlauf (15 s statt 5 s) |
 | Code-Stil | bleibt: ES5, Namensraum `MF`, deutsche Kommentare, klassische `<script>`-Tags |
 
 Was **unverändert** bleibt: Signale und I/O-Tab, Wenn-dann-Regeln, SCL-Interpreter und -Editor,
@@ -98,6 +99,16 @@ Version 3 ist der Umbau. `MF.file.migrate()` rechnet 1 → 2 → 3 schrittweise 
 
 - `shape.type`: `rect` (w × d), `circle` (r), `polygon` (`points: [[x, y], …]` lokal). Immer mit Höhe `h`.
 - `pose`: Mittelpunkt der Unterseite des Grundrisses, `rot` = Drehung um z in Grad, relativ zum Eltern.
+  Bei Polygonen ist `pose` der Ursprung der lokalen Punkte (muss nicht in der Mitte liegen).
+- `surface.dir`: Laufrichtung in Grad, lokal zum Körper. In der Draufsicht zeigt y nach unten,
+  positive Winkel drehen im Uhrzeigersinn: **rechts 0°, unten 90°, links 180°, oben 270°**
+  (geprüft gegen den Spike: dort läuft Band B mit `{ x: 0, y: 1 }` „nach unten“).
+- `settings.snap.on` (Fangen an/aus) gehört zur Anlage, `snap.pos` ist das Fangraster in m.
+- Die Signale (I/O) hängen an den **Funktionen**, nicht an der Vorlage (`MF.io(body)`):
+  Erzeuger `Freigabe`/`Erzeugt`, Transportfläche `Ein`/`Läuft`/`Tempo`, Sensor `Belegt`,
+  Achse (zweipunkt) `Ausfahren`/`Ausgefahren`/`Eingefahren`/`Ist` (neu), Senke `Reset`/`Anzahl`.
+- Die Eigenschaften der Vorlagen (Tempo, Richtung, Takt, Hub …) lesen und schreiben die Funktionen
+  (`MF.getProp`/`MF.setProp`); „Richtung“ dreht den Körper (`pose.rot`), der lokale `dir` bleibt.
 - `axis`: `{ "type": "linear"|"rotary", "origin": [x,y,z], "dir": [x,y,z], "min", "max", "vmax", "mode", "returnDelay" }`, lokal zum Körper.
 - `spawner`: `{ "interval", "maxCount", "enabled", "template": { shape, material, look } }`.
 - Laufzeitdaten (Rapier-Handles, erzeugte Kisten, Zähler, `force`) werden **nie** gespeichert.
@@ -116,9 +127,29 @@ Version 3 ist der Umbau. `MF.file.migrate()` rechnet 1 → 2 → 3 schrittweise 
 **Signalnamen bleiben gleich** (`B1.Ein`, `LS1.Belegt`, `S1.Ausfahren`, `SE1.Anzahl` …), damit
 bestehende Regeln und SCL-Code unverändert weiterlaufen.
 
+Festgelegt in Phase 2 (Umsetzung `sim/migrate.js`, Zelle × `cellM`, alle Körper achsparallel):
+
+| Alt | Neu im Detail |
+|---|---|
+| Förderband | Rechteck = belegte Zellen, Unterseite z = 0,6 m. `direction` → `surface.dir` (Grad, siehe oben), Lage-Drehung 0. **Liefert ein Band auf ein anderes** (das andere berührt seine Stirnkante), liegt das abnehmende **2 mm tiefer**; Ketten werden weitergereicht |
+| Lichtschranke | 5 cm schmaler Streifen durch die Zellmitte (wie der alte Strahl), quer über das Band, 0,3 m hoch, Unterseite 1 cm über der Bandoberkante (ohne Band: über dem Boden) |
+| Schieber | `direction: 'auto'` einmal fest aufgelöst (wie die alte Engine). Grundform schiebt nach +y, gedreht in die Schubrichtung (`pose.rot`). Form: **Stößel mit Platte und Fangwinkel** (siehe Abschnitt 4), Platte an der Zellkante, Unterseite 2 cm über dem Band, `stroke` (mm) → `axis.max` (m), `speed` → `vmax`, `returnDelay` bleibt |
+| Quelle | liegt dort, wo die alte Engine die Kisten ablegte (Mitte der angrenzenden Bandzelle), Unterseite 2 cm über dem Band; der Erzeuger legt die Kiste mit ihrer Unterseite auf die Lage des Erzeugers |
+| Senke | Zelle als Grundriss, vom Boden (z = 0) bis 0,6 m – also 10 cm unter der Bandoberkante |
+| `settings` | `dtMs` bleibt (alte Dateien: meist 50 ms, siehe Abschnitt 4), `cellM` entfällt, dazu `gravity: −9,81` und `snap` |
+| unbekannter Typ | wird als Körper mit unbekannter Vorlage übernommen; `validate()` meldet ihn, die Datei wird nicht geladen |
+
+`validate()` prüft Version 3 und hebt ältere Dateien vorher selbst an. Ein alter Autosave
+(Version 1 oder 2) wird beim Start genauso umgerechnet.
+
 ## 4. Simulationszyklus
 
-Gleiche Reihenfolge wie bisher, fester Zeitschritt (Standard 20 ms, damit die Physik stabil bleibt):
+Gleiche Reihenfolge wie bisher, fester Zeitschritt. Der **SPS-Zyklus** dauert `settings.dtMs`
+(wählbar 10/20/50/100 ms wie bisher, neue Anlagen 20 ms). Die **Physik** (Schritte 3 und 4) rechnet
+darin in gleich langen Unterschritten von **höchstens 20 ms** (50 ms → 3 × 16,7 ms, 100 ms → 5 × 20 ms).
+Entscheidung Phase 2: Alte Dateien und die Testpläne haben 50 ms. Die Migration hebt `dtMs` nicht an,
+denn der Zyklus ist für Regeln und SCL sichtbar (Zeitglieder, Flanken, Zyklenzählen) und alte Programme
+sollen gleich weiterlaufen. Die Unterschritte halten die Physik trotzdem stabil.
 
 1. **Sensoren lesen** – Rapier-Schnittabfragen der Sensorflächen (+ Entprellung)
 2. **Logik** – Wenn-dann-Regeln, dann SCL-Bausteine (Reihenfolge wie im Strukturbaum)
@@ -136,9 +167,30 @@ Auflagekontakt (|Normale z| > 0,7) auf Transportflächen
 - Drehung um die Hochachse mit derselben Grenze abbremsen.
 
 Die Bandoberfläche hat in Rapier Reibung 0 (Kombination `Min`), damit nichts doppelt bremst.
-Funktioniert auf `static` und `kinematic` Körpern gleich. Verglichen wurde der „Laufband-Trick“
+Funktioniert auf `static` und `kinematic` Körpern gleich. Phase 2: μ der Begrenzung ist der Reibwert
+der Transportfläche (`material.friction`, Vorlage Band 0,8); die Nachführung läuft vor jedem
+Physik-Unterschritt, eine Kiste ohne Änderung darf schlafen. Verglichen wurde der „Laufband-Trick“
 (kinematischer Körper mit Geschwindigkeit, Lage jeden Schritt zurückgesetzt) – gleich gut, aber
 schlecht kombinierbar mit Achsen und wirkt auf alle Seiten. Messwerte: Spike-3D-Ergebnis.md.
+
+Weitere Festlegungen aus Phase 2:
+
+- **Boden** bei z = 0 ist immer da (fester Quader, Reibung 0,6). Kisten unter z = −2 m werden entfernt.
+- **Kisten** sind dynamische Rapier-Körper mit Lage im Mittelpunkt; die Senke prüft diesen Punkt.
+- **Achse zweipunkt**: `Ausfahren` = 1 → mit `vmax` nach `max`; = 0 → `returnDelay` warten, dann
+  nach `min`. Stellung je Physik-Unterschritt, `setNextKinematicTranslation`. Weitere Betriebsarten
+  und rotatorische Achsen ergänzt Phase 4 in `MF.engine.stepAxis` und `MF.FUNCTIONS.axis.MODES`.
+- **Schieber-Vorlage: Stößel mit Fangwinkel.** In echter Physik zieht ein laufendes Band (0,5 m/s)
+  eine Kiste seitlich an einem langsamen Schieber (0,3 m/s) vorbei – die alte Raster-Engine hatte den
+  ausgefahrenen Schieber stillschweigend als Sperre behandelt. Darum: Platte über die ganze Zellbreite,
+  auf der Abströmseite ein 5 cm langer Fangwinkel, der die Kiste vor der Platte festhält; dahinter ein
+  Stößel so lang wie der Hub, der ausgefahren das Band für nachfolgende Kisten sperrt (wie früher).
+  Werkstoff Gleitbelag μ = 0,05 – mit Stahl (0,3) zieht der einfahrende Stößel eine gestaute Kiste
+  quer vom Band. Geprüft mit Prototypen über 120 s (Platte schmal/breit, Arm 5–12 cm, μ 0–0,3).
+- **Überlast ist echte Physik.** Kommt alle 2 s eine Kiste, braucht ein 0,3-m/s-Schieber mit 0,6 m Hub
+  aber 4,5 s je Takt, staut sich eine Schlange am Stößel; dann fallen einzelne Kisten daneben. Die
+  eingebaute Beispielanlage hat deshalb einen Schieber mit **1 m/s** (sonst identisch mit der
+  migrierten alten Beispielanlage); alte Dateien behalten ihr Tempo.
 
 Aus Phase 1 außerdem:
 
@@ -161,7 +213,7 @@ das Verhalten der Anlage.
 | 0a | `feature/tests` | Headless-Tests, Prüf-Agent, CI | – |
 | 0b | `feature/baum-ordner` | freie Ordner im Strukturbaum, Dateiformat v2 | – |
 | 1 | `feature/3d-spike` | ✅ `lib/rapier.js` + `lib/three.js` bauen, Rapier + Three per Doppelklick laden, Demo `spike-3d.html`; Transportflächen-Methode festgelegt (siehe Abschnitt 4, Spike-3D-Ergebnis.md) | 0a |
-| 2 | `feature/physik-kern` | Datenmodell v3 + Migration, neue Engine auf Rapier, alle Katalog-Elemente als Vorlagen, Draufsicht zeichnet Körper; alte Raster-Engine entfällt | 0a, 0b, 1 |
+| 2 | `feature/physik-kern` | ✅ Datenmodell v3 + Migration (`sim/migrate.js`), neue Engine auf Rapier (`sim/engine.js`), alle Katalog-Elemente als Vorlagen mit Funktionen, Draufsicht zeichnet Körper (`sim/geom.js`, `sim/sim.js`); alte Raster-Engine entfernt. Festlegungen siehe Abschnitte 1, 3 und 4 | 0a, 0b, 1 |
 | 3 | `feature/formen` | Rechteck/Kreis/Polygon zeichnen, Höhe, freie Lage und Drehung, Körperart und Funktionen im Eigenschaften-Panel, Fangen | 2 |
 | 4 | `feature/achsen` | Achsen linear/rotatorisch mit allen Betriebsarten, Kopplung über den Baum, Achse in der Draufsicht anzeigen und ziehen | 2 (besser nach 3) |
 | 5 | `feature/3d-ansicht` | Three.js-Ansicht zum Zuschauen: Orbit-Kamera, Licht, Schatten, Auswahl per Klick, Draufsicht und 3D nebeneinander | 2 |

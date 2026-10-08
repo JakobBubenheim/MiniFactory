@@ -17,7 +17,8 @@ und sich an die Entscheidungen und Phasen dort halten.
 
 | Ordner | Inhalt |
 |---|---|
-| `sim/` | Modell (`model.js`), Uhr (`clock.js`), Engine (`engine.js`), Zeichenfläche (`sim.js`), Datei/Autosave (`file.js`) |
+| `sim/` | Modell mit Körpern, Funktionen und Vorlagen (`model.js`), Geometrie (`geom.js`), Uhr (`clock.js`), Engine auf Rapier (`engine.js`), Draufsicht (`sim.js`), Datei/Autosave (`file.js`), Migration 2 → 3 (`migrate.js`) |
+| `lib/` | gebündelte Bibliotheken: `rapier.js` (Physik), `three.js` (3D-Ansicht, ab Phase 5); Bau in `tools/vendor/` |
 | `logic/` | Wenn-dann-Regeln (`logic.js`), SCL-Interpreter (`scl.js`), Lexikon |
 | `ui/` | Oberfläche: Ribbon, Baum, Eigenschaften, Editor, Signalliste, SCL-Editor, Verlauf (Undo/Redo) |
 | `test/` | Headless-Tests mit `node:test`; `helpers/load.js` lädt die Skripte in einen vm-Kontext |
