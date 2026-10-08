@@ -1,0 +1,326 @@
+{
+  "format": "mini-fabrik",
+  "version": 3,
+  "name": "Ausschleusen mit Schieber",
+  "settings": {
+    "dtMs": 20,
+    "gravity": -9.81,
+    "snap": {
+      "on": true,
+      "pos": 0.05,
+      "angle": 5
+    }
+  },
+  "folders": [],
+  "bodies": [
+    {
+      "id": "B1",
+      "name": "Förderband 1",
+      "parent": null,
+      "template": "conveyor",
+      "kind": "static",
+      "shape": {
+        "type": "rect",
+        "w": 4.5,
+        "d": 0.5,
+        "h": 0.1
+      },
+      "pose": {
+        "x": 2.75,
+        "y": 1.5,
+        "z": 0.6,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0.8,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": {
+        "speed": 0.5,
+        "dir": 0,
+        "running": true
+      },
+      "axis": null,
+      "sensor": null,
+      "spawner": null,
+      "sink": null,
+      "inputs": {
+        "Ein": 1
+      },
+      "look": {
+        "color": "#1B2430",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "Q1",
+      "name": "Quelle 1",
+      "parent": null,
+      "template": "source",
+      "kind": "ghost",
+      "shape": {
+        "type": "rect",
+        "w": 0.5,
+        "d": 0.5,
+        "h": 0.35
+      },
+      "pose": {
+        "x": 0.75,
+        "y": 1.5,
+        "z": 0.72,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": null,
+      "spawner": {
+        "interval": 2,
+        "maxCount": 0,
+        "enabled": true,
+        "template": {
+          "shape": {
+            "type": "rect",
+            "w": 0.3,
+            "d": 0.3,
+            "h": 0.3
+          },
+          "material": {
+            "friction": 0.6,
+            "restitution": 0,
+            "density": 200
+          },
+          "look": {
+            "color": "#C79A5B"
+          }
+        }
+      },
+      "sink": null,
+      "inputs": {
+        "Freigabe": 1
+      },
+      "look": {
+        "color": "#D9701A",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "LS1",
+      "name": "Lichtschranke 1",
+      "parent": null,
+      "template": "sensor",
+      "kind": "ghost",
+      "shape": {
+        "type": "rect",
+        "w": 0.05,
+        "d": 0.5,
+        "h": 0.3
+      },
+      "pose": {
+        "x": 3.75,
+        "y": 1.5,
+        "z": 0.71,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": {
+        "invert": false,
+        "debounce": 0
+      },
+      "spawner": null,
+      "sink": null,
+      "inputs": {},
+      "look": {
+        "color": "#1B2430",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "S1",
+      "name": "Schieber 1",
+      "parent": null,
+      "template": "pusher",
+      "kind": "kinematic",
+      "shape": {
+        "type": "polygon",
+        "points": [
+          [
+            -0.25,
+            -0.2
+          ],
+          [
+            0.25,
+            -0.2
+          ],
+          [
+            0.25,
+            0.3
+          ],
+          [
+            0.2,
+            0.3
+          ],
+          [
+            0.2,
+            0.25
+          ],
+          [
+            -0.25,
+            0.25
+          ]
+        ],
+        "h": 0.2
+      },
+      "pose": {
+        "x": 3.75,
+        "y": 1,
+        "z": 0.72,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0.05,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": null,
+      "axis": {
+        "type": "linear",
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "dir": [
+          0,
+          1,
+          0
+        ],
+        "min": 0,
+        "max": 0.6,
+        "vmax": 1,
+        "mode": "zweipunkt",
+        "returnDelay": 0.5
+      },
+      "sensor": null,
+      "spawner": null,
+      "sink": null,
+      "inputs": {
+        "Ausfahren": 0
+      },
+      "look": {
+        "color": "#1B2430",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "SE1",
+      "name": "Senke 1",
+      "parent": null,
+      "template": "sink",
+      "kind": "ghost",
+      "shape": {
+        "type": "rect",
+        "w": 0.5,
+        "d": 0.5,
+        "h": 0.6
+      },
+      "pose": {
+        "x": 5.25,
+        "y": 1.5,
+        "z": 0,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": null,
+      "spawner": null,
+      "sink": {},
+      "inputs": {
+        "Reset": 0
+      },
+      "look": {
+        "color": "#1B2430",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "SE2",
+      "name": "Senke 2",
+      "parent": null,
+      "template": "sink",
+      "kind": "ghost",
+      "shape": {
+        "type": "rect",
+        "w": 0.5,
+        "d": 0.5,
+        "h": 0.6
+      },
+      "pose": {
+        "x": 3.75,
+        "y": 2,
+        "z": 0,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": null,
+      "spawner": null,
+      "sink": {},
+      "inputs": {
+        "Reset": 0
+      },
+      "look": {
+        "color": "#1B2430",
+        "visible": true,
+        "locked": false
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "R1",
+      "name": "Regel 1",
+      "parent": null,
+      "kind": "rule",
+      "enabled": true,
+      "description": "Kiste an der Lichtschranke wird nach SE2 ausgeschleust.",
+      "when": "LS1.Belegt",
+      "then": "S1.Ausfahren"
+    }
+  ],
+  "view": {
+    "zoom": 1,
+    "panX": 0,
+    "panY": 0,
+    "grid": true,
+    "tags": true,
+    "folded": [],
+    "camera3d": null
+  }
+}
