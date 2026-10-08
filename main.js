@@ -19,7 +19,10 @@
     MF.sim.init(canvas);
     MF.engine.init();
     MF.logic.init();
+    // 3D-Ansicht: legt den Renderer erst an, wenn sie sichtbar wird (MF.ui setzt das Layout)
+    MF.view3d.init(document.getElementById('view3d'), document.getElementById('view3d-hint'));
     MF.ui.init();
+    MF.sim.resize();   // Layout (nebeneinander/einzeln) steht jetzt – Breite fürs Einpassen
     MF.tree.init();
     MF.props.init();
     MF.signals.init();

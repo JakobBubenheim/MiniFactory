@@ -617,15 +617,87 @@ body.is-dragging, body.is-dragging * {
 .stage {
   grid-area: stage;
   position: relative;
+  display: flex;
   min-width: 0;
   background: var(--light);
   overflow: hidden;
+}
+
+/* Draufsicht und 3D-Ansicht: nebeneinander (Teiler verschiebbar) oder einzeln.
+   --split = Anteil der Draufsicht, data-mode am .stage (ui/ui.js) */
+.pane {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pane-2d { flex: 0 0 calc(var(--split, 0.5) * 100% - 2px); }
+.pane-3d { flex: 1 1 0; background: #E9ECF0; }
+
+.stage[data-mode="2d"] .pane-2d { flex: 1 1 0; }
+.stage[data-mode="2d"] .pane-3d,
+.stage[data-mode="2d"] .view-splitter,
+.stage[data-mode="3d"] .pane-2d,
+.stage[data-mode="3d"] .view-splitter { display: none; }
+
+.view-splitter {
+  flex: 0 0 4px;
+  background: var(--line);
+  cursor: col-resize;
+}
+
+.view-splitter:hover, .view-splitter.is-dragging, .view-splitter:focus-visible {
+  background: var(--accent);
+  outline: none;
 }
 
 .stage canvas {
   position: absolute;
   inset: 0;
   display: block;
+}
+
+/* Schmale Teilung: Leiste umbrechen statt abschneiden */
+.pane .viewbar {
+  width: max-content;
+  max-width: calc(100% - 16px);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.view3d-host {
+  position: absolute;
+  inset: 0;
+}
+
+/* Hinweis ohne WebGL bzw. ohne lib/three.js */
+.view3d-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font: 600 13px var(--font);
+  color: var(--dark);
+}
+
+.view3d-hint[hidden] { display: none; }
+
+.view3d-help {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  font-size: 11px;
+  color: rgba(27, 36, 48, 0.55);
+  pointer-events: none;
+}
+
+.vlabel {
+  padding: 0 6px;
+  font: 700 11px var(--mono);
+  color: var(--light-dim);
 }
 
 .viewbar {

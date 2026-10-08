@@ -73,7 +73,7 @@ window.MF = window.MF || {};
           zoom: MF.sim.zoom, panX: MF.sim.offsetX, panY: MF.sim.offsetY,
           grid: MF.sim.showGrid, tags: MF.sim.showTags,
           folded: MF.tree ? MF.tree.foldedIds() : [],   // zugeklappte Ordner
-          camera3d: null                                // 3D-Ansicht (Phase 5)
+          camera3d: MF.view3d ? MF.view3d.cameraData() : null   // 3D-Kamera { pos, target } oder null
         }
       };
     },
@@ -370,6 +370,8 @@ window.MF = window.MF || {};
     },
 
     applyView: function (view) {
+      // 3D-Kamera: gespeicherter Stand, sonst einpassen
+      if (MF.view3d) MF.view3d.setCamera(view ? view.camera3d : null);
       if (!view) { MF.sim.fit(); return; }
       if (isNum(view.zoom)) MF.sim.zoom = Math.max(0.25, Math.min(4, view.zoom));
       if (isNum(view.panX)) MF.sim.offsetX = view.panX;

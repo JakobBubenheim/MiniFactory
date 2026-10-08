@@ -52,6 +52,9 @@
       <symbol id="i-fit" viewBox="0 0 16 16"><path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="5" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
       <symbol id="i-tag" viewBox="0 0 16 16"><path d="M1.5 1.5h7l6 6-7 7-6-6z" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4" y="4" width="2" height="2" fill="currentColor"/></symbol>
       <symbol id="i-panels" viewBox="0 0 16 16"><rect x="1" y="2" width="14" height="12" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 2v12M10.5 2v12" stroke="currentColor" stroke-width="1.2"/></symbol>
+      <symbol id="i-view2d" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="4.5" y="6" width="7" height="3" fill="currentColor"/></symbol>
+      <symbol id="i-split" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 2.5v11" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-view3d" viewBox="0 0 16 16"><path d="M2 5l6-3 6 3v6l-6 3-6-3z M2 5l6 3 6-3 M8 8v6" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
       <symbol id="i-clock" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4v4h3" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
       <!-- Simulation -->
       <symbol id="i-play" viewBox="0 0 16 16"><path d="M4 2l10 6-10 6z" fill="currentColor"/></symbol>
@@ -227,6 +230,15 @@
         </div>
         <div class="rgroup">
           <div class="rgroup-items">
+            <button class="rbtn" data-action="layout-2d" title="Nur die Draufsicht zeigen"><svg><use href="#i-view2d"/></svg><span>Draufsicht</span></button>
+            <button class="rbtn" data-action="layout-split" title="Draufsicht und 3D nebeneinander"><svg><use href="#i-split"/></svg><span>Nebeneinander</span></button>
+            <button class="rbtn" data-action="layout-3d" title="Nur die 3D-Ansicht zeigen"><svg><use href="#i-view3d"/></svg><span>3D</span></button>
+            <button class="rbtn" data-action="view3d-fit" title="3D-Ansicht auf die ganze Anlage einpassen"><svg><use href="#i-fit"/></svg><span>3D einpassen</span></button>
+          </div>
+          <div class="rgroup-label">3D-Ansicht</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
             <button class="rbtn" data-action="reset-panels"><svg><use href="#i-panels"/></svg><span>Layout zurücksetzen</span></button>
           </div>
           <div class="rgroup-label">Fenster</div>
@@ -262,19 +274,39 @@
 
     <div class="splitter" data-side="left" role="separator" aria-orientation="vertical" aria-label="Breite Strukturbaum" tabindex="0"></div>
 
-    <!-- Mitte: Simulationsfläche -->
-    <main class="stage" id="stage">
-      <canvas id="canvas"></canvas>
-      <div class="stage-loading" id="loading">Lade Physik …</div>
-      <div class="viewbar" aria-label="Ansicht">
-        <button class="vbtn" data-action="zoom-in" title="Vergrößern"><svg><use href="#i-plus"/></svg></button>
-        <button class="vbtn" data-action="zoom-out" title="Verkleinern"><svg><use href="#i-minus"/></svg></button>
-        <button class="vbtn" data-action="zoom-fit" title="Einpassen"><svg><use href="#i-fit"/></svg></button>
-        <span class="vsep"></span>
-        <button class="vbtn is-active" data-action="toggle-grid" title="Raster"><svg><use href="#i-grid"/></svg></button>
-        <button class="vbtn is-active" data-action="toggle-tags" title="Namen"><svg><use href="#i-tag"/></svg></button>
-        <span class="vzoom" id="zoom-label">100 %</span>
+    <!-- Mitte: Draufsicht (Bearbeiten) und 3D-Ansicht (Zuschauen), nebeneinander oder einzeln -->
+    <main class="stage" id="stage" data-mode="split">
+      <div class="pane pane-2d" id="pane-2d">
+        <canvas id="canvas"></canvas>
+        <div class="viewbar" aria-label="Ansicht">
+          <button class="vbtn" data-action="zoom-in" title="Vergrößern"><svg><use href="#i-plus"/></svg></button>
+          <button class="vbtn" data-action="zoom-out" title="Verkleinern"><svg><use href="#i-minus"/></svg></button>
+          <button class="vbtn" data-action="zoom-fit" title="Einpassen"><svg><use href="#i-fit"/></svg></button>
+          <span class="vsep"></span>
+          <button class="vbtn is-active" data-action="toggle-grid" title="Raster"><svg><use href="#i-grid"/></svg></button>
+          <button class="vbtn is-active" data-action="toggle-tags" title="Namen"><svg><use href="#i-tag"/></svg></button>
+          <span class="vzoom" id="zoom-label">100 %</span>
+          <span class="vsep"></span>
+          <button class="vbtn" data-action="layout-2d" title="Nur Draufsicht"><svg><use href="#i-view2d"/></svg></button>
+          <button class="vbtn" data-action="layout-split" title="Nebeneinander"><svg><use href="#i-split"/></svg></button>
+          <button class="vbtn" data-action="layout-3d" title="Nur 3D"><svg><use href="#i-view3d"/></svg></button>
+        </div>
       </div>
+      <div class="view-splitter" id="view-splitter" role="separator" aria-orientation="vertical" aria-label="Teilung Draufsicht / 3D" tabindex="0" title="Ziehen: Teilung ändern, Doppelklick: halbe-halbe"></div>
+      <div class="pane pane-3d" id="pane-3d">
+        <div class="view3d-host" id="view3d"></div>
+        <div class="view3d-hint" id="view3d-hint" hidden></div>
+        <div class="viewbar" aria-label="3D-Ansicht">
+          <span class="vlabel">3D</span>
+          <button class="vbtn" data-action="view3d-fit" title="Ansicht einpassen"><svg><use href="#i-fit"/></svg></button>
+          <span class="vsep"></span>
+          <button class="vbtn" data-action="layout-2d" title="Nur Draufsicht"><svg><use href="#i-view2d"/></svg></button>
+          <button class="vbtn" data-action="layout-split" title="Nebeneinander"><svg><use href="#i-split"/></svg></button>
+          <button class="vbtn" data-action="layout-3d" title="Nur 3D"><svg><use href="#i-view3d"/></svg></button>
+        </div>
+        <div class="view3d-help">Ziehen: drehen · Rechts ziehen: schieben · Rad: zoomen · Klick: auswählen</div>
+      </div>
+      <div class="stage-loading" id="loading">Lade Physik …</div>
     </main>
 
     <div class="splitter" data-side="right" role="separator" aria-orientation="vertical" aria-label="Breite Eigenschaften" tabindex="0"></div>
@@ -390,8 +422,11 @@
   </div>
 
   <!-- Klassische Skripte (keine ES-Module), damit die Seite per Doppelklick läuft.
-       lib/rapier.js: Physik (Rapier 3D, WASM eingebettet), setzt window.RAPIER -->
+       lib/rapier.js: Physik (Rapier 3D, WASM eingebettet), setzt window.RAPIER. -->
   <script src="lib/rapier.js"></script>
+  <!-- lib/three.js: 3D-Ansicht (Three.js), setzt window.THREE und window.THREE_ADDONS.
+       Fehlt sie, bleibt die Draufsicht voll nutzbar. -->
+  <script src="lib/three.js"></script>
   <script src="sim/geom.js"></script>
   <script src="sim/model.js"></script>
   <script src="sim/sim.js"></script>
@@ -409,6 +444,8 @@
   <script src="sim/migrate.js"></script>
   <script src="sim/file.js"></script>
   <script src="ui/history.js"></script>
+  <script src="ui/view3d-core.js"></script>
+  <script src="ui/view3d.js"></script>
   <script src="main.js"></script>
 </body>
 </html>
