@@ -218,6 +218,7 @@ window.MF = window.MF || {};
     apply: function (model, view) {
       MF.engine.reset();
       MF.model = model;
+      MF.logic.clear();
       MF.engine.resetWorld();
       MF.engine.setDtMs(model.settings.dtMs);
       MF.store.selectedId = null;

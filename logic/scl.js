@@ -193,7 +193,8 @@ MF.scl = (function () {
       while (true) {
         var tk = peek();
         if (tk.t === 'eof' || (tk.t === 'kw' && stop.indexOf(tk.v) >= 0)) break;
-        if (stop.indexOf('#label') >= 0 && tk.t === 'num') break;  // nächste CASE-Marke
+        // nächste CASE-Marke, auch negativ (keine Anweisung beginnt mit Zahl oder "-")
+        if (stop.indexOf('#label') >= 0 && (tk.t === 'num' || (tk.t === 'op' && tk.v === '-'))) break;
         if (tk.t === 'eof') break;
         var s = parseStatement();
         if (s) list.push(s);
@@ -487,11 +488,10 @@ MF.scl = (function () {
       case 'TOF':
         if (IN) { f.Q = 1; f.ET = 0; f.run = 0; }
         else {
-          if (f.M) f.run = 1;
-          if (f.run) {
-            f.ET = Math.min(f.ET + dtMs, PT);
-            if (f.ET >= PT) { f.Q = 0; f.run = 0; }
-          }
+          // Fallende Flanke startet die Zeit bei 0 (wie TON), danach zählt jeder Zyklus
+          if (f.M) { f.run = 1; f.ET = 0; }
+          else if (f.run) f.ET = Math.min(f.ET + dtMs, PT);
+          if (f.run && f.ET >= PT) { f.Q = 0; f.run = 0; }
         }
         f.M = IN;
         break;

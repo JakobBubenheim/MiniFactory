@@ -1,0 +1,12 @@
+{
+  "name": "mini-fabrik",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mini-Fabrik: Förderanlage mit SPS-Logik im Browser",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
