@@ -72,28 +72,38 @@ MF.types = {
 
 // Beispielanlage, damit Baum und Eigenschaften etwas zeigen.
 // Positionen und Größen in Rasterzellen, Drehung (rot) in Grad: 0, 90, 180 oder 270.
+//
+// Strukturbaum: folders sind frei anlegbare Ordner. Ordner, Elemente und Regeln
+// hängen über "parent" an einem Ordner (Ordner-ID) oder direkt unter "Anlage"
+// bzw. "Logik" (null). Ordner gehören zu einem Bereich (area: 'plant' | 'logic').
+// Die Reihenfolge der Geschwister ist die Reihenfolge in den Arrays; im Baum
+// stehen Ordner vor den Elementen bzw. Regeln derselben Ebene.
 MF.model = {
   name: 'Beispielanlage',
   settings: {
     dtMs: 50,     // Zeitschritt der Simulation in Millisekunden
     cellM: 0.5    // Kantenlänge einer Rasterzelle in Metern
   },
+  folders: [
+    { id: 'F1', name: 'Förderstrecke 1', parent: null, area: 'plant' },
+    { id: 'F2', name: 'Ausschleusung',   parent: 'F1', area: 'plant' }
+  ],
   elements: [
-    { id: 'Q1',  type: 'source',   name: 'Quelle 1',      group: 'Förderstrecke 1', x: 2,  y: 4, w: 1, h: 1,
+    { id: 'Q1',  type: 'source',   name: 'Quelle 1',      parent: 'F1', x: 2,  y: 4, w: 1, h: 1,
       props: { interval: 2, maxCount: 0, enabled: true } },
-    { id: 'B1',  type: 'conveyor', name: 'Förderband 1',  group: 'Förderstrecke 1', x: 3,  y: 4, w: 9, h: 1,
+    { id: 'B1',  type: 'conveyor', name: 'Förderband 1',  parent: 'F1', x: 3,  y: 4, w: 9, h: 1,
       props: { running: true, speed: 0.5, direction: 'rechts' } },
-    { id: 'LS1', type: 'sensor',   name: 'Lichtschranke 1', group: 'Förderstrecke 1', x: 9, y: 4, w: 1, h: 1,
+    { id: 'LS1', type: 'sensor',   name: 'Lichtschranke 1', parent: 'F1', x: 9, y: 4, w: 1, h: 1,
       props: { invert: false, debounce: 0 } },
-    { id: 'S1',  type: 'pusher',   name: 'Schieber 1',    group: 'Förderstrecke 1', x: 9,  y: 3, w: 1, h: 1,
+    { id: 'S1',  type: 'pusher',   name: 'Schieber 1',    parent: 'F1', x: 9,  y: 3, w: 1, h: 1,
       props: { stroke: 600, speed: 0.3, returnDelay: 0.5, direction: 'unten' } },
-    { id: 'SE1', type: 'sink',     name: 'Senke 1',       group: 'Förderstrecke 1', x: 12, y: 4, w: 1, h: 1,
+    { id: 'SE1', type: 'sink',     name: 'Senke 1',       parent: 'F1', x: 12, y: 4, w: 1, h: 1,
       props: { count: 0 } },
-    { id: 'SE2', type: 'sink',     name: 'Senke 2',       group: 'Ausschleusung',   x: 9,  y: 5, w: 1, h: 1,
+    { id: 'SE2', type: 'sink',     name: 'Senke 2',       parent: 'F2', x: 9,  y: 5, w: 1, h: 1,
       props: { count: 0 } }
   ],
   rules: [
-    { id: 'R1', name: 'Regel 1', kind: 'rule', when: 'LS1.Belegt', then: 'S1.Ausfahren', enabled: true,
+    { id: 'R1', name: 'Regel 1', parent: null, kind: 'rule', when: 'LS1.Belegt', then: 'S1.Ausfahren', enabled: true,
       description: 'Kiste an der Lichtschranke wird nach Senke 2 ausgeschleust.' }
   ]
 };
@@ -195,11 +205,12 @@ MF.store = {
   },
 
   // Neues Element aus der Bibliothek. Werte kommen aus den Standardwerten des Typs.
-  createElement: function (type, x, y, group) {
+  // parent: Ordner-ID oder null (direkt unter "Anlage")
+  createElement: function (type, x, y, parent) {
     var t = MF.types[type];
     var next = this.nextId(t.prefix);
     var el = {
-      id: next.id, type: type, name: t.label + ' ' + next.n, group: group,
+      id: next.id, type: type, name: t.label + ' ' + next.n, parent: parent || null,
       x: x, y: y, w: t.size[0], h: t.size[1], rot: 0,
       props: JSON.parse(JSON.stringify(t.defaults)),
       rt: {}, visible: true, locked: false, color: t.color
@@ -212,11 +223,12 @@ MF.store = {
     return el;
   },
 
-  // Kopie mit neuer ID, eine Zelle versetzt
+  // Kopie mit neuer ID, eine Zelle versetzt; steht im Baum direkt hinter dem Original
   duplicateElement: function (id) {
     var src = this.findElement(id);
     if (!src) return null;
-    var el = this.createElement(src.type, src.x + 1, src.y + 1, src.group);
+    var el = this.createElement(src.type, src.x + 1, src.y + 1, src.parent);
+    this.placeAfter(MF.model.elements, el, src);
     el.w = src.w;
     el.h = src.h;
     el.rot = src.rot || 0;
@@ -244,7 +256,8 @@ MF.store = {
 
   // Neue, leere Regel R<n>; wird ausgewählt, damit das Panel sie zeigt.
   // kind: 'rule' (Wenn-dann) oder 'scl' (eigener Code)
-  createRule: function (kind) {
+  // parent: Ordner-ID oder null (direkt unter "Logik")
+  createRule: function (kind, parent) {
     var max = 0;
     MF.model.rules.forEach(function (r) {
       var m = /^R(\d+)$/.exec(r.id);
@@ -252,12 +265,28 @@ MF.store = {
     });
     var scl = kind === 'scl';
     var rule = {
-      id: 'R' + (max + 1), name: (scl ? 'SCL-Baustein ' : 'Regel ') + (max + 1), kind: scl ? 'scl' : 'rule',
-      when: '', then: '', enabled: true, description: ''
+      id: 'R' + (max + 1), name: (scl ? 'SCL-Baustein ' : 'Regel ') + (max + 1), parent: parent || null,
+      kind: scl ? 'scl' : 'rule', when: '', then: '', enabled: true, description: ''
     };
     if (scl) rule.code = MF.logic.toScl(rule);
     MF.model.rules.push(rule);
     this.selectedId = rule.id;
+    this.changed();
+    return rule;
+  },
+
+  // Kopie einer Regel (gleiche Art, gleicher Code), direkt hinter dem Original
+  duplicateRule: function (id) {
+    var src = this.findRule(id);
+    if (!src) return null;
+    var rule = this.createRule(src.kind, src.parent);
+    rule.name = src.name + ' (Kopie)';
+    rule.when = src.when || '';
+    rule.then = src.then || '';
+    rule.enabled = src.enabled !== false;
+    rule.description = src.description || '';
+    if (src.code !== undefined) rule.code = src.code;
+    this.placeAfter(MF.model.rules, rule, src);
     this.changed();
     return rule;
   },
@@ -270,6 +299,201 @@ MF.store = {
     if (this.selectedId === id) this.selectedId = null;
     this.changed();
     return true;
+  },
+
+  // ---------- Strukturbaum: Ordner ----------
+  //
+  // "parent" ist bewusst allgemein gehalten: heute Ordner-ID oder null, im
+  // 3D-Umbau dürfen dort auch Körper-IDs stehen (Kopplung). Alle Funktionen
+  // fragen deshalb über parentOf()/childrenOf() und nicht direkt nach Ordnern.
+
+  AREAS: { plant: 'Anlage', logic: 'Logik' },
+
+  findFolder: function (id) {
+    var fs = MF.model.folders || [];
+    for (var i = 0; i < fs.length; i++) if (fs[i].id === id) return fs[i];
+    return null;
+  },
+
+  // Elemente bzw. Regeln eines Bereichs
+  itemsOf: function (area) {
+    return area === 'logic' ? MF.model.rules : MF.model.elements;
+  },
+
+  // Knoten im Baum: { kind: 'folder'|'element'|'rule', obj, area } oder null
+  findNode: function (id) {
+    var o;
+    if ((o = this.findFolder(id))) return { kind: 'folder', obj: o, area: o.area };
+    if ((o = this.findElement(id))) return { kind: 'element', obj: o, area: 'plant' };
+    if ((o = this.findRule(id))) return { kind: 'rule', obj: o, area: 'logic' };
+    return null;
+  },
+
+  // Bereich eines Knotens: 'plant', 'logic' oder null (Projekt, unbekannt)
+  areaOf: function (id) {
+    if (id === 'plant' || id === 'logic') return id;
+    var n = this.findNode(id);
+    return n ? n.area : null;
+  },
+
+  // Gültiger Eltern-Ordner eines Objekts; unbekannte Verweise zählen als oberste Ebene.
+  parentOf: function (obj, area) {
+    var f = obj && obj.parent ? this.findFolder(obj.parent) : null;
+    return f && f.area === area ? f.id : null;
+  },
+
+  // Direkte Kinder: { folders: [...], items: [...] } in Array-Reihenfolge
+  childrenOf: function (area, parent) {
+    var self = this;
+    parent = parent || null;
+    return {
+      folders: (MF.model.folders || []).filter(function (f) {
+        return f.area === area && self.parentOf(f, area) === parent;
+      }),
+      items: this.itemsOf(area).filter(function (o) { return self.parentOf(o, area) === parent; })
+    };
+  },
+
+  // Elemente bzw. Regeln in Baum-Reihenfolge (Tiefensuche: erst die Ordner einer
+  // Ebene mit ihrem ganzen Inhalt, dann die Elemente/Regeln dieser Ebene).
+  // folder: nur den Inhalt dieses Ordners (samt Unterordnern) liefern.
+  treeOrder: function (area, folder) {
+    var self = this, out = [], seen = {};
+    (function walk(parent) {
+      if (seen[parent]) return;   // Schutz vor Zyklen in kaputten Daten
+      seen[parent] = true;
+      var c = self.childrenOf(area, parent);
+      c.folders.forEach(function (f) { walk(f.id); });
+      c.items.forEach(function (o) { out.push(o); });
+    })(folder || null);
+    return out;
+  },
+
+  // Ist id gleich ancestor oder liegt darunter?
+  isWithin: function (id, ancestor) {
+    var guard = 0;
+    while (id && guard++ < 1000) {
+      if (id === ancestor) return true;
+      var n = this.findNode(id);
+      id = n ? n.obj.parent : null;
+    }
+    return false;
+  },
+
+  // Namen der Ordner von oben bis einschließlich parent, z. B. ['Förderstrecke 1', 'Ausschleusung']
+  folderPath: function (parent) {
+    var names = [], guard = 0;
+    var f = this.findFolder(parent);
+    while (f && guard++ < 1000) {
+      names.unshift(f.name);
+      f = this.findFolder(this.parentOf(f, f.area));
+    }
+    return names;
+  },
+
+  // Alle Ordner eines Bereichs in Baum-Reihenfolge mit Pfad und Tiefe (für Auswahllisten)
+  folderList: function (area) {
+    var self = this, out = [];
+    (function walk(parent, depth) {
+      self.childrenOf(area, parent).folders.forEach(function (f) {
+        if (out.some(function (o) { return o.folder === f; })) return;
+        out.push({ folder: f, path: self.folderPath(f.id).join(' / '), depth: depth });
+        walk(f.id, depth + 1);
+      });
+    })(null, 0);
+    return out;
+  },
+
+  nextFolderId: function () {
+    var max = 0;
+    (MF.model.folders || []).forEach(function (f) {
+      var m = /^F(\d+)$/.exec(f.id);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return 'F' + (max + 1);
+  },
+
+  // Neuer Ordner im Bereich area unter parent (Ordner-ID oder null)
+  createFolder: function (area, parent, name) {
+    if (!MF.model.folders) MF.model.folders = [];
+    var f = { id: this.nextFolderId(), name: name || 'Neuer Ordner', parent: parent || null, area: area };
+    MF.model.folders.push(f);
+    this.selectedId = f.id;
+    this.changed();
+    return f;
+  },
+
+  // Ordner löschen: Inhalt wandert eine Ebene nach oben, an die Stelle des Ordners.
+  deleteFolder: function (id) {
+    var fs = MF.model.folders;
+    var f = this.findFolder(id);
+    if (!f) return false;
+    var up = this.parentOf(f, f.area);
+    var i = fs.indexOf(f);
+    var subs = fs.filter(function (s) { return s.parent === id; });
+    fs.splice(i, 1);
+    // Unterordner an die Stelle des gelöschten Ordners
+    subs.forEach(function (s) { fs.splice(fs.indexOf(s), 1); });
+    Array.prototype.splice.apply(fs, [i, 0].concat(subs));
+    subs.forEach(function (s) { s.parent = up; });
+    this.itemsOf(f.area).forEach(function (o) { if (o.parent === id) o.parent = up; });
+    if (this.selectedId === id) this.selectedId = up || f.area;
+    this.changed();
+    return true;
+  },
+
+  // obj im Array direkt hinter ref einsortieren
+  placeAfter: function (arr, obj, ref) {
+    arr.splice(arr.indexOf(obj), 1);
+    arr.splice(arr.indexOf(ref) + 1, 0, obj);
+  },
+
+  // Darf der Knoten id nach parent (im Bereich area) verschoben werden?
+  // Gibt einen Fehlertext zurück oder '' wenn erlaubt.
+  moveError: function (id, area, parent) {
+    var n = this.findNode(id);
+    if (!n) return 'Unbekannter Knoten.';
+    if (n.area !== area) return 'Nur innerhalb von "' + this.AREAS[n.area] + '" verschiebbar.';
+    if (parent) {
+      var p = this.findFolder(parent);
+      if (!p || p.area !== area) return 'Ziel ist kein Ordner in "' + this.AREAS[area] + '".';
+      if (n.kind === 'folder' && this.isWithin(parent, id)) return 'Ein Ordner kann nicht in sich selbst liegen.';
+    }
+    return '';
+  },
+
+  // Knoten nach parent verschieben, vor den Geschwister-Knoten beforeId (null = ans Ende).
+  // Ordner werden unter den Ordnern, Elemente/Regeln unter ihresgleichen einsortiert.
+  // ids in Baum-Reihenfolge übergeben, damit die Reihenfolge erhalten bleibt.
+  // Gibt die Anzahl verschobener Knoten zurück; ändert nichts, wenn einer unzulässig ist.
+  moveNodes: function (ids, area, parent, beforeId) {
+    var self = this;
+    parent = parent || null;
+    for (var i = 0; i < ids.length; i++) {
+      var err = this.moveError(ids[i], area, parent);
+      if (err) { if (MF.ui) MF.ui.message(err); return 0; }
+    }
+    var nodes = ids.map(function (id) { return self.findNode(id); });
+    nodes.forEach(function (n) {
+      var arr = n.kind === 'folder' ? MF.model.folders : self.itemsOf(area);
+      arr.splice(arr.indexOf(n.obj), 1);
+      n.obj.parent = parent;
+    });
+    nodes.forEach(function (n) {
+      var arr = n.kind === 'folder' ? MF.model.folders : self.itemsOf(area);
+      var before = beforeId && ids.indexOf(beforeId) < 0 ? self.findNode(beforeId) : null;
+      if (before && before.kind === n.kind && arr.indexOf(before.obj) >= 0) {
+        arr.splice(arr.indexOf(before.obj), 0, n.obj);
+        return;
+      }
+      // Ans Ende der Geschwister: hinter das letzte Geschwister, sonst ans Array-Ende
+      var last = -1;
+      arr.forEach(function (o, k) { if (o !== n.obj && self.parentOf(o, area) === parent) last = k; });
+      if (last < 0) arr.push(n.obj);
+      else arr.splice(last + 1, 0, n.obj);
+    });
+    this.changed();
+    return nodes.length;
   },
 
   // Liste aller Signale, z. B. "LS1.Belegt", für die Regel-Auswahl.

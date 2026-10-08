@@ -19,8 +19,11 @@ MF.lexikon = [
     example: '// Schieber ausfahren, sobald eine Kiste da ist', insert: '// |' },
   { name: 'Zyklus', cat: 'Grundlagen', syntax: '',
     text: 'Wie in einer SPS läuft der Code in jedem Zeitschritt (Takt, z. B. 50 ms) einmal von oben nach unten. ' +
-      'Reihenfolge pro Zyklus: Sensoren lesen → einfache Regeln → SCL-Bausteine (Reihenfolge wie im Strukturbaum) → ' +
-      'Aktoren und Bewegung. Ein geschriebener Eingang behält seinen Wert, bis er wieder geschrieben wird. ' +
+      'Reihenfolge pro Zyklus: Sensoren lesen → einfache Regeln → SCL-Bausteine → Aktoren und Bewegung. ' +
+      'Die SCL-Bausteine laufen in der Reihenfolge, in der sie im Strukturbaum unter "Logik" von oben nach unten stehen, ' +
+      'Ordner werden dabei der Reihe nach ganz durchlaufen (innerhalb einer Ebene erst die Ordner mit ihrem Inhalt, ' +
+      'dann die Bausteine). Umsortieren im Baum (Ziehen) ändert also die Ausführungsreihenfolge; ' +
+      'das Eigenschaften-Panel von "Logik" und jedes Bausteins zeigt die Nummer. Ein geschriebener Eingang behält seinen Wert, bis er wieder geschrieben wird. ' +
       'Wird der Baustein abgeschaltet oder gelöscht, fallen seine Ziele auf den Startwert zurück.',
     example: '', insert: '' },
 

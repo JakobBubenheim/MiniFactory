@@ -7,7 +7,7 @@ window.MF = window.MF || {};
 (function () {
   MF.file = {
     FORMAT: 'mini-fabrik',
-    VERSION: 1,
+    VERSION: 2,     // 2: Ordner im Strukturbaum (folders, parent statt group)
     EXT: '.mfab',
     AUTOSAVE_KEY: 'mf.autosave',
     DIRTY_KEY: 'mf.autosave.dirty',
@@ -40,11 +40,14 @@ window.MF = window.MF || {};
         version: this.VERSION,
         name: m.name,
         settings: { dtMs: m.settings.dtMs, cellM: m.settings.cellM },
+        folders: (m.folders || []).map(function (f) {
+          return { id: f.id, name: f.name, parent: f.parent || null, area: f.area };
+        }),
         elements: m.elements.map(function (el) {
           var props = clone(el.props);
           if (el.type === 'sink') props.count = 0;   // Zählerstand gehört zur Laufzeit
           return {
-            id: el.id, type: el.type, name: el.name, group: el.group,
+            id: el.id, type: el.type, name: el.name, parent: el.parent || null,
             x: el.x, y: el.y, w: el.w, h: el.h, rot: el.rot || 0,
             props: props,
             inputs: clone(el.inputs || {}),
@@ -53,7 +56,7 @@ window.MF = window.MF || {};
         }),
         rules: m.rules.map(function (r) {
           var out = {
-            id: r.id, name: r.name, kind: r.kind === 'scl' ? 'scl' : 'rule',
+            id: r.id, name: r.name, parent: r.parent || null, kind: r.kind === 'scl' ? 'scl' : 'rule',
             enabled: r.enabled !== false, description: r.description || '',
             when: r.when || '', then: r.then || ''
           };
@@ -62,7 +65,8 @@ window.MF = window.MF || {};
         }),
         view: {
           zoom: MF.sim.zoom, panX: MF.sim.offsetX, panY: MF.sim.offsetY,
-          grid: MF.sim.showGrid, tags: MF.sim.showTags
+          grid: MF.sim.showGrid, tags: MF.sim.showTags,
+          folded: MF.tree ? MF.tree.foldedIds() : []   // zugeklappte Ordner
         }
       };
     },
@@ -100,6 +104,37 @@ window.MF = window.MF || {};
         return true;
       }
 
+      // Ordner: IDs, Bereich, Eltern und Zyklen
+      var folders = {};
+      if (obj.folders !== undefined && !Array.isArray(obj.folders)) errors.push('"folders" muss eine Liste sein.');
+      else (obj.folders || []).forEach(function (f, i) {
+        var what = 'Ordner ' + (i + 1);
+        if (!isObject(f)) { errors.push(what + ' ist kein Objekt.'); return; }
+        if (checkId(f.id, what)) { what = 'Ordner "' + f.id + '"'; folders[f.id] = f; }
+        if (typeof f.name !== 'string') errors.push(what + ': Name muss ein Text sein.');
+        if (f.area !== 'plant' && f.area !== 'logic') errors.push(what + ': Bereich (area) muss "plant" oder "logic" sein.');
+      });
+      // parent muss null/fehlend oder ein Ordner desselben Bereichs sein
+      function checkParent(o, area, what) {
+        if (o.parent === undefined || o.parent === null) return;
+        if (typeof o.parent !== 'string' || !folders.hasOwnProperty(o.parent)) {
+          errors.push(what + ': Ordner "' + o.parent + '" gibt es nicht.');
+        } else if (folders[o.parent].area !== area) {
+          errors.push(what + ': Ordner "' + o.parent + '" liegt im falschen Bereich.');
+        }
+      }
+      Object.keys(folders).forEach(function (id) {
+        var f = folders[id];
+        checkParent(f, f.area, 'Ordner "' + id + '"');
+        // Zyklus: den Eltern folgen, bis null oder wieder bei id
+        var seen = {}, p = f.parent;
+        while (typeof p === 'string' && folders.hasOwnProperty(p) && !seen[p]) {
+          if (p === id) { errors.push('Ordner "' + id + '" liegt (über Umwege) in sich selbst.'); break; }
+          seen[p] = true;
+          p = folders[p].parent;
+        }
+      });
+
       if (!Array.isArray(obj.elements)) errors.push('Die Liste der Elemente fehlt.');
       else obj.elements.forEach(function (el, i) {
         var what = 'Element ' + (i + 1);
@@ -112,7 +147,7 @@ window.MF = window.MF || {};
         if (isNum(el.w) && el.w <= 0 || isNum(el.h) && el.h <= 0) errors.push(what + ': Breite und Höhe müssen > 0 sein.');
         if (el.rot !== undefined && MF.file.ROTATIONS.indexOf(el.rot) < 0) errors.push(what + ': Drehung muss 0, 90, 180 oder 270 sein.');
         if (el.name !== undefined && typeof el.name !== 'string') errors.push(what + ': Name muss ein Text sein.');
-        if (el.group !== undefined && typeof el.group !== 'string') errors.push(what + ': Gruppe muss ein Text sein.');
+        checkParent(el, 'plant', what);
         if (el.props !== undefined && !isObject(el.props)) errors.push(what + ': "props" muss ein Objekt sein.');
         if (el.inputs !== undefined && !isObject(el.inputs)) errors.push(what + ': "inputs" muss ein Objekt sein.');
         if (el.look !== undefined && !isObject(el.look)) errors.push(what + ': "look" muss ein Objekt sein.');
@@ -122,7 +157,8 @@ window.MF = window.MF || {};
       else (obj.rules || []).forEach(function (r, i) {
         var what = 'Regel ' + (i + 1);
         if (!isObject(r)) { errors.push(what + ' ist kein Objekt.'); return; }
-        checkId(r.id, what);
+        if (checkId(r.id, what)) what = 'Regel "' + r.id + '"';
+        checkParent(r, 'logic', what);
         ['name', 'when', 'then', 'description', 'code'].forEach(function (k) {
           if (r[k] !== undefined && typeof r[k] !== 'string') errors.push(what + ': "' + k + '" muss ein Text sein.');
         });
@@ -137,8 +173,28 @@ window.MF = window.MF || {};
     // ---------- Ältere Versionen ----------
 
     // Je Version ein Schritt auf die nächste, z. B. 1: function (o) { ...; o.version = 2; }.
-    // Bisher gibt es nur Version 1, daher noch keine Schritte.
-    MIGRATIONS: {},
+    MIGRATIONS: {
+      // 1 -> 2: Jede Gruppe (el.group) wird ein Ordner direkt unter "Anlage",
+      // in der Reihenfolge ihres ersten Auftretens. Regeln liegen direkt unter "Logik".
+      1: function (o) {
+        var byName = {};
+        o.folders = [];
+        (Array.isArray(o.elements) ? o.elements : []).forEach(function (el) {
+          if (!isObject(el)) return;
+          var g = typeof el.group === 'string' ? el.group.trim() : '';
+          if (g && !byName[g]) {
+            byName[g] = 'F' + (o.folders.length + 1);
+            o.folders.push({ id: byName[g], name: g, parent: null, area: 'plant' });
+          }
+          el.parent = g ? byName[g] : null;
+          delete el.group;
+        });
+        (Array.isArray(o.rules) ? o.rules : []).forEach(function (r) {
+          if (isObject(r)) r.parent = null;
+        });
+        o.version = 2;
+      }
+    },
 
     migrate: function (obj) {
       if (!isObject(obj) || typeof obj.version !== 'number') return obj;
@@ -165,11 +221,14 @@ window.MF = window.MF || {};
       var model = {
         name: obj.name || 'Anlage',
         settings: { dtMs: s.dtMs || 50, cellM: s.cellM || 0.5 },
+        folders: (obj.folders || []).map(function (f) {
+          return { id: f.id, name: f.name, parent: f.parent || null, area: f.area };
+        }),
         elements: obj.elements.map(function (f) {
           var t = MF.types[f.type];
           var look = f.look || {};
           var el = {
-            id: f.id, type: f.type, name: f.name || f.id, group: f.group || 'Anlage',
+            id: f.id, type: f.type, name: f.name || f.id, parent: f.parent || null,
             x: f.x, y: f.y, w: f.w, h: f.h, rot: f.rot || 0,
             props: clone(t.defaults),
             rt: {},
@@ -193,7 +252,7 @@ window.MF = window.MF || {};
         // Ältere Dateien ohne enabled/kind: Regel ist aktiv und vom Typ Wenn-dann
         rules: (obj.rules || []).map(function (r) {
           return {
-            id: r.id, name: r.name || r.id, kind: r.kind === 'scl' ? 'scl' : 'rule',
+            id: r.id, name: r.name || r.id, parent: r.parent || null, kind: r.kind === 'scl' ? 'scl' : 'rule',
             enabled: r.enabled !== false, description: r.description || '',
             when: r.when || '', then: r.then || '', code: r.code || ''
           };
@@ -222,9 +281,7 @@ window.MF = window.MF || {};
       MF.engine.setDtMs(model.settings.dtMs);
       MF.store.selectedId = null;
       this.applyView(view);
-      if (MF.tree) {
-        MF.tree.groups().forEach(function (g) { MF.tree.expanded['grp:' + g] = true; });
-      }
+      if (MF.tree) MF.tree.setFolded(view && view.folded);
       this.loading = true;
       MF.store.changed();
       this.loading = false;
@@ -239,6 +296,7 @@ window.MF = window.MF || {};
       if (isNum(view.panY)) MF.sim.offsetY = view.panY;
       if (typeof view.grid === 'boolean') MF.sim.showGrid = view.grid;
       if (typeof view.tags === 'boolean') MF.sim.showTags = view.tags;
+      if (MF.tree && Array.isArray(view.folded)) MF.tree.setFolded(view.folded);
       if (MF.ui && MF.ui.syncToggles) MF.ui.syncToggles();
     },
 
@@ -257,7 +315,7 @@ window.MF = window.MF || {};
 
     newPlant: function () {
       if (!this.confirmDiscard()) return;
-      this.deserialize({ format: this.FORMAT, version: this.VERSION, name: 'Neue Anlage', elements: [], rules: [] });
+      this.deserialize({ format: this.FORMAT, version: this.VERSION, name: 'Neue Anlage', folders: [], elements: [], rules: [] });
       this.handle = null;
       this.setDirty(false);
       MF.ui.message('Neue Anlage angelegt.');

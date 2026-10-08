@@ -121,10 +121,16 @@ MF.props = {
     var input;
     if (def.type === 'select') {
       input = document.createElement('select');
+      // Optionen als Text oder als { value, label }
       def.options.forEach(function (o) {
         var opt = document.createElement('option');
-        opt.value = o;
-        opt.textContent = o === '' ? '–' : o;
+        if (o !== null && typeof o === 'object') {
+          opt.value = o.value;
+          opt.textContent = o.label;
+        } else {
+          opt.value = o;
+          opt.textContent = o === '' ? '–' : o;
+        }
         input.appendChild(opt);
       });
       input.value = value;
@@ -247,7 +253,7 @@ MF.props = {
       this.field(s1, { label: 'Name', type: 'text' }, el.name, function (v) { el.name = v; self.commit(); self.render(); });
       this.field(s1, { label: 'ID', type: 'text', readonly: true }, el.id);
       this.field(s1, { label: 'Typ', type: 'text', readonly: true }, type.label);
-      this.field(s1, { label: 'Gruppe', type: 'text' }, el.group, function (v) { el.group = v; MF.tree.expanded['grp:' + v] = true; self.commit(); });
+      this.folderField(s1, el, 'plant');
 
       var s2 = this.section(body, 'Position');
       var locked = { readonly: el.locked };
@@ -352,6 +358,14 @@ MF.props = {
 
     var s1 = this.section(body, 'Allgemein');
     this.field(s1, { label: 'Name', type: 'text' }, rule.name, function (v) { rule.name = v; self.commit(); self.render(); });
+    this.folderField(s1, rule, 'logic');
+    if (scl) {
+      var order = MF.logic.sclOrder();
+      var no = order.indexOf(rule) + 1;
+      this.field(s1, { label: 'Ausführung', type: 'text', readonly: true,
+        hint: 'SCL-Bausteine laufen in jedem Zyklus nacheinander, in der Reihenfolge im Strukturbaum von oben nach unten (Ordner werden dabei ganz durchlaufen). Zum Ändern im Baum verschieben.' },
+        no ? no + '. von ' + order.length + ' (Reihenfolge im Baum)' : 'läuft nicht');
+    }
     this.field(s1, { label: 'Aktiv', type: 'bool', onText: 'Ja', offText: 'Nein', hint: 'Abgeschaltete Regeln bleiben erhalten, werden aber nicht ausgewertet' },
       rule.enabled !== false, function (v) { rule.enabled = v; self.commit(); self.render(); });
     this.field(s1, { label: 'Art', type: 'select', options: ['Wenn-dann', 'SCL'], hint: 'Einfache Wenn-dann-Regel oder eigener SCL-Code' },
@@ -474,27 +488,76 @@ MF.props = {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   },
 
-  // ---------- Projekt, Anlage, Gruppe, Logik ----------
+  // Auswahlliste "Ordner" mit vollem Pfad, z. B. "Förderstrecke 1 / Ausschleusung".
+  // obj: Element, Regel oder Ordner; Ordner können nicht in sich selbst liegen.
+  folderField: function (parent, obj, area) {
+    var self = this;
+    var isFolder = !!MF.store.findFolder(obj.id) && obj.area === area;
+    var options = [{ value: '', label: MF.store.AREAS[area] + ' (oberste Ebene)' }];
+    MF.store.folderList(area).forEach(function (o) {
+      if (isFolder && MF.store.isWithin(o.folder.id, obj.id)) return;
+      options.push({ value: o.folder.id, label: o.path });
+    });
+    this.field(parent, { label: 'Ordner', type: 'select', options: options,
+      hint: 'Ordner im Strukturbaum; im Baum auch per Ziehen änderbar' },
+      MF.store.parentOf(obj, area) || '', function (v) {
+        MF.store.moveNodes([obj.id], area, v || null, null);
+        MF.tree.reveal(obj.id);
+        self.render();
+      });
+  },
+
+  // ---------- Projekt, Anlage, Ordner, Logik ----------
 
   renderContainer: function (id) {
     var els = MF.model.elements;
-    var title, sub, icon, list;
+    var title, sub, icon, list, folder = MF.store.findFolder(id);
+    var area = id === 'logic' || (folder && folder.area === 'logic') ? 'logic' : 'plant';
 
     if (id === 'project') {
       title = MF.model.name; sub = 'Projekt'; icon = 'i-project'; list = els;
     } else if (id === 'plant') {
-      title = 'Anlage'; sub = 'Ordner'; icon = 'i-plant'; list = els;
+      title = 'Anlage'; sub = 'Bereich'; icon = 'i-plant'; list = els;
     } else if (id === 'logic') {
       title = 'Logik'; sub = MF.model.rules.length + ' Regeln'; icon = 'i-logic'; list = [];
+    } else if (folder) {
+      var path = MF.store.folderPath(folder.id);
+      title = folder.name; icon = 'i-folder';
+      sub = 'Ordner in ' + [MF.store.AREAS[area]].concat(path.slice(0, -1)).join(' / ');
+      list = area === 'plant' ? MF.store.treeOrder('plant', folder.id) : [];
     } else {
-      var g = id.slice(4);
-      title = g; sub = 'Gruppe'; icon = 'i-folder';
-      list = els.filter(function (el) { return el.group === g; });
+      this.renderEmpty();
+      return;
     }
 
     this.header(icon, title, sub);
     var body = this.body();
     var self = this;
+
+    if (folder) {
+      var sF = this.section(body, 'Ordner');
+      this.field(sF, { label: 'Name', type: 'text' }, folder.name, function (v) {
+        if (!v.trim()) return;
+        folder.name = v.trim(); self.commit(); self.render();
+      });
+      this.field(sF, { label: 'ID', type: 'text', readonly: true }, folder.id);
+      this.folderField(sF, folder, area);
+      var c = MF.store.childrenOf(area, folder.id);
+      var subs = MF.store.folderList(area).filter(function (o) {
+        return o.folder !== folder && MF.store.isWithin(o.folder.id, folder.id);
+      }).length;
+      this.field(sF, { label: 'Unterordner', type: 'text', readonly: true, hint: 'Direkt darin (insgesamt, mit allen Ebenen)' },
+        c.folders.length + (subs !== c.folders.length ? ' (' + subs + ')' : ''));
+      if (area === 'logic') {
+        var rules = MF.store.treeOrder('logic', folder.id);
+        var sR = this.section(body, 'Inhalt');
+        this.field(sR, { label: 'Regeln', type: 'text', readonly: true },
+          rules.filter(function (r) { return !MF.logic.isScl(r); }).length);
+        this.field(sR, { label: 'SCL-Bausteine', type: 'text', readonly: true },
+          rules.filter(function (r) { return MF.logic.isScl(r); }).length);
+        this.renderOrder(body, rules);
+      }
+    }
 
     if (id === 'project') {
       var s0 = this.section(body, 'Projekt');
@@ -507,8 +570,9 @@ MF.props = {
         MF.model.settings.cellM, function (v) { if (v > 0) { MF.model.settings.cellM = v; self.commit(); } });
     }
 
-    if (list.length) {
-      var s1 = this.section(body, 'Inhalt');
+    if (list.length || (folder && area === 'plant')) {
+      var s1 = this.section(body, folder ? 'Inhalt (mit Unterordnern)' : 'Inhalt');
+      if (!list.length) this.field(s1, { label: 'Elemente', type: 'text', readonly: true }, 0);
       Object.keys(MF.types).forEach(function (t) {
         var n = list.filter(function (el) { return el.type === t; }).length;
         if (n) self.field(s1, { label: MF.types[t].label, type: 'text', readonly: true }, n);
@@ -518,7 +582,34 @@ MF.props = {
       var s2 = this.section(body, 'Logik');
       this.field(s2, { label: 'Regeln', type: 'text', readonly: true }, MF.model.rules.length);
       this.field(s2, { label: 'Signale', type: 'text', readonly: true }, MF.store.signals().length);
+      if (id === 'logic') this.renderOrder(body, MF.logic.order());
     }
+  },
+
+  // Ausführungsreihenfolge der SCL-Bausteine (= Reihenfolge im Strukturbaum)
+  renderOrder: function (body, rules) {
+    var all = MF.logic.sclOrder();
+    var scl = rules.filter(function (r) { return MF.logic.isScl(r); });
+    if (!scl.length) return;
+    var s = this.section(body, 'Ausführungsreihenfolge');
+    var note = document.createElement('div');
+    note.className = 'io-note';
+    note.textContent = 'Pro Zyklus laufen erst die Wenn-dann-Regeln, dann die SCL-Bausteine nacheinander – ' +
+      'in der Reihenfolge, in der sie im Strukturbaum von oben nach unten stehen (Ordner werden ganz durchlaufen). ' +
+      'Zum Ändern im Baum ziehen.';
+    s.appendChild(note);
+    var ol = document.createElement('ol');
+    ol.className = 'order-list';
+    scl.forEach(function (r) {
+      var li = document.createElement('li');
+      var no = all.indexOf(r) + 1;
+      var path = MF.store.folderPath(MF.store.parentOf(r, 'logic'));
+      li.textContent = r.name + (path.length ? ' (' + path.join(' / ') + ')' : '');
+      if (no) li.value = no;
+      else { li.classList.add('muted'); li.textContent += ' – läuft nicht'; li.style.listStyle = 'none'; }
+      ol.appendChild(li);
+    });
+    s.appendChild(ol);
   },
 
   // Wert-Zelle der I/O-Tabelle: eintippen setzt den Eingang bzw. forct den Ausgang

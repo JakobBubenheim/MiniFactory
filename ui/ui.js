@@ -141,6 +141,7 @@ MF.ui = {
         case 'duplicate':   MF.editor.duplicateSelected(); break;
         case 'delete':      MF.editor.deleteSelected(); break;
         case 'delete-rule': MF.editor.deleteSelectedRule(); break;
+        case 'new-folder':  MF.tree.newFolderHere(); break;
         case 'new-rule':    MF.editor.newRule('rule'); break;
         case 'new-scl':     MF.editor.newRule('scl'); break;
         case 'scl-editor':  MF.editor.openSclEditor(); break;
@@ -301,11 +302,12 @@ MF.ui = {
     // Pfad des gewählten Knotens, wie im Baum
     var path = '/' + MF.model.name;
     var id = MF.store.selectedId;
-    var el = MF.store.findElement(id);
-    var rule = MF.store.findRule(id);
-    if (el) path += '/Anlage/' + el.group + '/' + el.name;
-    else if (rule) path += '/Logik/' + rule.name;
-    else if (id && id.indexOf('grp:') === 0) path += '/Anlage/' + id.slice(4);
+    var n = MF.store.findNode(id);
+    if (n) {
+      var folders = MF.store.folderPath(n.kind === 'folder' ? n.obj.id : MF.store.parentOf(n.obj, n.area));
+      path += '/' + MF.store.AREAS[n.area] + (folders.length ? '/' + folders.join('/') : '') +
+        (n.kind === 'folder' ? '' : '/' + n.obj.name);
+    }
     else if (id === 'plant') path += '/Anlage';
     else if (id === 'logic') path += '/Logik';
     document.getElementById('sb-path').textContent = path;
