@@ -153,13 +153,19 @@ window.MF = window.MF || {};
       });
 
       var self = this;
+      // Körper nach ID, für die Kopplung (parent = Körper-ID)
+      var bodies = {};
+      (Array.isArray(obj.bodies) ? obj.bodies : []).forEach(function (b) {
+        if (isObject(b) && typeof b.id === 'string' && !folders.hasOwnProperty(b.id)) bodies[b.id] = b;
+      });
       if (!Array.isArray(obj.bodies)) errors.push('Die Liste der Körper fehlt.');
       else obj.bodies.forEach(function (b, i) {
         var what = 'Körper ' + (i + 1);
         if (!isObject(b)) { errors.push(what + ' ist kein Objekt.'); return; }
         if (checkId(b.id, what)) what = 'Körper "' + b.id + '"';
         if (b.name !== undefined && typeof b.name !== 'string') errors.push(what + ': Name muss ein Text sein.');
-        checkParent(b, 'plant', what);
+        if (typeof b.parent === 'string' && bodies.hasOwnProperty(b.parent)) self.checkCoupling(b, bodies, what, errors);
+        else checkParent(b, 'plant', what);
         if (b.template !== undefined && b.template !== null && !MF.templates.hasOwnProperty(b.template)) {
           errors.push(what + ': unbekannte Vorlage "' + b.template + '".');
         }
@@ -230,9 +236,27 @@ window.MF = window.MF || {};
       if (sh.h2 !== undefined && !(isNum(sh.h2) && sh.h2 >= 0)) errors.push(what + ': Form "h2" (Höhe am Ende) muss eine Zahl ≥ 0 sein.');
     },
 
-    // Achse: in Phase 2 nur linear mit Betriebsart "zweipunkt"
+    // Kopplung (Phase 4): parent ist ein anderer Körper. Kein Kreis, höchstens
+    // zwei Ebenen (der Elternkörper hängt selbst nicht an einem Körper), nichts Dynamisches.
+    checkCoupling: function (b, bodies, what, errors) {
+      var p = bodies[b.parent];
+      if (p === b) { errors.push(what + ': hängt an sich selbst.'); return; }
+      if (b.kind === 'dynamic') errors.push(what + ': dynamische Körper lassen sich nicht an einen Körper koppeln.');
+      if (p.kind === 'dynamic') errors.push(what + ': an den dynamischen Körper "' + p.id + '" lässt sich nichts koppeln.');
+      var seen = {}, q = p, depth = 1;
+      while (q && typeof q.parent === 'string' && bodies.hasOwnProperty(q.parent) && !seen[q.id]) {
+        seen[q.id] = true;
+        if (q.parent === b.id) { errors.push(what + ': Kopplung im Kreis (über "' + p.id + '").'); return; }
+        q = bodies[q.parent];
+        depth++;
+      }
+      if (depth >= MF.COUPLE_DEPTH) errors.push(what + ': hängt an "' + p.id + '", der selbst an einem Körper hängt – höchstens zwei Ebenen.');
+    },
+
+    // Achse (Phase 4): linear oder rotatorisch (nur um die Hochachse), Betriebsart
+    // zweipunkt, position oder geschwindigkeit
     checkAxis: function (ax, what, errors) {
-      if (ax.type !== 'linear') errors.push(what + ': Achse muss linear sein (rotatorisch folgt später).');
+      if (ax.type !== 'linear' && ax.type !== 'rotary') errors.push(what + ': Achstyp muss "linear" oder "rotary" sein.');
       if (!MF.FUNCTIONS.axis.MODES.hasOwnProperty(ax.mode)) errors.push(what + ': unbekannte Betriebsart "' + ax.mode + '".');
       ['min', 'max', 'vmax', 'returnDelay'].forEach(function (k) {
         if (!isNum(ax[k])) errors.push(what + ': Achse "' + k + '" muss eine Zahl sein.');
@@ -244,7 +268,11 @@ window.MF = window.MF || {};
       });
       if (Array.isArray(ax.dir) && ax.dir.every(isNum) && Math.abs(ax.dir[0]) + Math.abs(ax.dir[1]) + Math.abs(ax.dir[2]) < 1e-9) {
         errors.push(what + ': Achsrichtung ist null.');
+      } else if (ax.type === 'rotary' && Array.isArray(ax.dir) && ax.dir.length === 3 &&
+          !(Math.abs(ax.dir[0]) < 1e-9 && Math.abs(ax.dir[1]) < 1e-9)) {
+        errors.push(what + ': Drehachsen gibt es nur um die Hochachse (dir = [0, 0, ±1]).');
       }
+      if (isNum(ax.returnDelay) && ax.returnDelay < 0) errors.push(what + ': Achse "returnDelay" darf nicht negativ sein.');
     },
 
     // ---------- Ältere Versionen ----------

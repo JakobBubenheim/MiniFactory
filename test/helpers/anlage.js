@@ -16,6 +16,11 @@
 // Rechteck/Kreis/Polygon, form(), koerperart(), funktion() und material() ändern
 // ihn wie das Eigenschaften-Panel. Funktionen heißen wie in der Oberfläche
 // ('Transportfläche', 'Achse', 'Sensor', 'Erzeuger', 'Senke').
+//
+// Phase 4 (Achsen): achse() liest und ändert die Achse (Typ, Betriebsart,
+// Grenzen in m bzw. Grad), feld() ein Feld einer Funktion wie im Panel,
+// koppeln() hängt einen Körper an einen anderen (wie Ziehen im Baum),
+// lage() liefert die Lage in der Welt mit Achse und Kopplung.
 'use strict';
 
 const { before } = require('node:test');
@@ -184,6 +189,10 @@ function neueAnlage(datei) {
     kisten3d() {
       return kopie(MF.engine.boxes.map(function (b) { return { x: b.cur.x, y: b.cur.y, z: b.cur.z }; }));
     },
+    /** Drehung der Kisten um die Hochachse in Grad (0 … 360) */
+    kistenDrehung() {
+      return kopie(MF.engine.boxes.map(function (b) { return MF.geom.normDeg(MF.sim.yawOf(b.cur.q) * 180 / Math.PI); }));
+    },
     /** Geschwindigkeiten der Kisten in m/s, [{ x, y, z }] */
     kistenTempo() {
       return kopie(MF.engine.boxes.map(function (b) { const v = b.rb.linvel(); return { x: v.x, y: v.y, z: v.z }; }));
@@ -277,9 +286,76 @@ function neueAnlage(datei) {
       const err = MF.addFunction(e, fn);
       if (err) { MF.ui.message(err); return false; }
       const f = kopie(felder);
+      const vorher = MF.io(e).map(function (s) { return s.name; });
       Object.keys(f).forEach(function (k) { e[fn][k] = f[k]; });
+      MF.store.dropSignals(e.id, MF.syncIo(e, vorher));   // z. B. andere Betriebsart
       geaendert();
       return true;
+    },
+    /**
+     * Feld einer Funktion lesen (wert weglassen) oder setzen wie im Eigenschaften-Panel,
+     * z. B. feld('DT1', 'Achse', 'mode', 'geschwindigkeit'). Gibt beim Setzen true/false zurück.
+     */
+    feld(id, name, key, wert) {
+      const e = el(id), fn = fnKey(name);
+      if (!e[fn]) throw new Error(id + ' hat keine Funktion "' + name + '"');
+      if (arguments.length < 4) return kopie(MF.getField(e, fn, key));
+      const ok = MF.setField(e, fn, key, wert);
+      if (ok) geaendert();
+      return ok;
+    },
+    /** Sichtbare Felder einer Funktion (Schlüssel), wie im Panel */
+    felder(id, name) {
+      const e = el(id), fn = fnKey(name);
+      return kopie(MF.fieldsOf(e, fn).map(function (d) { return d.key; }));
+    },
+    /**
+     * Achse lesen (felder weglassen) oder ändern, z. B. { type: 'rotary', mode: 'position', min: 0, max: 90 }.
+     * Gibt true zurück oder false, wenn abgelehnt (Meldung in meldungen()).
+     */
+    achse(id, felder) {
+      const e = el(id);
+      if (!felder) return e.axis ? kopie(e.axis) : null;
+      const err = MF.setAxis(e, kopie(felder));
+      if (err) { MF.ui.message(err); return false; }
+      geaendert();
+      return true;
+    },
+    /** Achse wie in der Draufsicht am Griff ziehen: eine Geste mit Zwischenständen, ein Schritt im Verlauf */
+    achseZiehen(id, staende) {
+      const e = el(id);
+      let abgelehnt = 0;
+      MF.history.begin();
+      staende.forEach(function (st) {
+        if (MF.setAxis(e, kopie(st))) abgelehnt++;
+        else MF.store.changed();
+        MF.history.lastTime -= 10000;
+      });
+      MF.history.end();
+      return abgelehnt;
+    },
+    /**
+     * Körper an den Körper eltern hängen (Kopplung, wie Ziehen im Baum auf den Körper);
+     * eltern = null löst die Kopplung (Körper bleibt im Ordner). Er bleibt dabei, wo er ist.
+     * Gibt true zurück oder false, wenn abgelehnt (Grund in meldungen()).
+     */
+    koppeln(id, eltern) {
+      const e = el(id);
+      const ziel = eltern || MF.store.folderOf(e, 'plant');
+      const n = MF.store.moveNodes([id], 'plant', ziel, null);
+      MF.history.canMerge = false;
+      return n > 0;
+    },
+    /** Körper, an dem id hängt, oder null */
+    gekoppeltAn(id) { const p = MF.parentBody(el(id)); return p ? p.id : null; },
+    /** Ordner eines Körpers (bei Kopplung der des Elternkörpers) */
+    ordnerVon(id) { return MF.store.folderOf(el(id), 'plant'); },
+    /** Vorlagen im Katalog: [{ key, label, group, prefix, hint }] */
+    vorlagen() {
+      return kopie(Object.keys(MF.templates).map(function (k) {
+        const t = MF.templates[k];
+        return { key: k, label: t.label, group: t.group, prefix: t.prefix, hint: t.hint, icon: t.icon };
+      }));
     },
     /**
      * Griff ziehen wie im Editor: eine Geste mit mehreren Zwischenständen
@@ -308,10 +384,18 @@ function neueAnlage(datei) {
       Object.keys(f).forEach(function (k) { e.material[k] = f[k]; });
       geaendert();
     },
-    /** Aktuelle Lage in der Simulation { x, y, z, rot } (dynamisch: wo die Physik ihn hat) */
+    /**
+     * Aktuelle Lage in der Welt { x, y, z, rot } – mit Achsstellung und Kopplung,
+     * dynamisch: wo die Physik ihn hat. rot auf 0 … 360 Grad.
+     */
     lage(id) {
       const p = MF.engine.worldPose(el(id));
-      return kopie({ x: p.x, y: p.y, z: p.z, rot: p.rot });
+      return kopie({ x: p.x, y: p.y, z: p.z, rot: MF.geom.normDeg(p.rot) });
+    },
+    /** Lage, wie Draufsicht und 3D-Ansicht sie zeichnen (zwischen zwei Schritten interpoliert) */
+    zeichenLage(id) {
+      const p = MF.sim.drawPose(el(id));
+      return kopie({ x: p.x, y: p.y, z: p.z, rot: MF.geom.normDeg(p.rot) });
     },
     /** Punkt fangen wie beim Zeichnen; ohneFangen = Alt gedrückt */
     fangen(x, y, ohneFangen) {

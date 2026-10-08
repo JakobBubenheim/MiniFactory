@@ -267,10 +267,11 @@ MF.view3dCore = {
     var r = null;
     bodies.forEach(function (b) {
       if (b.look && b.look.visible === false) return;
-      var q = MF.geom.bounds(b.shape, b.pose);
-      var top = b.pose.z + MF.geom.maxHeight(b.shape);
-      if (!r) r = { x0: q.x0, y0: q.y0, z0: b.pose.z, x1: q.x1, y1: q.y1, z1: top };
-      r.x0 = Math.min(r.x0, q.x0); r.y0 = Math.min(r.y0, q.y0); r.z0 = Math.min(r.z0, b.pose.z);
+      var pose = MF.poseInWorld(b);   // gekoppelt: Lage am Elternkörper
+      var q = MF.geom.bounds(b.shape, pose);
+      var top = pose.z + MF.geom.maxHeight(b.shape);
+      if (!r) r = { x0: q.x0, y0: q.y0, z0: pose.z, x1: q.x1, y1: q.y1, z1: top };
+      r.x0 = Math.min(r.x0, q.x0); r.y0 = Math.min(r.y0, q.y0); r.z0 = Math.min(r.z0, pose.z);
       r.x1 = Math.max(r.x1, q.x1); r.y1 = Math.max(r.y1, q.y1); r.z1 = Math.max(r.z1, top);
     });
     return r;

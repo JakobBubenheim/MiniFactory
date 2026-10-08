@@ -173,21 +173,13 @@ MF.engine = {
     return { x: 0, y: 0, z: Math.sin(a), w: Math.cos(a) };
   },
 
-  // Achse: Stellung pos (m) entlang axis.dir, in Weltkoordinaten verschoben
-  axisOffset: function (b, pos) {
-    var ax = b.axis, d = ax.dir;
-    var len = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) || 1;
-    var w = MF.geom.toWorld({ x: 0, y: 0, rot: b.pose.rot }, ax.origin[0] + d[0] / len * pos, ax.origin[1] + d[1] / len * pos);
-    return { x: w.x, y: w.y, z: ax.origin[2] + d[2] / len * pos };
-  },
-
-  // Aktuelle Lage eines Körpers in der Welt (kinematisch: mit Achsstellung,
-  // dynamisch: wo die Physik ihn gerade hat)
+  // Aktuelle Lage eines Körpers in der Welt: kinematisch mit Achsstellung,
+  // gekoppelt mit der Lage des Elternkörpers (MF.poseInWorld), dynamisch dort,
+  // wo die Physik ihn gerade hat. pos: eigene Achsstellung statt der aktuellen.
   worldPose: function (b, pos) {
     if (b.kind === 'dynamic') return this.dynamicPose(b, 1);
-    if (!b.axis || b.kind !== 'kinematic') return b.pose;
-    var o = this.axisOffset(b, pos === undefined ? this.axisPos(b) : pos);
-    return { x: b.pose.x + o.x, y: b.pose.y + o.y, z: b.pose.z + o.z, rot: b.pose.rot };
+    if (pos === undefined) return MF.poseInWorld(b, MF.axisPos);
+    return MF.poseInWorld(b, function (x) { return x === b ? pos : MF.axisPos(x); });
   },
 
   // Dynamischer Körper aus dem Modell (gezeichnet, fällt und rutscht): Lage aus
@@ -207,14 +199,21 @@ MF.engine = {
   },
 
   axisPos: function (b) {
-    var rt = b.rt || {};
-    return rt.pos !== undefined ? rt.pos : b.axis.min;
+    return MF.axisPos(b);
+  },
+
+  // Rapier-Körperart: kinematisch auch für feste Körper, die an einem Körper
+  // hängen (Band auf dem Hubtisch) – sie bewegen sich mit und nehmen Kisten mit.
+  rapierKind: function (b) {
+    if (b.kind === 'static' && MF.parentBody(b)) return 'kinematic';
+    return b.kind;
   },
 
   // Was Rapier von einem Körper wissen muss. Ändert es sich, wird er neu gebaut.
+  // Die Lage gekoppelter Körper hängt vom Eltern ab; sie wird nachgeführt, nicht neu gebaut.
   signature: function (b) {
-    return JSON.stringify([b.kind, b.shape, b.pose, b.material, !!b.surface,
-      b.axis && [b.axis.origin, b.axis.dir]]);
+    return JSON.stringify([this.rapierKind(b), b.shape, b.pose, b.material, !!b.surface,
+      b.axis && [b.axis.origin, b.axis.dir, b.axis.type]]);
   },
 
   // Rapier-Welt an das Modell angleichen: neue, geänderte und gelöschte Körper.
@@ -235,8 +234,9 @@ MF.engine = {
       delete b.rt.prev;
       if (b.kind === 'ghost') return;   // nur Abfragen (Sensor, Erzeuger, Senke), keine Kollision
       var pose = self.worldPose(b);
-      var desc = b.kind === 'kinematic' ? R.RigidBodyDesc.kinematicPositionBased()
-        : b.kind === 'dynamic' ? R.RigidBodyDesc.dynamic() : R.RigidBodyDesc.fixed();
+      var kind = self.rapierKind(b);
+      var desc = kind === 'kinematic' ? R.RigidBodyDesc.kinematicPositionBased()
+        : kind === 'dynamic' ? R.RigidBodyDesc.dynamic() : R.RigidBodyDesc.fixed();
       p.rb = world.createRigidBody(desc.setTranslation(pose.x, pose.y, pose.z).setRotation(self.quatZ(pose.rot)));
       // Transportfläche: in Rapier reibungsfrei, die Haftung kommt aus der Nachführung
       var friction = b.surface ? 0 : undefined;
@@ -250,6 +250,20 @@ MF.engine = {
       if (seen[id]) return;
       if (self.phys[id].rb) world.removeRigidBody(self.phys[id].rb);
       delete self.phys[id];
+      rebuilt = true;
+    });
+    // Bewegte Körper (Achse, Kopplung): Liegt der Rapier-Körper nicht dort, wo das
+    // Modell ihn sieht (Elternkörper verschoben, Grenzen geändert …), dorthin setzen.
+    MF.model.bodies.forEach(function (b) {
+      var p = self.phys[b.id];
+      if (!p || !p.rb || !p.rb.isKinematic() || !MF.isMoving(b)) return;
+      var pose = self.worldPose(b), t = p.rb.translation();
+      var q = self.quatZ(pose.rot), r = p.rb.rotation();
+      // Rapier rechnet in float32: kleine Abweichungen sind kein Grund zum Umsetzen
+      if (Math.abs(t.x - pose.x) + Math.abs(t.y - pose.y) + Math.abs(t.z - pose.z) < 1e-4 &&
+          Math.abs(q.z * r.w - q.w * r.z) < 1e-5) return;
+      p.rb.setTranslation({ x: pose.x, y: pose.y, z: pose.z }, true);
+      p.rb.setRotation(q, true);
       rebuilt = true;
     });
     // Liegt eine schlafende Kiste auf einem neu gebauten Körper, soll sie es merken
@@ -290,7 +304,7 @@ MF.engine = {
     this.boxes.forEach(function (bx) { bx.prev = bx.cur; });
     bodies.forEach(function (b) {
       if (b.surface) { b.rt.prevTravel = b.rt.travel || 0; }
-      if (b.axis) b.rt.prevPos = self.axisPos(b);
+      if (MF.hasAxis(b)) b.rt.prevPos = self.axisPos(b);
     });
 
     // 1. Sensoren lesen (Prozessabbild der Eingänge)
@@ -305,14 +319,22 @@ MF.engine = {
     this.world.timestep = h;
     var g = MF.model.settings.gravity;
     if (this.world.gravity.z !== g) this.world.gravity = { x: 0, y: 0, z: g };
+    var moving = bodies.filter(function (b) {
+      var p = self.phys[b.id];
+      return p && p.rb && p.rb.isKinematic() && MF.isMoving(b);
+    });
     for (var i = 0; i < n; i++) {
+      // Lage der bewegten Körper vor dem Unterschritt (für die Transportfläche)
+      var before = moving.map(function (b) { return self.worldPose(b); });
       bodies.forEach(function (b) {
-        if (b.axis && b.kind === 'kinematic') self.stepAxis(b, h);
+        if (MF.hasAxis(b)) self.stepAxis(b, h);
         if (b.surface) b.rt.travel = (b.rt.travel || 0) + self.surfaceSpeed(b) * h;   // nur für die Streifen
       });
+      this.moveKinematic(moving, before, h);
       this.applySurfaces();
       this.world.step();
     }
+    this.motion = {};
     this.boxes.forEach(function (bx) { bx.cur = self.boxState(bx.rb); });
     bodies.forEach(function (b) {
       var p = self.phys[b.id];
@@ -339,31 +361,64 @@ MF.engine = {
     if (rt.raw !== rt.occupied && rt.stableMs >= (b.sensor.debounce || 0) - 1e-6) rt.occupied = rt.raw;
   },
 
-  // ---------- Achse (Betriebsart zweipunkt) ----------
+  // ---------- Achse (Konzept, Abschnitt 2) ----------
 
-  // Ausfahren = 1: mit vmax nach max. Ausfahren = 0: returnDelay warten, dann
-  // nach min. rt.pos = Stellung in m. Weitere Betriebsarten (position,
-  // geschwindigkeit) und rotatorische Achsen ergänzt Phase 4 hier.
+  // Eine Achse um einen Physik-Unterschritt h (s) weiterfahren. rt.pos = Stellung
+  // in m (linear) bzw. Grad (rotatorisch), nie schneller als vmax, immer in den
+  // Grenzen min … max (liegt sie außerhalb, fährt sie mit vmax zurück).
+  //   zweipunkt:       Ausfahren = 1: nach max. Ausfahren = 0: returnDelay warten, dann nach min.
+  //   position:        Freigabe = 1: auf Soll (in den Grenzen); ohne Freigabe steht sie.
+  //   geschwindigkeit: Freigabe = 1: mit Soll (begrenzt auf ±vmax) bis an die Grenzen.
   stepAxis: function (b, h) {
     var ax = b.axis, rt = b.rt;
-    if (rt.pos === undefined) { rt.pos = ax.min; rt.wait = 0; }
-    var target = rt.pos;
-    if (this.input(b, 'Ausfahren')) {
+    if (rt.pos === undefined || rt.axisType !== ax.type) {
+      rt.pos = MF.axisHome(ax);
+      rt.wait = 0;
+      rt.axisType = ax.type;
+    }
+    var target = rt.pos, step = ax.vmax * h;
+    if (ax.mode === 'position') {
+      if (this.input(b, 'Freigabe')) target = this.input(b, 'Soll');
+    } else if (ax.mode === 'geschwindigkeit') {
+      if (this.input(b, 'Freigabe')) target = rt.pos + Math.max(-ax.vmax, Math.min(ax.vmax, this.input(b, 'Soll'))) * h;
+    } else if (this.input(b, 'Ausfahren')) {
       rt.wait = 0;
       target = ax.max;
     } else if (rt.pos > ax.min) {
-      rt.wait += h;
+      rt.wait = (rt.wait || 0) + h;
       if (rt.wait >= ax.returnDelay - 1e-9) target = ax.min;
     }
-    if (target > ax.max) target = ax.max;   // Hub verkleinert
-    var step = ax.vmax * h;
+    if (target > ax.max) target = ax.max;   // Grenzen gelten immer (auch nach Ändern)
+    if (target < ax.min) target = ax.min;
     var d = target - rt.pos;
     rt.pos = Math.abs(d) <= step ? target : rt.pos + (d > 0 ? step : -step);
-    var p = this.phys[b.id];
-    if (p && p.rb) {
-      var pose = this.worldPose(b, rt.pos);
-      p.rb.setNextKinematicTranslation({ x: pose.x, y: pose.y, z: pose.z });
-    }
+  },
+
+  // Bewegte Körper (Achse, Kopplung) an ihre neue Lage fahren lassen. Rapier
+  // rechnet daraus ihre Geschwindigkeit; die Transportfläche braucht sie auch
+  // (this.motion: Lage vor und nach dem Unterschritt).
+  // Kommt ein Körper zum Stehen, rechnet Rapier seine Kontakte neu: Gleitet seine
+  // Fläche an einer Kiste entlang (Stopper fährt ein, die gestaute Kiste drückt
+  // seitlich dagegen), schreibt parry die Kontaktpunkte nur fort – auch über die
+  // Kante hinaus – und die Kiste hinge an einem Kontakt, den es nicht mehr gibt.
+  moveKinematic: function (moving, before, h) {
+    var self = this;
+    this.motion = {};
+    moving.forEach(function (b, k) {
+      var p = self.phys[b.id], rb = p.rb, cur = before[k], next = self.worldPose(b);
+      self.motion[b.id] = { cur: cur, next: next, h: h };
+      rb.setNextKinematicTranslation({ x: next.x, y: next.y, z: next.z });
+      // Drehung nur, wenn sie sich ändern kann (Drehachse, Kopplung)
+      if ((b.axis && b.axis.type === 'rotary') || MF.parentBody(b)) rb.setNextKinematicRotation(self.quatZ(next.rot));
+      var moved = next.x !== cur.x || next.y !== cur.y || next.z !== cur.z || next.rot !== cur.rot;
+      if (b.rt.moving && !moved) self.refreshContacts(p);
+      b.rt.moving = moved;
+    });
+  },
+
+  // Kontakte eines Körpers neu berechnen lassen (Collider gilt als geändert)
+  refreshContacts: function (p) {
+    (p.colliders || []).forEach(function (col, i) { col.setTranslationWrtParent(p.parts[i].t); });
   },
 
   // ---------- Transportfläche ----------
@@ -381,15 +436,21 @@ MF.engine = {
   // aufliegende Kisten werden zur Bandgeschwindigkeit gezogen, gewichtet mit dem
   // Kontaktimpuls J des letzten Schritts (trägt ein Band mehr Gewicht, zieht es
   // stärker); die Änderung ist wie Coulomb-Reibung auf μ·ΣJ/m begrenzt
-  // (μ = Reibwert des Bands). Drehen um die Hochachse wird ebenso abgebremst.
+  // (μ = Reibwert des Bands). Drehen um die Hochachse wird ebenso begrenzt.
+  // Bewegt sich der Körper selbst (Drehtisch, Hubtisch, Kopplung), kommt die
+  // Geschwindigkeit seines Oberflächenpunkts unter der Kiste dazu (v + ω × r) –
+  // die Bandoberfläche hat in Rapier Reibung 0 und nähme die Kiste sonst nicht mit.
+  // Die Laufrichtung dreht mit dem Körper; die Kiste dreht mit ω mit.
   applySurfaces: function () {
-    var self = this, world = this.world;
+    var self = this, world = this.world, motion = this.motion || {};
     var targets = [], byHandle = {};
     MF.model.bodies.forEach(function (b) {
       var p = self.phys[b.id];
       if (!b.surface || !p || !p.rb) return;
       var speed = self.surfaceSpeed(b);
-      var v = MF.geom.dirVec(b.pose.rot + b.surface.dir);
+      var mot = motion[b.id];
+      var v = MF.geom.dirVec((mot ? mot.next.rot : b.pose.rot) + b.surface.dir);
+      var wz = mot ? MF.geom.rad(mot.next.rot - mot.cur.rot) / mot.h : 0;
       var mu = b.material ? b.material.friction : MF.MATERIALS.belt.friction;
       p.colliders.forEach(function (col) {
         world.contactPairsWith(col, function (other) {
@@ -402,9 +463,17 @@ MF.engine = {
           });
           if (!(j > 0)) return;
           var t = byHandle[rb.handle];
-          if (!t) { t = byHandle[rb.handle] = { rb: rb, x: 0, y: 0, j: 0, muj: 0 }; targets.push(t); }
-          t.x += v.x * speed * j;
-          t.y += v.y * speed * j;
+          if (!t) { t = byHandle[rb.handle] = { rb: rb, x: 0, y: 0, w: 0, j: 0, muj: 0 }; targets.push(t); }
+          if (mot) {
+            // Punkt der Oberfläche unter der Kiste: wohin trägt ihn der Körper in diesem Unterschritt?
+            var at = rb.translation(), l = MF.geom.toLocal(mot.cur, at.x, at.y), to = MF.geom.toWorld(mot.next, l.x, l.y);
+            t.x += (v.x * speed + (to.x - at.x) / mot.h) * j;
+            t.y += (v.y * speed + (to.y - at.y) / mot.h) * j;
+            t.w += wz * j;
+          } else {
+            t.x += v.x * speed * j;
+            t.y += v.y * speed * j;
+          }
           t.j += j;
           t.muj += mu * j;
         });
@@ -424,7 +493,8 @@ MF.engine = {
       var len = Math.sqrt(dx * dx + dy * dy);
       if (len > maxDv) { dx *= maxDv / len; dy *= maxDv / len; }
       var w = rb.angvel();
-      var wz = Math.abs(w.z) <= maxDw ? 0 : w.z - (w.z > 0 ? maxDw : -maxDw);
+      var dw = t.w / t.j - w.z;   // Ziel: Drehung der Fläche (meist 0)
+      var wz = Math.abs(dw) <= maxDw ? w.z + dw : w.z + (dw > 0 ? maxDw : -maxDw);
       if (len < 1e-12 && wz === w.z) return;       // nichts zu tun – Kiste darf schlafen
       rb.setLinvel({ x: v.x + dx, y: v.y + dy, z: v.z }, true);
       rb.setAngvel({ x: w.x, y: w.y, z: wz }, true);
@@ -450,7 +520,8 @@ MF.engine = {
     if (rt.timer > 1e-9) return;
 
     var R = this.R, tpl = sp.template, sh = tpl.shape;
-    var q = this.quatZ(b.pose.rot);
+    var pose = this.worldPose(b);   // Erzeuger kann an einem bewegten Körper hängen
+    var q = this.quatZ(pose.rot);
     var free = true;
     // Platz frei? Form der Kiste, 5 mm größer, an der Ablegestelle
     var probe = sh.type === 'rect' ? new R.Cuboid(sh.w / 2 + 0.005, sh.d / 2 + 0.005, sh.h / 2 + 0.005) : null;
@@ -458,13 +529,13 @@ MF.engine = {
     var self = this;
     parts.forEach(function (part) {
       if (!free) return;
-      var t = MF.geom.toWorld(b.pose, part.t.x, part.t.y);
-      self.world.intersectionsWithShape({ x: t.x, y: t.y, z: b.pose.z + part.t.z }, self.mulQuat(q, part.q), part.shape,
+      var t = MF.geom.toWorld(pose, part.t.x, part.t.y);
+      self.world.intersectionsWithShape({ x: t.x, y: t.y, z: pose.z + part.t.z }, self.mulQuat(q, part.q), part.shape,
         function () { free = false; return false; }, self.DYNAMIC_ONLY);
     });
     if (!free) return;
 
-    this.addBox(tpl, b.pose.x, b.pose.y, b.pose.z, b.pose.rot);
+    this.addBox(tpl, pose.x, pose.y, pose.z, pose.rot);
     rt.made++;
     rt.timer += sp.interval;
     if (rt.timer < 0) rt.timer = sp.interval;   // kein Nachholen nach einem Stau
@@ -497,11 +568,12 @@ MF.engine = {
   collectSinks: function () {
     var self = this;
     var sinks = MF.model.bodies.filter(function (b) { return b.sink; });
+    var poses = sinks.map(function (b) { return self.worldPose(b); });
     for (var i = this.boxes.length - 1; i >= 0; i--) {
       var p = this.boxes[i].cur;   // Mittelpunkt
       var hit = null;
       for (var k = 0; k < sinks.length && !hit; k++) {
-        if (MF.geom.containsPoint(sinks[k].shape, sinks[k].pose, p)) hit = sinks[k];
+        if (MF.geom.containsPoint(sinks[k].shape, poses[k], p)) hit = sinks[k];
       }
       if (hit) {
         hit.rt.count = (hit.rt.count || 0) + 1;
@@ -536,6 +608,7 @@ MF.engine = {
       case 'axis.Ausgefahren':  return this.axisPos(b) >= b.axis.max - 1e-6 ? 1 : 0;
       case 'axis.Eingefahren':  return this.axisPos(b) <= b.axis.min + 1e-6 ? 1 : 0;
       case 'axis.Ist':          return Math.round(this.axisPos(b) * 1e6) / 1e6;
+      case 'axis.InPosition':   return Math.abs(this.axisPos(b) - this.input(b, 'Soll')) <= MF.AXIS.TOL[b.axis.type] + 1e-9 ? 1 : 0;
       default:                  return 0;
     }
   },
