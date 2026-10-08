@@ -1,0 +1,13 @@
+{
+  "name": "mini-fabrik-vendor",
+  "private": true,
+  "description": "Bündelt Three.js und Rapier 3D für die Mini-Fabrik nach ../../lib (IIFE, ohne Server lauffähig)",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "@dimforge/rapier3d-compat": "0.21.0",
+    "esbuild": "0.28.2",
+    "three": "0.186.1"
+  }
+}
