@@ -45,6 +45,9 @@
       <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 11V2h9" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
       <symbol id="i-delete" viewBox="0 0 16 16"><path d="M3 4h10M6 4V2h4v2M4 4l1 10h6l1-10" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
       <symbol id="i-grid" viewBox="0 0 16 16"><path d="M1 5.5h14M1 10.5h14M5.5 1v14M10.5 1v14" stroke="currentColor" stroke-width="1.2"/><rect x="1" y="1" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-draw-rect" viewBox="0 0 16 16"><rect x="2" y="4" width="12" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1 3h2M2 2v2" stroke="currentColor" stroke-width="1"/></symbol>
+      <symbol id="i-draw-circle" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 8h6" stroke="currentColor" stroke-width="1" stroke-dasharray="1.5 1"/><circle cx="8" cy="8" r="1" fill="currentColor"/></symbol>
+      <symbol id="i-draw-polygon" viewBox="0 0 16 16"><path d="M2 13l1.5-9L9 2l5 5-3 2 2 4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
       <symbol id="i-snap" viewBox="0 0 16 16"><path d="M3 2v7a5 5 0 0010 0V2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 5h3M10 5h3" stroke="currentColor" stroke-width="1.5"/></symbol>
       <symbol id="i-signal" viewBox="0 0 16 16"><path d="M1 12h3V4h4v8h3V6h4" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
       <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5"/></symbol>
@@ -111,6 +114,14 @@
         </div>
         <div class="rgroup">
           <div class="rgroup-items">
+            <button class="rbtn" data-action="tool-rect" title="Rechteck zeichnen (E): von Ecke zu Ecke ziehen"><svg><use href="#i-draw-rect"/></svg><span>Rechteck</span></button>
+            <button class="rbtn" data-action="tool-circle" title="Kreis zeichnen (K): vom Mittelpunkt aus ziehen"><svg><use href="#i-draw-circle"/></svg><span>Kreis</span></button>
+            <button class="rbtn" data-action="tool-polygon" title="Polygon zeichnen (P): Punkte klicken, Doppelklick schließt"><svg><use href="#i-draw-polygon"/></svg><span>Polygon</span></button>
+          </div>
+          <div class="rgroup-label">Zeichnen</div>
+        </div>
+        <div class="rgroup">
+          <div class="rgroup-items">
             <button class="rbtn" data-action="duplicate" title="Duplizieren (Strg+D)"><svg><use href="#i-copy"/></svg><span>Duplizieren</span></button>
             <button class="rbtn" data-action="delete" title="Löschen (Entf)"><svg><use href="#i-delete"/></svg><span>Löschen</span></button>
           </div>
@@ -119,7 +130,7 @@
         <div class="rgroup">
           <div class="rgroup-items">
             <button class="rbtn" data-action="toggle-grid"><svg><use href="#i-grid"/></svg><span>Raster</span></button>
-            <button class="rbtn is-active" data-action="toggle-snap" title="Fangen: Lage beim Verschieben auf das Fangraster (5 cm) einrasten"><svg><use href="#i-snap"/></svg><span>Fangen</span></button>
+            <button class="rbtn is-active" data-action="toggle-snap" title="Fangen: Punkte auf das Fangraster (5 cm), Drehung auf 5° einrasten; Alt hält Fangen beim Ziehen aus"><svg><use href="#i-snap"/></svg><span>Fangen</span></button>
           </div>
           <div class="rgroup-label">Raster</div>
         </div>

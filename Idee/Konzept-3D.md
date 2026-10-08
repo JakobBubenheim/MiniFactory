@@ -1,6 +1,6 @@
 # Konzept: Umbau auf 3D-Physik („2,5D“)
 
-Stand: 08.10.2026. Dieses Dokument ist der gemeinsame Plan für alle Branches des Umbaus.
+Stand: 08.10.2026 (Phase 3 eingetragen). Dieses Dokument ist der gemeinsame Plan für alle Branches des Umbaus.
 Wer an einer Phase arbeitet, liest es zuerst und hält sich an die Entscheidungen hier.
 Ändert sich eine Entscheidung, wird zuerst dieses Dokument angepasst.
 
@@ -98,6 +98,13 @@ Version 3 ist der Umbau. `MF.file.migrate()` rechnet 1 → 2 → 3 schrittweise 
 ```
 
 - `shape.type`: `rect` (w × d), `circle` (r), `polygon` (`points: [[x, y], …]` lokal). Immer mit Höhe `h`.
+- `shape.h2` (optional, Phase 3): **geneigte Oberseite (Keil)**. Die Höhe läuft entlang der **lokalen
+  x-Achse** linear von `h` (am kleinsten lokalen x des Grundrisses, `x0`) nach `h2` (am größten, `x1`):
+  `top(lx) = h + (h2 − h) · (lx − x0) / (x1 − x0)`. Die Unterseite bleibt waagrecht auf `pose.z`.
+  Für Rechteck `x0 = −w/2`, Kreis `x0 = −r`, Polygon min/max der Punkte. Fehlt `h2` oder ist gleich `h`,
+  ist die Oberseite eben. Nur bei `static` und **nicht mit Transportfläche** (siehe Festlegungen Phase 3).
+  Die 3D-Ansicht baut den Körper als Prisma, dessen obere Punkte je Ecke die Höhe `top(lx)` haben
+  (`MF.geom.topAt(shape, lx)`); bergab zeigt die Richtung lokal +x, wenn `h2 < h`.
 - `pose`: Mittelpunkt der Unterseite des Grundrisses, `rot` = Drehung um z in Grad, relativ zum Eltern.
   Bei Polygonen ist `pose` der Ursprung der lokalen Punkte (muss nicht in der Mitte liegen).
 - `surface.dir`: Laufrichtung in Grad, lokal zum Körper. In der Draufsicht zeigt y nach unten,
@@ -141,6 +148,21 @@ Festgelegt in Phase 2 (Umsetzung `sim/migrate.js`, Zelle × `cellM`, alle Körpe
 
 `validate()` prüft Version 3 und hebt ältere Dateien vorher selbst an. Ein alter Autosave
 (Version 1 oder 2) wird beim Start genauso umgerechnet.
+
+Festgelegt in Phase 3 (frei gestaltete Körper; `sim/model.js`, `sim/geom.js`, `ui/editor.js`, `ui/properties.js`):
+
+| Thema | Festlegung |
+|---|---|
+| Neu gezeichnete Form | `ghost`, `template: null`, Höhe **0,1 m**, Unterseite z = 0, Drehung 0, Werkstoff `body` (Reibung 0,5, Stoßzahl 0, Dichte 500 kg/m³), Farbe `#3A7CA5`. IDs `K1`, `K2` … (eigene Reihe), Name „Körper n“. Polygon: `pose` = Mitte des Hüllrechtecks |
+| Polygone | mindestens 3 Punkte, **ohne Selbstschnitt** (Zeichnen, Bearbeiten und `validate()` lehnen ab). Konkav ist erlaubt: `MF.geom.convexParts` entfernt Punkte auf geraden Kanten, schneidet Ohren und **verschmilzt** die Dreiecke wieder zu möglichst großen konvexen Teilen (Hertel-Mehlhorn) – weniger innere Kanten, an denen Kisten hängen könnten |
+| Neigung (Rutsche) | `shape.h2` statt Kippen im Raum (Abschnitt 6 bleibt „später“). Nur `static`, nicht zusammen mit einer Transportfläche (die Nachführung kennt nur waagrechte Flächen, Spike-Ergebnis 5) – das Panel sperrt beides gegenseitig, `validate()` prüft es. Rapier: je konvexem Teil ein `ConvexPolyhedron` mit schräger Oberseite (Kreis als 32-Eck). Bestehende Dateien haben kein `h2` und bleiben unverändert |
+| Körperart wechseln | erlaubt, auch während die Simulation läuft. Nicht mehr erlaubte Funktionen und eine Neigung werden **nach Rückfrage entfernt** (nicht verhindert – so kommt man z. B. vom Sensor zur festen Wand, ohne erst alles abzubauen). Wechsel zu `dynamic` setzt eine Dichte unter 10 kg/m³ (Vorlagen haben 1) auf 500 |
+| Funktion entfernen | ihre Signale verschwinden; einfache Regeln, die genau so ein Signal benutzen, verlieren den Bezug (`when`/`then` leer) – wie beim Löschen eines Körpers. SCL-Code meldet das fehlende Signal selbst. Bestehende Eingangswerte anderer Funktionen bleiben |
+| Vorlagen-Körper | lassen sich genauso ändern. Jede Vorlagen-Eigenschaft gehört zu einer Funktion (`fn`) und verschwindet mit ihr; im Panel stehen sie im Abschnitt ihrer Funktion, frei gezeichnete Körper zeigen dort die allgemeinen Felder (`MF.FUNCTIONS[fn].fields`). „Richtung“ zeigt „–“, wenn der Körper schräg gedreht ist |
+| `dynamic` aus dem Modell | Rapier-Körper ab Start, Lage aus der Physik (Draufsicht zeigt Lage und Drehung um z, Kippen nicht). Das Modell behält die gezeichnete Lage; Reset und jede Änderung am Körper setzen ihn dorthin zurück. Senken entfernen nur erzeugte Kisten, keine Modell-Körper; Sensoren und Erzeuger sehen dynamische Körper wie Kisten. Keine Funktionen. Während er unterwegs ist, zeigt die Draufsicht keine Griffe |
+| Wann was geht | Form, Lage, Höhe, Körperart, Werkstoff und Funktionen ändern wirkt sofort, auch im Lauf (die Engine gleicht die Welt bei jeder Änderung an). Neue Formen zeichnen geht nur, wenn die Simulation nicht läuft – wie Einfügen aus dem Katalog |
+| Fangen | Punkte und Maße auf `snap.pos`, Drehung (Griff, Panel-Schritt) auf `snap.angle`; **Alt** hält Fangen beim Zeichnen und Ziehen aus (dann 1 mm), beim Polygon fängt **Shift** Kantenwinkel und -länge ab dem letzten Punkt. Reine Funktionen in `MF.geom` (`snapPoint`, `snapAngle`, `snapPolar`) |
+| Bedienung | Werkzeuge Rechteck **E**, Kreis **K**, Polygon **P** (R ist Reset). Griffe in Auswählen/Verschieben: Drehgriff über der lokalen Oberkante, Rechteck Ecken/Kanten (Gegenseite bleibt stehen), Kreis Radius, Polygonpunkte; Doppelklick auf eine Kante fügt einen Punkt ein, auf einen Punkt löscht ihn. Jede Mausbearbeitung ist **ein** Schritt im Verlauf (`MF.history.begin()/end()`) |
 
 ## 4. Simulationszyklus
 
@@ -214,8 +236,8 @@ das Verhalten der Anlage.
 | 0b | `feature/baum-ordner` | freie Ordner im Strukturbaum, Dateiformat v2 | – |
 | 1 | `feature/3d-spike` | ✅ `lib/rapier.js` + `lib/three.js` bauen, Rapier + Three per Doppelklick laden, Demo `spike-3d.html`; Transportflächen-Methode festgelegt (siehe Abschnitt 4, Spike-3D-Ergebnis.md) | 0a |
 | 2 | `feature/physik-kern` | ✅ Datenmodell v3 + Migration (`sim/migrate.js`), neue Engine auf Rapier (`sim/engine.js`), alle Katalog-Elemente als Vorlagen mit Funktionen, Draufsicht zeichnet Körper (`sim/geom.js`, `sim/sim.js`); alte Raster-Engine entfernt. Festlegungen siehe Abschnitte 1, 3 und 4 | 0a, 0b, 1 |
-| 3 | `feature/formen` | Rechteck/Kreis/Polygon zeichnen, Höhe, freie Lage und Drehung, Körperart und Funktionen im Eigenschaften-Panel, Fangen | 2 |
-| 4 | `feature/achsen` | Achsen linear/rotatorisch mit allen Betriebsarten, Kopplung über den Baum, Achse in der Draufsicht anzeigen und ziehen | 2 (besser nach 3) |
+| 3 | `feature/formen` | ✅ Rechteck/Kreis/Polygon zeichnen, Höhe, freie Lage und Drehung, Körperart und Funktionen im Eigenschaften-Panel, Fangen; geneigte Oberseite `shape.h2` für Rutschen. Festlegungen siehe Abschnitt 3 | 2 |
+| 4 | `feature/achsen` | Achsen linear/rotatorisch mit allen Betriebsarten, Kopplung über den Baum, Achse in der Draufsicht anzeigen und ziehen. Vorbereitet in Phase 3: Achse lässt sich an jeden kinematischen Körper hängen (`MF.addFunction`), Felder im Panel aus `MF.FUNCTIONS.axis.fields` (bisher Richtung, min, max, vmax, returnDelay) – dort ergänzen | 2 (besser nach 3) |
 | 5 | `feature/3d-ansicht` | Three.js-Ansicht zum Zuschauen: Orbit-Kamera, Licht, Schatten, Auswahl per Klick, Draufsicht und 3D nebeneinander | 2 |
 
 Phasen 3 und 5 können parallel laufen.

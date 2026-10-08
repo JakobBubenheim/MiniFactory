@@ -21,8 +21,12 @@ MF.MATERIALS = {
   steel: { friction: 0.3, restitution: 0, density: 1 },
   slide: { friction: 0.05, restitution: 0, density: 1 },   // Gleitbelag (PE) am Schieber
   floor: { friction: 0.6, restitution: 0, density: 1 },
-  ghost: { friction: 0, restitution: 0, density: 1 }
+  ghost: { friction: 0, restitution: 0, density: 1 },
+  body:  { friction: 0.5, restitution: 0, density: 500 }    // frei gezeichnete Körper (Holz/Kunststoff)
 };
+
+// Frei gezeichnete Körper (Phase 3): Kürzel, Name, Farbe, Standardhöhe
+MF.BODY = { prefix: 'K', label: 'Körper', color: '#3A7CA5', H: 0.1 };
 
 MF.BELT_TOP = 0.7;      // Oberkante der Förderbänder (m)
 MF.BOX_SIZE = 0.3;      // Kantenlänge der Kisten aus Erzeugern (m)
@@ -48,6 +52,30 @@ MF.FN_KEYS = ['spawner', 'surface', 'sensor', 'axis', 'sink'];   // Reihenfolge 
 MF.FUNCTIONS = {
   spawner: {
     label: 'Erzeuger', kinds: ['ghost'],
+    make: function () {
+      return {
+        interval: 2, maxCount: 0, enabled: true,
+        template: {
+          shape: { type: 'rect', w: MF.BOX_SIZE, d: MF.BOX_SIZE, h: MF.BOX_SIZE },
+          material: MF.MATERIALS.box,
+          look: { color: MF.BOX_COLOR }
+        }
+      };
+    },
+    fields: [
+      { key: 'enabled', label: 'Aktiv', type: 'bool', hint: 'Erzeugt der Erzeuger Kisten?', field: 'enabled' },
+      { key: 'interval', label: 'Takt', type: 'number', unit: 's', step: 0.1, min: 0.1, max: 60, hint: 'Abstand zwischen zwei Kisten', field: 'interval' },
+      { key: 'maxCount', label: 'Max. Anzahl', type: 'number', step: 1, min: 0, hint: '0 = unbegrenzt', field: 'maxCount' },
+      { key: 'boxW', label: 'Kiste Breite', type: 'number', unit: 'm', step: 0.05, min: 0.05, max: 2, hint: 'Kistenvorlage: Ausdehnung in x',
+        get: function (f) { return f.template.shape.w; }, set: function (f, v) { f.template.shape.w = v; } },
+      { key: 'boxD', label: 'Kiste Tiefe', type: 'number', unit: 'm', step: 0.05, min: 0.05, max: 2, hint: 'Kistenvorlage: Ausdehnung in y',
+        get: function (f) { return f.template.shape.d; }, set: function (f, v) { f.template.shape.d = v; } },
+      { key: 'boxH', label: 'Kiste Höhe', type: 'number', unit: 'm', step: 0.05, min: 0.05, max: 2, hint: 'Kistenvorlage: Höhe',
+        get: function (f) { return f.template.shape.h; }, set: function (f, v) { f.template.shape.h = v; } },
+      { key: 'boxColor', label: 'Kiste Farbe', type: 'color',
+        get: function (f) { return (f.template.look && f.template.look.color) || MF.BOX_COLOR; },
+        set: function (f, v) { if (!f.template.look) f.template.look = {}; f.template.look.color = v; } }
+    ],
     io: function () {
       return [
         { name: 'Freigabe', dir: 'in', type: 'BOOL', init: 1 },
@@ -57,6 +85,14 @@ MF.FUNCTIONS = {
   },
   surface: {
     label: 'Transportfläche', kinds: ['static', 'kinematic'],
+    make: function () { return { speed: 0.5, dir: 0, running: true }; },
+    fields: [
+      { key: 'running', label: 'Antrieb', type: 'bool', hint: 'Transportfläche ein- oder ausschalten', field: 'running' },
+      { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0, max: 5, hint: 'Geschwindigkeit der Oberseite', field: 'speed' },
+      { key: 'dir', label: 'Laufrichtung', type: 'number', unit: '°', step: 5, min: 0, max: 359.9,
+        hint: 'Lokal zum Körper: 0° = lokal +x, 90° = lokal +y (dreht mit dem Körper)',
+        get: function (f) { return f.dir; }, set: function (f, v) { f.dir = MF.geom.normDeg(v); } }
+    ],
     io: function () {
       return [
         { name: 'Ein', dir: 'in', type: 'BOOL', init: 1 },
@@ -67,12 +103,36 @@ MF.FUNCTIONS = {
   },
   sensor: {
     label: 'Sensor', kinds: ['ghost'],
+    make: function () { return { invert: false, debounce: 0 }; },
+    fields: [
+      { key: 'invert', label: 'Invertieren', type: 'bool', onText: 'Ja', offText: 'Nein', hint: 'Meldet "belegt", wenn die Fläche frei ist', field: 'invert' },
+      { key: 'debounce', label: 'Entprellzeit', type: 'number', unit: 'ms', step: 10, min: 0, max: 5000, hint: 'Belegt/frei wechselt erst, wenn der Zustand so lange unverändert ist', field: 'debounce' }
+    ],
     io: function () {
       return [{ name: 'Belegt', dir: 'out', type: 'BOOL' }];
     }
   },
   axis: {
     label: 'Achse', kinds: ['kinematic'],
+    // Phase 3 legt nur lineare Achsen mit Betriebsart "zweipunkt" an (wie Phase 2);
+    // rotatorisch, weitere Betriebsarten und Achse ziehen folgen in Phase 4.
+    make: function () {
+      return { type: 'linear', origin: [0, 0, 0], dir: [0, 1, 0], min: 0, max: 0.4, vmax: 0.3, mode: 'zweipunkt', returnDelay: 0.5 };
+    },
+    fields: [
+      { key: 'mode', label: 'Betriebsart', type: 'text', readonly: true, hint: 'Weitere Betriebsarten und rotatorische Achsen folgen in Phase 4',
+        get: function (f) { return f.mode + ' (' + (f.type === 'linear' ? 'linear' : f.type) + ')'; } },
+      { key: 'axisDir', label: 'Richtung', type: 'select', options: ['rechts', 'unten', 'links', 'oben'],
+        hint: 'Fahrrichtung lokal zum Körper (dreht mit dem Körper)',
+        get: function (f) { return MF.dirName(MF.vecDeg(f.dir)); },
+        set: function (f, v) { if (v in MF.DIRS) { var d = MF.geom.dirVec(MF.DIRS[v]); f.dir = [d.x, d.y, 0]; } } },
+      { key: 'min', label: 'Grundstellung', type: 'number', unit: 'm', step: 0.05, min: -10, max: 10, hint: 'Stellung "eingefahren" (min)',
+        get: function (f) { return f.min; }, set: function (f, v) { f.min = v; if (f.max < v) f.max = v; } },
+      { key: 'max', label: 'Endstellung', type: 'number', unit: 'm', step: 0.05, min: -10, max: 10, hint: 'Stellung "ausgefahren" (max)',
+        get: function (f) { return f.max; }, set: function (f, v) { f.max = v; if (f.min > v) f.min = v; } },
+      { key: 'vmax', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0.01, max: 5, hint: 'Höchstgeschwindigkeit', field: 'vmax' },
+      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren', field: 'returnDelay' }
+    ],
     // Signale je Betriebsart. Phase 2 kennt nur 'zweipunkt' (linear);
     // 'position' und 'geschwindigkeit' sowie rotatorische Achsen folgen in Phase 4.
     MODES: {
@@ -93,6 +153,11 @@ MF.FUNCTIONS = {
   },
   sink: {
     label: 'Senke', kinds: ['ghost'],
+    make: function () { return {}; },
+    fields: [
+      { key: 'count', label: 'Zählerstand', type: 'number', readonly: true, live: true, hint: 'Aufgenommene Kisten',
+        body: true, get: function (b) { return (b.rt && b.rt.count) || 0; } }
+    ],
     io: function () {
       return [
         { name: 'Reset', dir: 'in', type: 'BOOL' },
@@ -184,14 +249,7 @@ MF.templates = {
         shape: { type: 'rect', w: 0.5, d: 0.5, h: 0.35 },
         pose: { z: MF.BELT_TOP + 0.02 },
         material: MF.MATERIALS.ghost,
-        spawner: {
-          interval: 2, maxCount: 0, enabled: true,
-          template: {
-            shape: { type: 'rect', w: MF.BOX_SIZE, d: MF.BOX_SIZE, h: MF.BOX_SIZE },
-            material: MF.MATERIALS.box,
-            look: { color: MF.BOX_COLOR }
-          }
-        }
+        spawner: MF.FUNCTIONS.spawner.make()
       };
     },
     props: [
@@ -214,7 +272,7 @@ MF.templates = {
     props: [
       { key: 'running', label: 'Antrieb', type: 'bool', hint: 'Band ein- oder ausschalten', fn: 'surface', field: 'running' },
       { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0, max: 5, hint: 'Bandgeschwindigkeit', fn: 'surface', field: 'speed' },
-      { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'],
+      { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'], fn: 'surface',
         hint: 'Laufrichtung des Bands; das Band dreht sich mit',
         get: function (b) { return MF.dirName(b.pose.rot + b.surface.dir); },
         set: function (b, v) { if (v in MF.DIRS) MF.turnTo(b, b.surface.dir, MF.DIRS[v]); } }
@@ -249,12 +307,12 @@ MF.templates = {
       };
     },
     props: [
-      { key: 'stroke', label: 'Hub', type: 'number', unit: 'mm', step: 10, min: 0, max: 2000, hint: 'Wie weit der Schieber ausfährt',
+      { key: 'stroke', label: 'Hub', type: 'number', unit: 'mm', step: 10, min: 0, max: 2000, hint: 'Wie weit der Schieber ausfährt', fn: 'axis',
         get: function (b) { return Math.round((b.axis.max - b.axis.min) * 1e6) / 1e3; },
         set: function (b, v) { b.axis.max = Math.round((b.axis.min + v / 1000) * 1e6) / 1e6; } },
       { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0.1, max: 5, hint: 'Ausfahrgeschwindigkeit', fn: 'axis', field: 'vmax' },
       { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren', fn: 'axis', field: 'returnDelay' },
-      { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'],
+      { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'], fn: 'axis',
         hint: 'Schubrichtung; der Schieber dreht sich mit',
         get: function (b) { return MF.dirName(b.pose.rot + MF.vecDeg(b.axis.dir)); },
         set: function (b, v) { if (v in MF.DIRS) MF.turnTo(b, MF.vecDeg(b.axis.dir), MF.DIRS[v]); } }
@@ -272,7 +330,7 @@ MF.templates = {
       };
     },
     props: [
-      { key: 'count', label: 'Zählerstand', type: 'number', readonly: true, live: true, hint: 'Aufgenommene Kisten',
+      { key: 'count', label: 'Zählerstand', type: 'number', readonly: true, live: true, hint: 'Aufgenommene Kisten', fn: 'sink',
         get: function (b) { return (b.rt && b.rt.count) || 0; } }
     ]
   }
@@ -284,10 +342,12 @@ MF.bodyIcon = function (body) {
   return t ? t.icon : 'i-body';
 };
 
-// Eigenschaften eines Körpers (aus seiner Vorlage); ohne Vorlage keine
+// Eigenschaften eines Körpers (aus seiner Vorlage); ohne Vorlage keine.
+// Jede Eigenschaft gehört zu einer Funktion (fn); fehlt die Funktion inzwischen
+// (frei geändert, z. B. Transportfläche entfernt), fällt die Eigenschaft weg.
 MF.propsOf = function (body) {
   var t = MF.templates[body.template];
-  return t ? t.props : [];
+  return t ? t.props.filter(function (p) { return !p.fn || body[p.fn]; }) : [];
 };
 
 MF.propDef = function (body, key) {
@@ -326,6 +386,175 @@ MF.bodyFromTemplate = function (template, x, y) {
   body.rt = {};
   MF.initIo(body);
   return body;
+};
+
+// ---------- Frei gestaltete Körper (Phase 3) ----------
+//
+// Formen zeichnen und ändern, Körperart wechseln, Funktionen anlegen und entfernen.
+// Editor, Eigenschaften-Panel und Tests benutzen dieselben Funktionen, damit die
+// Regeln (Konzept, Abschnitt 2: "erlaubt bei") überall gleich gelten.
+
+// Neuer Körper aus einer gezeichneten Form, ohne ID und Namen.
+// shape: { type, w, d | r | points, h }, pose: { x, y, z, rot }
+// Neu gezeichnete Formen sind immateriell (ghost), Konzept Abschnitt 2.
+MF.bodyFromShape = function (shape, pose) {
+  var body = {
+    id: null, name: null, parent: null, template: null,
+    kind: 'ghost',
+    shape: JSON.parse(JSON.stringify(shape)),
+    pose: { x: pose.x, y: pose.y, z: pose.z || 0, rot: pose.rot || 0 },
+    material: JSON.parse(JSON.stringify(MF.MATERIALS.body))
+  };
+  if (typeof body.shape.h !== 'number') body.shape.h = MF.BODY.H;
+  MF.FN_KEYS.forEach(function (k) { body[k] = null; });
+  body.look = { color: MF.BODY.color, visible: true, locked: false };
+  body.rt = {};
+  MF.initIo(body);
+  return body;
+};
+
+// Fehlertext, wenn die Form so nicht gültig ist, sonst ''
+MF.shapeError = function (shape) {
+  function pos(v) { return typeof v === 'number' && isFinite(v) && v > 0; }
+  if (shape.type === 'rect' && !(pos(shape.w) && pos(shape.d))) return 'Breite und Tiefe müssen größer als 0 sein.';
+  if (shape.type === 'circle' && !pos(shape.r)) return 'Der Radius muss größer als 0 sein.';
+  if (shape.type === 'polygon') {
+    var pts = shape.points || [];
+    if (pts.length < 3) return 'Ein Polygon braucht mindestens drei Punkte.';
+    if (MF.geom.selfIntersects(pts)) return 'Das Polygon schneidet sich selbst.';
+    if (Math.abs(MF.geom.signedArea(pts)) < 1e-9) return 'Das Polygon hat keine Fläche.';
+  }
+  if (!pos(shape.h)) return 'Die Höhe muss größer als 0 sein.';
+  if (shape.h2 !== undefined && !(typeof shape.h2 === 'number' && isFinite(shape.h2) && shape.h2 >= 0)) {
+    return 'Die Höhe am Ende muss eine Zahl ≥ 0 sein.';
+  }
+  return '';
+};
+
+// Neigung (geneigte Oberseite, shape.h2) nur bei festen Körpern und ohne
+// Transportfläche (die Nachführung kennt nur waagrechte Flächen, Spike-Ergebnis 5).
+MF.slopeError = function (body) {
+  if (body.kind !== 'static') return 'Neigung gibt es nur bei festen Körpern (static).';
+  if (body.surface) return 'Auf einer geneigten Fläche gibt es keine Transportfläche.';
+  return '';
+};
+
+// Darf der Körper die Funktion fn haben? Fehlertext oder ''
+MF.fnError = function (body, fn) {
+  var f = MF.FUNCTIONS[fn];
+  if (!f) return 'Unbekannte Funktion "' + fn + '".';
+  if (f.kinds.indexOf(body.kind) < 0) {
+    var names = f.kinds.map(function (k) { return MF.KIND_LABELS[k] + 'en'; }).join(' oder ');
+    return f.label + ' gibt es nur bei ' + names + ' Körpern.';
+  }
+  if (fn === 'surface' && MF.geom.isSloped(body.shape)) return 'Auf einer geneigten Fläche gibt es keine Transportfläche.';
+  return '';
+};
+
+MF.KIND_LABELS = { ghost: 'immateriell', static: 'fest', kinematic: 'kinematisch', dynamic: 'dynamisch' };
+
+// Funktionen, die bei dieser Körperart erlaubt sind
+MF.allowedFns = function (kind) {
+  return MF.FN_KEYS.filter(function (fn) { return MF.FUNCTIONS[fn].kinds.indexOf(kind) >= 0; });
+};
+
+// Signale nach einer Änderung der Funktionen angleichen: bestehende Eingänge
+// behalten ihren Wert, neue bekommen den Startwert, wegfallende verschwinden
+// (auch geforcte Ausgänge). before = Signalnamen vor der Änderung.
+// Gibt die Namen der weggefallenen Signale zurück.
+MF.syncIo = function (body, before) {
+  var old = body.inputs || {}, force = body.force || {};
+  var names = {}, gone = [];
+  body.inputs = {};
+  body.force = {};
+  MF.io(body).forEach(function (s) {
+    names[s.name] = true;
+    if (s.dir === 'in' && !s.prop) body.inputs[s.name] = s.name in old ? old[s.name] : s.init || 0;
+    if (s.name in force) body.force[s.name] = force[s.name];
+  });
+  (before || []).forEach(function (n) {
+    if (!names[n] && gone.indexOf(n) < 0) gone.push(n);
+  });
+  return gone;
+};
+
+// Funktion anlegen (mit Standardwerten). Gibt einen Fehlertext zurück oder ''.
+MF.addFunction = function (body, fn) {
+  var err = MF.fnError(body, fn);
+  if (err) return err;
+  if (body[fn]) return '';
+  body[fn] = MF.FUNCTIONS[fn].make();
+  MF.syncIo(body);
+  return '';
+};
+
+// Funktion entfernen. Gibt die Namen der weggefallenen Signale zurück.
+MF.removeFunction = function (body, fn) {
+  if (!body[fn]) return [];
+  var before = MF.io(body).map(function (s) { return s.name; });
+  body[fn] = null;
+  return MF.syncIo(body, before);
+};
+
+// Körperart wechseln. Nicht mehr erlaubte Funktionen und eine Neigung (nur bei
+// static) werden entfernt. Gibt zurück, was wegfällt:
+// { fns: ['surface', …], slope: true|false, signals: ['Ein', …] }
+// Mit dryRun wird nichts geändert (für die Rückfrage im Panel).
+MF.setKind = function (body, kind, dryRun) {
+  var res = { fns: [], slope: false, signals: [] };
+  if (MF.KIND_LABELS[kind] === undefined) return res;
+  MF.FN_KEYS.forEach(function (fn) {
+    if (body[fn] && MF.FUNCTIONS[fn].kinds.indexOf(kind) < 0) res.fns.push(fn);
+  });
+  res.slope = kind !== 'static' && MF.geom.isSloped(body.shape);
+  if (dryRun || kind === body.kind) return res;
+  var before = MF.io(body).map(function (s) { return s.name; });
+  body.kind = kind;
+  res.fns.forEach(function (fn) { body[fn] = null; });
+  if (res.slope || (body.shape.h2 !== undefined && kind !== 'static')) delete body.shape.h2;
+  body.rt = {};
+  res.signals = MF.syncIo(body, before);
+  // Ein dynamischer Körper braucht eine echte Dichte (Vorlagen haben 1 kg/m³,
+  // weil sie fest oder kinematisch sind und ihre Masse dort keine Rolle spielt)
+  if (kind === 'dynamic' && body.material && !(body.material.density >= 10)) {
+    body.material.density = MF.MATERIALS.body.density;
+    res.density = body.material.density;
+  }
+  return res;
+};
+
+// Form und Lage ändern: changes mit w, d, r, h, h2 (null = Neigung weg), points,
+// x, y, z, rot. Geprüft wird vorher; bei einem Fehler bleibt alles, wie es war.
+// Gibt einen Fehlertext zurück oder ''.
+MF.setForm = function (body, changes) {
+  var sh = JSON.parse(JSON.stringify(body.shape));
+  var pose = { x: body.pose.x, y: body.pose.y, z: body.pose.z, rot: body.pose.rot };
+  var ok = { rect: ['w', 'd'], circle: ['r'], polygon: ['points'] }[sh.type] || [];
+  for (var k in changes) {
+    var v = changes[k];
+    if (k === 'x' || k === 'y' || k === 'z' || k === 'rot') {
+      if (typeof v !== 'number' || !isFinite(v)) return 'Lage "' + k + '" muss eine Zahl sein.';
+      pose[k] = k === 'rot' ? MF.geom.normDeg(v) : Math.round(v * 1e6) / 1e6;
+    } else if (k === 'h') {
+      sh.h = v;
+    } else if (k === 'h2') {
+      if (v === null || v === undefined) delete sh.h2;
+      else sh.h2 = v;
+    } else if (ok.indexOf(k) >= 0) {
+      sh[k] = k === 'points' ? v.map(function (p) { return [p[0], p[1]]; }) : v;
+    } else {
+      return 'Die Form "' + sh.type + '" hat kein Maß "' + k + '".';
+    }
+  }
+  var err = MF.shapeError(sh);
+  if (err) return err;
+  if (MF.geom.isSloped(sh) && !MF.geom.isSloped(body.shape)) {
+    err = MF.slopeError(body);
+    if (err) return err;
+  }
+  body.shape = sh;
+  body.pose = pose;
+  return '';
 };
 
 // ---------- Beispielanlage ----------
@@ -454,15 +683,43 @@ MF.store = {
     return b;
   },
 
+  // Neuer Körper aus einer gezeichneten Form (ghost, Name "Körper n", IDs K1, K2 …).
+  // Gibt null zurück und meldet den Grund, wenn die Form ungültig ist.
+  createShape: function (shape, pose, parent) {
+    var b = MF.bodyFromShape(shape, pose);
+    var err = MF.shapeError(b.shape);
+    if (err) { if (MF.ui) MF.ui.message('Form abgelehnt: ' + err); return null; }
+    var next = this.nextId(MF.BODY.prefix);
+    b.id = next.id;
+    b.name = MF.BODY.label + ' ' + next.n;
+    b.parent = parent || null;
+    MF.model.bodies.push(b);
+    this.selectedId = b.id;
+    this.changed();
+    return b;
+  },
+
+  // Regeln, die eines der Signale (id.Name) benutzen, verlieren den Bezug –
+  // wie beim Löschen eines Körpers. SCL-Code meldet das Signal selbst als Fehler.
+  dropSignals: function (id, names) {
+    if (!names || !names.length) return;
+    MF.model.rules.forEach(function (r) {
+      names.forEach(function (n) {
+        if (r.when === id + '.' + n) r.when = '';
+        if (r.then === id + '.' + n) r.then = '';
+      });
+    });
+  },
+
   // Kopie mit neuer ID, 0,5 m versetzt; steht im Baum direkt hinter dem Original
   duplicateBody: function (id) {
     var src = this.findBody(id);
     if (!src) return null;
     var t = MF.templates[src.template];
-    var next = this.nextId(t ? t.prefix : 'K');
+    var next = this.nextId(t ? t.prefix : MF.BODY.prefix);
     var b = JSON.parse(JSON.stringify(src, function (k, v) { return k === 'rt' || k === 'force' ? undefined : v; }));
     b.id = next.id;
-    b.name = (t ? t.label : 'Körper') + ' ' + next.n;
+    b.name = (t ? t.label : MF.BODY.label) + ' ' + next.n;
     b.pose.x = Math.round((b.pose.x + 0.5) * 1e6) / 1e6;
     b.pose.y = Math.round((b.pose.y + 0.5) * 1e6) / 1e6;
     b.rt = {};

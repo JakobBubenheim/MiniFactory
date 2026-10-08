@@ -6,8 +6,21 @@
 //   Verschieben – Körper ziehen
 //   Drehen     – Klick dreht den Körper um 90° im Uhrzeigersinn (um seine Lage)
 //   Die Werkzeuge greifen auch, während die Simulation läuft.
-// - Fangen an: Lage auf das Fangraster (settings.snap.pos, z. B. 5 cm); aus: 1 cm.
-//   Das Raster ist nur Zeichenhilfe, die Simulation rechnet in Metern.
+// - Zeichnen (Kürzel E / K / P), neue Körper sind immateriell (ghost), 0,1 m hoch:
+//   Rechteck   – von Ecke zu Ecke ziehen
+//   Kreis      – vom Mittelpunkt aus ziehen (Radius)
+//   Polygon    – Punkte klicken; Doppelklick, Enter oder Klick auf den Startpunkt
+//                schließt, Rücktaste nimmt den letzten Punkt zurück, Shift fängt
+//                Kantenwinkel und -länge. Sich selbst schneidende Polygone werden abgelehnt.
+//   Esc bricht ab. Während des Zeichnens stehen die Maße am Mauszeiger.
+//   Gezeichnet wird nur, wenn die Simulation nicht läuft (wie Einfügen).
+// - Griffe am gewählten Körper (Werkzeuge Auswählen und Verschieben): drehen
+//   (Winkel-Fangen), Größe (Rechteck: Ecken/Kanten, Kreis: Radius), Polygonpunkte
+//   ziehen; Doppelklick auf eine Kante fügt einen Punkt ein, auf einen Punkt löscht ihn.
+//   Jede Bearbeitung ist ein Schritt im Verlauf; Esc während des Ziehens bricht ab.
+// - Fangen an: Lage auf das Fangraster (settings.snap.pos, z. B. 5 cm), Drehung auf
+//   settings.snap.angle (z. B. 5°); aus: 1 cm. Alt hält Fangen beim Ziehen und
+//   Zeichnen vorübergehend aus. Das Raster ist nur Zeichenhilfe.
 // - Löschen mit Entf/Rücktaste, Duplizieren mit Strg/Cmd+D, Strg/Cmd+G packt
 //   die im Strukturbaum ausgewählten Einträge in einen neuen Ordner,
 //   Pfeiltasten verschieben um einen Fangschritt (mit Shift um zehn).
@@ -17,14 +30,23 @@ window.MF = window.MF || {};
 
 MF.editor = {
   DRAG_START_PX: 4,   // erst ab dieser Mausbewegung zählt es als Ziehen
-  tool: 'select',     // 'select' | 'move' | 'rotate'
+  tool: 'select',     // 'select' | 'move' | 'rotate' | 'rect' | 'circle' | 'polygon'
   FREE_STEP: 0.01,    // Schrittweite in m, wenn Fangen aus ist
+  HANDLE_PX: 7,       // Fangbereich der Griffe in Pixeln
+  CLOSE_PX: 9,        // so nah am Startpunkt schließt ein Klick das Polygon
 
   TOOLS: {
-    select: { label: 'Auswählen',   key: 'v' },
-    move:   { label: 'Verschieben', key: 'm' },
-    rotate: { label: 'Drehen',      key: 'd' }
+    select:  { label: 'Auswählen',   key: 'v' },
+    move:    { label: 'Verschieben', key: 'm' },
+    rotate:  { label: 'Drehen',      key: 'd' },
+    rect:    { label: 'Rechteck',    key: 'e', draw: true, hint: 'von Ecke zu Ecke ziehen' },
+    circle:  { label: 'Kreis',       key: 'k', draw: true, hint: 'vom Mittelpunkt aus ziehen' },
+    polygon: { label: 'Polygon',     key: 'p', draw: true,
+      hint: 'Punkte klicken, Doppelklick oder Startpunkt schließt, Rücktaste nimmt einen Punkt zurück, Shift fängt den Winkel' }
   },
+
+  draft: null,        // Form, die gerade gezeichnet wird (siehe MF.sim.draft)
+  hotHandle: null,    // Griff unter der Maus (wird hervorgehoben)
 
   init: function (canvas) {
     this.canvas = canvas;
@@ -39,10 +61,14 @@ MF.editor = {
 
   setTool: function (tool) {
     if (!this.TOOLS[tool] || tool === this.tool) return;
+    this.cancelDraft();
     this.tool = tool;
+    this.hotHandle = null;
     this.updateCursor(null);
     MF.ui.syncToggles();
-    MF.ui.message('Werkzeug: ' + this.TOOLS[tool].label + '.');
+    MF.sim.draw();
+    var t = this.TOOLS[tool];
+    MF.ui.message('Werkzeug: ' + t.label + (t.hint ? ' – ' + t.hint + ', Esc bricht ab.' : '.'));
   },
 
   // Fangen gehört zur Anlage (settings.snap), wird aber nicht als Änderung gezählt
@@ -59,10 +85,15 @@ MF.editor = {
   // Schrittweite für Lagen in Metern
   snapStep: function () { return this.snap ? MF.model.settings.snap.pos || 0.05 : this.FREE_STEP; },
 
-  // Lage auf das Fangraster bzw. auf 1 cm runden
-  snapValue: function (v) {
-    var step = this.snapStep();
+  // Lage auf das Fangraster bzw. auf 1 cm runden; off (Alt gedrückt): auf 1 mm
+  snapValue: function (v, off) {
+    var step = off ? MF.geom.FREE_POS : this.snapStep();
     return Math.round(Math.round(v / step) * step * 1e6) / 1e6;
+  },
+
+  // Länge mit deutschem Komma, auf Millimeter, z. B. "1,25"
+  fmtLen: function (v) {
+    return String(Math.round(v * 1000) / 1000).replace('.', ',');
   },
 
   // Mauszeiger der Fläche: zeigt das Werkzeug, über gesperrten Körpern "verboten"
@@ -72,9 +103,11 @@ MF.editor = {
     '<g fill="none" stroke-width="2" stroke="#1B2430"><path d="M19 12a7 7 0 1 1-3-5.7"/><path d="M16.5 2.5v4h4"/></g>' +
     '</svg>') + '") 12 12, alias',
 
-  updateCursor: function (over) {
+  updateCursor: function (over, handle) {
     var c;
-    if (this.tool === 'select') c = over ? 'pointer' : 'default';
+    if (this.TOOLS[this.tool].draw) c = 'crosshair';
+    else if (handle) c = this.handleCursor(handle);
+    else if (this.tool === 'select') c = over ? 'pointer' : 'default';
     else if (over && over.look.locked) c = 'not-allowed';
     else c = this.tool === 'move' ? 'move' : this.ROTATE_CURSOR;
     this.canvas.style.cursor = c;
@@ -205,6 +238,266 @@ MF.editor = {
     return b;
   },
 
+  // ---------- Griffe am gewählten Körper ----------
+
+  // Zeigt der Körper Griffe? Nur mit Auswählen/Verschieben, nicht gesperrt und
+  // nicht, während ein dynamischer Körper unterwegs ist (er liegt woanders als gezeichnet).
+  handlesFor: function (b) {
+    if (!b || b.look.locked || !b.look.visible || this.draft) return false;
+    if (this.tool !== 'select' && this.tool !== 'move') return false;
+    return !(b.kind === 'dynamic' && b.rt && b.rt.cur);
+  },
+
+  // Griff unter (px, py) oder null; der Drehgriff gewinnt, dann der nächste
+  handleAt: function (b, p) {
+    var best = null, bestD = this.HANDLE_PX;
+    MF.sim.handles(b).forEach(function (h) {
+      var d = Math.sqrt((h.x - p.x) * (h.x - p.x) + (h.y - p.y) * (h.y - p.y));
+      if (h.kind === 'rotate' && d <= bestD + 2) { best = h; bestD = -1; }
+      else if (d < bestD) { best = h; bestD = d; }
+    });
+    return best;
+  },
+
+  // Kante eines Polygons unter (px, py): { i, x, y } (Einfügen nach Punkt i) oder null
+  edgeAt: function (b, p) {
+    var pose = MF.sim.drawPose(b), best = null, bestD = this.HANDLE_PX;
+    var pts = MF.geom.worldOutline(b.shape, pose).map(function (w) { return MF.sim.toScreen(w.x, w.y); });
+    pts.forEach(function (a, i) {
+      var q = MF.geom.nearestOnSegment(p, a, pts[(i + 1) % pts.length]);
+      if (q.dist < bestD && q.t > 0.02 && q.t < 0.98) { best = { i: i }; bestD = q.dist; }
+    });
+    return best;
+  },
+
+  // Mauszeiger über einem Griff: Drehen bzw. Größe in Richtung des Griffs
+  handleCursor: function (h) {
+    if (h.kind === 'rotate') return this.ROTATE_CURSOR;
+    if (h.kind === 'vertex') return 'crosshair';
+    var b = MF.store.findBody(MF.store.selectedId);
+    var c = b ? MF.sim.toScreen(MF.sim.drawPose(b).x, MF.sim.drawPose(b).y) : h;
+    var a = (Math.atan2(h.y - c.y, h.x - c.x) * 180 / Math.PI + 360) % 180;
+    return a < 22.5 || a >= 157.5 ? 'ew-resize' : a < 67.5 ? 'nwse-resize' : a < 112.5 ? 'ns-resize' : 'nesw-resize';
+  },
+
+  // Griff ziehen: neue Form bzw. Lage aus der Mausposition (Welt, m).
+  // drag.pose0/shape0 = Stand beim Anfassen; Fehler (z. B. Selbstschnitt) lassen
+  // die letzte gültige Form stehen und zeigen den Grund am Mauszeiger.
+  applyHandle: function (drag, w, e) {
+    var b = drag.el, h = drag.h, pose = drag.pose0, sh = drag.shape0, G = MF.geom;
+    var snap = MF.model.settings.snap, off = e.altKey;
+    var step = G.snapStep(snap, off), ch = {}, label;
+    w = { x: w.x - drag.shift.x, y: w.y - drag.shift.y };   // kinematisch: Achsstellung abziehen
+    if (h.kind === 'rotate') {
+      ch.rot = G.snapAngle(Math.atan2(w.y - pose.y, w.x - pose.x) * 180 / Math.PI + 90, snap, off);
+      label = MF.props.formatNumber(ch.rot) + '°';
+    } else if (h.kind === 'size') {
+      var l = G.toLocal(pose, w.x, w.y), cx = 0, cy = 0;
+      ch.w = sh.w; ch.d = sh.d;
+      if (h.sx) {
+        var fx = -h.sx * sh.w / 2;
+        ch.w = Math.max(step, G.snapLen(h.sx * (l.x - fx), snap, off));
+        cx = fx + h.sx * ch.w / 2;
+      }
+      if (h.sy) {
+        var fy = -h.sy * sh.d / 2;
+        ch.d = Math.max(step, G.snapLen(h.sy * (l.y - fy), snap, off));
+        cy = fy + h.sy * ch.d / 2;
+      }
+      var c = G.toWorld(pose, cx, cy);
+      ch.x = G.round6(c.x); ch.y = G.round6(c.y);
+      label = this.fmtLen(ch.w) + ' × ' + this.fmtLen(ch.d) + ' m';
+    } else if (h.kind === 'radius') {
+      ch.r = Math.max(step, G.snapLen(Math.sqrt((w.x - pose.x) * (w.x - pose.x) + (w.y - pose.y) * (w.y - pose.y)), snap, off));
+      label = 'r ' + this.fmtLen(ch.r) + ' m';
+    } else if (h.kind === 'vertex') {
+      var q = G.snapPoint(w.x, w.y, snap, off), lq = G.toLocal(pose, q.x, q.y);
+      ch.points = sh.points.map(function (p) { return [p[0], p[1]]; });
+      ch.points[h.i] = [G.round6(lq.x), G.round6(lq.y)];
+      var n = ch.points.length, lens = G.edgeLengths(ch.points);
+      label = this.fmtLen(lens[(h.i + n - 1) % n]) + ' m | ' + this.fmtLen(lens[h.i]) + ' m';
+    }
+    var err = MF.setForm(b, ch);
+    var s = MF.sim.toScreen(w.x + drag.shift.x, w.y + drag.shift.y);
+    MF.sim.editLabel = { text: err || label, x: s.x, y: s.y };
+    drag.err = err;
+    if (!err) MF.store.changed();
+    else MF.sim.draw();
+  },
+
+  // Doppelklick am gewählten Polygon: Punkt löschen bzw. auf der Kante einfügen
+  editPolygonAt: function (b, p) {
+    var h = this.handleAt(b, p);
+    var pts = b.shape.points.map(function (q) { return [q[0], q[1]]; });
+    var text;
+    if (h && h.kind === 'vertex') {
+      if (pts.length <= 3) { MF.ui.message('Ein Polygon braucht mindestens drei Punkte.'); return true; }
+      pts.splice(h.i, 1);
+      text = 'Punkt gelöscht';
+    } else {
+      var e = this.edgeAt(b, p);
+      if (!e) return false;
+      var w = MF.sim.toWorld(p.x, p.y), pose = MF.sim.drawPose(b);
+      var a = MF.geom.worldOutline(b.shape, pose), q = MF.geom.nearestOnSegment(w, a[e.i], a[(e.i + 1) % a.length]);
+      var l = MF.geom.toLocal(pose, q.x, q.y);
+      var mm = function (v) { return Math.round(v * 1000) / 1000; };
+      pts.splice(e.i + 1, 0, [mm(l.x), mm(l.y)]);
+      text = 'Punkt eingefügt – zum Verschieben ziehen';
+    }
+    var err = MF.setForm(b, { points: pts });
+    if (err) { MF.ui.message(err); return true; }
+    MF.history.end();          // eigener Schritt im Verlauf
+    MF.store.changed();
+    MF.history.end();
+    MF.ui.message(b.name + ': ' + text + ' (' + pts.length + ' Punkte).');
+    return true;
+  },
+
+  createdAt: 0,   // Zeitpunkt der zuletzt gezeichneten Form
+
+  // Laufende Bearbeitung mit einem Griff abbrechen (Esc); true, wenn es eine gab
+  cancelDrag: function () { return false; },   // wird in initCanvas gesetzt
+
+  // ---------- Formen zeichnen ----------
+
+  // Gefangener Weltpunkt unter der Maus. Alt = ohne Fangen. Polygon mit Shift:
+  // Kante mit gefangenem Winkel und gefangener Länge ab dem letzten Punkt.
+  drawPoint: function (p, e) {
+    var w = MF.sim.toWorld(p.x, p.y), snap = MF.model.settings.snap;
+    var d = this.draft;
+    if (d && d.type === 'polygon' && e.shiftKey && d.points.length) {
+      return MF.geom.snapPolar(d.points[d.points.length - 1], w, snap, e.altKey);
+    }
+    return MF.geom.snapPoint(w.x, w.y, snap, e.altKey);
+  },
+
+  drawDown: function (p, e) {
+    if (!this.canEdit()) return false;
+    var w = this.drawPoint(p, e), d = this.draft;
+    if (this.tool !== 'polygon') {
+      this.draft = { type: this.tool, points: [w], cursor: w, label: '' };
+      this.showDraft();
+      return true;
+    }
+    if (!d) {
+      this.draft = { type: 'polygon', points: [w], cursor: w, label: '' };
+      this.showDraft();
+      return false;
+    }
+    var last = d.points[d.points.length - 1];
+    var same = Math.abs(last.x - w.x) < 1e-9 && Math.abs(last.y - w.y) < 1e-9;
+    if (this.nearStart(p) || same) {
+      // Klick auf den Startpunkt oder zweiter Klick eines Doppelklicks: schließen
+      this.finishPolygon();
+      return false;
+    }
+    d.points.push(w);
+    this.updateDraft(p, e);
+    return false;
+  },
+
+  nearStart: function (p) {
+    var d = this.draft;
+    if (!d || d.type !== 'polygon' || d.points.length < 3) return false;
+    var s = MF.sim.toScreen(d.points[0].x, d.points[0].y);
+    return Math.abs(s.x - p.x) + Math.abs(s.y - p.y) <= this.CLOSE_PX;
+  },
+
+  // Vorschau und Maße an die Mausposition anpassen
+  updateDraft: function (p, e) {
+    var d = this.draft;
+    if (!d) return;
+    var w = this.drawPoint(p, e), a = d.points[0], f = this.fmtLen;
+    d.closing = this.nearStart(p);
+    d.cursor = d.closing ? a : w;
+    d.bad = false;
+    if (d.type === 'rect') {
+      d.label = f(Math.abs(w.x - a.x)) + ' × ' + f(Math.abs(w.y - a.y)) + ' m';
+    } else if (d.type === 'circle') {
+      d.label = 'r ' + f(Math.sqrt((w.x - a.x) * (w.x - a.x) + (w.y - a.y) * (w.y - a.y))) + ' m';
+    } else {
+      var last = d.points[d.points.length - 1], c = d.cursor;
+      var len = Math.sqrt((c.x - last.x) * (c.x - last.x) + (c.y - last.y) * (c.y - last.y));
+      var ang = MF.geom.normDeg(Math.round(Math.atan2(c.y - last.y, c.x - last.x) * 1800 / Math.PI) / 10);
+      d.label = d.closing ? 'schließen (' + d.points.length + ' Punkte)'
+        : f(len) + ' m  ' + MF.props.formatNumber(ang) + '°';
+      if (d.closing) {
+        d.bad = MF.geom.selfIntersects(d.points.map(function (q) { return [q.x, q.y]; }));
+        if (d.bad) d.label = 'schneidet sich selbst';
+      }
+    }
+    this.showDraft();
+  },
+
+  showDraft: function () {
+    MF.sim.draft = this.draft;
+    MF.sim.draw();
+  },
+
+  cancelDraft: function () {
+    if (!this.draft) return;
+    this.draft = null;
+    this.showDraft();
+  },
+
+  // Polygon: letzten Punkt zurücknehmen; ohne Punkte ist das Zeichnen beendet
+  undoPoint: function () {
+    var d = this.draft;
+    d.points.pop();
+    if (!d.points.length) { this.cancelDraft(); MF.ui.message('Zeichnen abgebrochen.'); return; }
+    d.cursor = d.cursor || d.points[d.points.length - 1];
+    this.showDraft();
+  },
+
+  // Rechteck bzw. Kreis beim Loslassen anlegen
+  finishDrag: function (p, e) {
+    var d = this.draft;
+    if (!d) return;
+    var w = this.drawPoint(p, e), a = d.points[0], shape, pose;
+    if (d.type === 'rect') {
+      var r = MF.geom.rectFromCorners(a, w);
+      shape = { type: 'rect', w: r.w, d: r.d };
+      pose = { x: r.x, y: r.y };
+    } else {
+      shape = { type: 'circle', r: MF.geom.round6(Math.sqrt((w.x - a.x) * (w.x - a.x) + (w.y - a.y) * (w.y - a.y))) };
+      pose = { x: a.x, y: a.y };
+    }
+    if ((shape.type === 'rect' && (shape.w < 1e-6 || shape.d < 1e-6)) || (shape.type === 'circle' && shape.r < 1e-6)) {
+      this.cancelDraft();
+      MF.ui.message('Zum Zeichnen ' + (d.type === 'rect' ? 'von Ecke zu Ecke' : 'vom Mittelpunkt aus') + ' ziehen.');
+      return;
+    }
+    this.create(shape, pose);
+  },
+
+  finishPolygon: function () {
+    var d = this.draft;
+    if (!d) return;
+    if (d.points.length < 3) { MF.ui.message('Ein Polygon braucht mindestens drei Punkte.'); return; }
+    var poly = MF.geom.polygonFromWorld(d.points);
+    if (MF.geom.selfIntersects(poly.points)) {
+      MF.ui.message('Das Polygon schneidet sich selbst – mit der Rücktaste Punkte zurücknehmen.');
+      return;
+    }
+    this.create({ type: 'polygon', points: poly.points }, { x: poly.x, y: poly.y });
+  },
+
+  // Neuen Körper aus der gezeichneten Form anlegen (ein Schritt im Verlauf)
+  create: function (shape, pose) {
+    shape.h = MF.BODY.H;
+    this.draft = null;
+    MF.sim.draft = null;
+    MF.history.end();
+    MF.history.begin();
+    var b = MF.store.createShape(shape, { x: pose.x, y: pose.y, z: 0, rot: 0 }, this.currentParent('plant'));
+    MF.history.end();
+    this.createdAt = Date.now();
+    if (!b) { MF.sim.draw(); return; }
+    this.setTool('select');
+    MF.ui.message(b.name + ' (' + b.id + ') gezeichnet – immateriell, ' + this.fmtLen(b.shape.h) +
+      ' m hoch. Körperart und Funktionen im Eigenschaften-Panel.');
+  },
+
   // ---------- Fläche: Werkzeuge und Ansicht ziehen ----------
 
   initCanvas: function () {
@@ -217,7 +510,31 @@ MF.editor = {
       // offene Eingaben werden dabei übernommen
       if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
       var p = self.canvasPos(e);
+
+      // Zeichnen: Rechteck und Kreis entstehen beim Ziehen, Polygon Punkt für Punkt
+      if (e.button === 0 && self.TOOLS[self.tool].draw) {
+        if (self.drawDown(p, e)) drag = { mode: 'draw' };
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+
+      // Griff am gewählten Körper anfassen
+      var sel = MF.store.findBody(MF.store.selectedId);
+      var h = e.button === 0 && self.handlesFor(sel) ? self.handleAt(sel, p) : null;
+      if (h) {
+        var dp = MF.sim.drawPose(sel);
+        drag = { mode: 'handle', el: sel, h: h, sx: p.x, sy: p.y, active: false,
+          pose0: { x: sel.pose.x, y: sel.pose.y, z: sel.pose.z, rot: sel.pose.rot },
+          shape0: JSON.parse(JSON.stringify(sel.shape)),
+          shift: { x: dp.x - sel.pose.x, y: dp.y - sel.pose.y } };
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+
       var hit = e.button === 0 ? MF.sim.hitTest(p.x, p.y) : null;
+      // Klick auf eine Kante des gewählten Polygons (Doppelklick fügt dort einen Punkt
+      // ein) behält die Auswahl, auch wenn er knapp außerhalb liegt
+      if (sel && sel.shape.type === 'polygon' && self.handlesFor(sel) && self.edgeAt(sel, p)) hit = sel;
       if (e.button === 0) MF.store.select(hit ? hit.id : null);
 
       if (hit && self.tool === 'move') {
@@ -235,17 +552,30 @@ MF.editor = {
       var p = self.canvasPos(e);
       MF.ui.setCursor(MF.sim.toWorld(p.x, p.y));
 
+      if (self.draft) {
+        self.updateDraft(p, e);
+        return;
+      }
+
       if (!drag) {
-        self.updateCursor(MF.sim.hitTest(p.x, p.y));
+        var sel = MF.store.findBody(MF.store.selectedId);
+        var h = self.handlesFor(sel) ? self.handleAt(sel, p) : null;
+        var changed = (h && h.kind) !== (self.hotHandle && self.hotHandle.kind) ||
+          (h && (h.sx !== self.hotHandle.sx || h.sy !== self.hotHandle.sy || h.i !== self.hotHandle.i));
+        self.hotHandle = h;
+        if (changed) MF.sim.draw();
+        self.updateCursor(h ? null : MF.sim.hitTest(p.x, p.y), h);
         return;
       }
 
       // Erst ab kleiner Mindestbewegung zählt es als Ziehen, damit ein Klick nur auswählt
       if (!drag.active) {
+        if (drag.mode === 'draw') return;
         if (Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) < self.DRAG_START_PX) return;
         if (drag.mode === 'move' && drag.el.look.locked) { MF.ui.message(drag.el.name + ' ist gesperrt.'); drag = null; return; }
         drag.active = true;
         if (drag.mode === 'pan') canvas.style.cursor = 'grabbing';
+        if (drag.mode === 'handle' || drag.mode === 'move') MF.history.begin();
       }
 
       if (drag.mode === 'pan') {
@@ -256,8 +586,13 @@ MF.editor = {
       }
 
       var w = MF.sim.toWorld(p.x, p.y);
-      var nx = self.snapValue(drag.ox + (w.x - drag.wx));
-      var ny = self.snapValue(drag.oy + (w.y - drag.wy));
+      if (drag.mode === 'handle') {
+        self.applyHandle(drag, w, e);
+        return;
+      }
+
+      var nx = self.snapValue(drag.ox + (w.x - drag.wx), e.altKey);
+      var ny = self.snapValue(drag.oy + (w.y - drag.wy), e.altKey);
       if (nx !== drag.el.pose.x || ny !== drag.el.pose.y) {
         drag.el.pose.x = nx;
         drag.el.pose.y = ny;
@@ -265,21 +600,64 @@ MF.editor = {
       }
     });
 
+    // Esc während des Ziehens: Form und Lage wie beim Anfassen
+    this.cancelDrag = function () {
+      if (!drag || !drag.active || (drag.mode !== 'handle' && drag.mode !== 'move')) return false;
+      if (drag.mode === 'handle') {
+        MF.setForm(drag.el, { x: drag.pose0.x, y: drag.pose0.y, rot: drag.pose0.rot });
+        drag.el.shape = drag.shape0;
+      } else {
+        drag.el.pose.x = drag.ox;
+        drag.el.pose.y = drag.oy;
+      }
+      MF.store.changed();
+      MF.history.end();
+      MF.sim.editLabel = null;
+      drag = null;
+      MF.ui.message('Bearbeitung abgebrochen.');
+      return true;
+    };
+
     function end(e) {
+      var p = self.canvasPos(e);
+      if (drag && drag.mode === 'draw') {
+        drag = null;
+        if (e.type === 'pointerup') self.finishDrag(p, e);
+        else self.cancelDraft();
+        return;
+      }
       if (drag && drag.mode === 'move' && drag.active &&
           (drag.el.pose.x !== drag.ox || drag.el.pose.y !== drag.oy)) {
         MF.ui.message(drag.el.name + ' nach x ' + MF.props.formatNumber(drag.el.pose.x) +
           ' m, y ' + MF.props.formatNumber(drag.el.pose.y) + ' m verschoben.');
       }
+      if (drag && drag.mode === 'handle' && drag.active) {
+        var b = drag.el, sh = b.shape;
+        var what = drag.h.kind === 'rotate' ? 'auf ' + MF.props.formatNumber(b.pose.rot) + '° gedreht'
+          : drag.h.kind === 'vertex' ? 'Punkt ' + (drag.h.i + 1) + ' verschoben'
+          : sh.type === 'circle' ? 'Radius ' + self.fmtLen(sh.r) + ' m'
+          : 'Größe ' + self.fmtLen(sh.w) + ' × ' + self.fmtLen(sh.d) + ' m';
+        MF.ui.message(b.name + ': ' + what + (drag.err ? ' (' + drag.err + ')' : '') + '.');
+      }
+      if (drag && drag.active && (drag.mode === 'handle' || drag.mode === 'move')) MF.history.end();
       if (drag && drag.mode === 'pan' && !drag.active && drag.el && self.tool === 'rotate' && e.type === 'pointerup') {
         self.rotateBody(drag.el);
       }
       drag = null;
-      var p = self.canvasPos(e);
+      if (MF.sim.editLabel) { MF.sim.editLabel = null; MF.sim.draw(); }
       self.updateCursor(p.inside ? MF.sim.hitTest(p.x, p.y) : null);
     }
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
+
+    // Doppelklick: Polygon fertig zeichnen bzw. Punkt am gewählten Polygon löschen/einfügen
+    canvas.addEventListener('dblclick', function (e) {
+      var p = self.canvasPos(e);
+      if (self.draft && self.draft.type === 'polygon') { self.finishPolygon(); return; }
+      if (Date.now() - self.createdAt < 600) return;   // Doppelklick hat gerade ein Polygon geschlossen
+      var sel = MF.store.findBody(MF.store.selectedId);
+      if (sel && sel.shape.type === 'polygon' && self.handlesFor(sel)) self.editPolygonAt(sel, p);
+    });
 
     canvas.addEventListener('pointerleave', function () {
       if (!drag) MF.ui.setCursor(null);
@@ -384,6 +762,30 @@ MF.editor = {
       var t = e.target;
       if (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA') return;
       var mod = e.metaKey || e.ctrlKey;
+
+      // Zeichnen und Griffe: Esc bricht ab, beim Polygon nimmt die Rücktaste den
+      // letzten Punkt zurück und Enter schließt. Esc hebt dabei nicht die Auswahl auf.
+      if (e.key === 'Escape' && (self.draft || self.cancelDrag())) {
+        if (self.draft) { self.cancelDraft(); MF.ui.message('Zeichnen abgebrochen.'); }
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        return;
+      }
+      if (e.key === 'Escape' && self.TOOLS[self.tool].draw) {
+        self.setTool('select');
+        e.stopImmediatePropagation();
+        return;
+      }
+      if (self.draft && self.draft.type === 'polygon' && (e.key === 'Backspace' || e.key === 'Delete')) {
+        self.undoPoint();
+        e.preventDefault();
+        return;
+      }
+      if (self.draft && self.draft.type === 'polygon' && e.key === 'Enter') {
+        self.finishPolygon();
+        e.preventDefault();
+        return;
+      }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         self.deleteSelected();

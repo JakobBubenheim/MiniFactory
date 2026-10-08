@@ -165,6 +165,10 @@ window.MF = window.MF || {};
         }
         if (self.KINDS.indexOf(b.kind) < 0) errors.push(what + ': Körperart (kind) muss ghost, static, kinematic oder dynamic sein.');
         self.checkShape(b.shape, what, errors);
+        if (isObject(b.shape) && isNum(b.shape.h) && isNum(b.shape.h2) && MF.geom.isSloped(b.shape)) {
+          if (b.kind !== 'static') errors.push(what + ': Neigung (h2) gibt es nur bei Körperart "static".');
+          if (isObject(b.surface)) errors.push(what + ': Transportfläche auf geneigter Oberseite ist nicht möglich.');
+        }
         if (!isObject(b.pose)) errors.push(what + ': Lage (pose) fehlt.');
         else ['x', 'y', 'z', 'rot'].forEach(function (k) {
           if (!isNum(b.pose[k])) errors.push(what + ': Lage "' + k + '" fehlt oder ist keine Zahl.');
@@ -218,9 +222,12 @@ window.MF = window.MF || {};
           return Array.isArray(p) && p.length === 2 && isNum(p[0]) && isNum(p[1]);
         });
         if (!ok) errors.push(what + ': Polygon braucht mindestens drei Punkte [x, y].');
+        else if (MF.geom.selfIntersects(sh.points)) errors.push(what + ': Polygon schneidet sich selbst.');
         else if (Math.abs(MF.geom.signedArea(sh.points)) < 1e-9) errors.push(what + ': Polygon hat keine Fläche.');
       } else errors.push(what + ': Form muss "rect", "circle" oder "polygon" sein.');
       pos('h');
+      // Neigung (Phase 3): Höhe am Ende der lokalen x-Achse, optional
+      if (sh.h2 !== undefined && !(isNum(sh.h2) && sh.h2 >= 0)) errors.push(what + ': Form "h2" (Höhe am Ende) muss eine Zahl ≥ 0 sein.');
     },
 
     // Achse: in Phase 2 nur linear mit Betriebsart "zweipunkt"

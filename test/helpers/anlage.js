@@ -11,6 +11,11 @@
 // eigenschaft('B1', 'speed') liest surface.speed (über die Eigenschaften der
 // Vorlage), kisten() liefert die Mittelpunkte aus Rapier, anlegen() legt einen
 // Körper aus dem Katalog mit Mitte (x, y) in Metern an.
+//
+// Phase 3 (Formen): formAnlegen() zeichnet einen Körper wie die Werkzeuge
+// Rechteck/Kreis/Polygon, form(), koerperart(), funktion() und material() ändern
+// ihn wie das Eigenschaften-Panel. Funktionen heißen wie in der Oberfläche
+// ('Transportfläche', 'Achse', 'Sensor', 'Erzeuger', 'Senke').
 'use strict';
 
 const { before } = require('node:test');
@@ -53,6 +58,29 @@ function neueAnlage(datei) {
     MF.history.canMerge = false;
   }
   function dtS() { return MF.engine.dt(); }
+
+  // Funktionen mit deutschem Namen wie in der Oberfläche (oder dem Feldnamen)
+  const FUNKTIONEN = { 'Transportfläche': 'surface', 'Achse': 'axis', 'Sensor': 'sensor', 'Erzeuger': 'spawner', 'Senke': 'sink' };
+  function fnKey(name) {
+    const fn = FUNKTIONEN[name] || name;
+    if (MF.FN_KEYS.indexOf(fn) < 0) throw new Error('Funktion "' + name + '" gibt es nicht');
+    return fn;
+  }
+  function fnName(fn) {
+    for (const k in FUNKTIONEN) if (FUNKTIONEN[k] === fn) return k;
+    return fn;
+  }
+  // Form und Lage als einfache Daten: { typ, w, d | r | punkte, h, h2?, x, y, z, rot }
+  function formDaten(e) {
+    const sh = e.shape, out = { typ: sh.type };
+    if (sh.type === 'rect') { out.w = sh.w; out.d = sh.d; }
+    else if (sh.type === 'circle') out.r = sh.r;
+    else out.punkte = kopie(sh.points);
+    out.h = sh.h;
+    if (sh.h2 !== undefined) out.h2 = sh.h2;
+    out.x = e.pose.x; out.y = e.pose.y; out.z = e.pose.z; out.rot = e.pose.rot;
+    return out;
+  }
 
   const a = {
     // ---------- Laden und Speichern ----------
@@ -189,6 +217,112 @@ function neueAnlage(datei) {
     },
     umbenennen(id, name) { el(id).name = name; geaendert(); },
     name(id) { return el(id).name; },
+    /** Signalnamen eines Körpers, z. B. ['Ein', 'Läuft', 'Tempo'] */
+    signale(id) { return kopie(MF.io(el(id)).map(function (s) { return s.name; })); },
+
+    // ---------- Formen (Phase 3) ----------
+
+    /**
+     * Neuen Körper zeichnen wie mit den Werkzeugen Rechteck, Kreis, Polygon.
+     * typ 'rect' | 'circle' | 'polygon'; masse { w, d } | { r } | { punkte: [[x, y], …] } (lokal zur Lage),
+     * optional h; lage { x, y, z?, rot? } in m bzw. Grad. Gibt die ID zurück oder null, wenn abgelehnt.
+     */
+    formAnlegen(typ, masse, lage) {
+      const shape = { type: typ };
+      if (typ === 'rect') { shape.w = masse.w; shape.d = masse.d; }
+      else if (typ === 'circle') shape.r = masse.r;
+      else shape.points = kopie(masse.punkte);
+      if (masse.h !== undefined) shape.h = masse.h;
+      const e = MF.store.createShape(shape, { x: lage.x, y: lage.y, z: lage.z || 0, rot: lage.rot || 0 }, null);
+      MF.history.canMerge = false;
+      return e ? e.id : null;
+    },
+    /**
+     * Form und Lage lesen (felder weglassen) oder ändern, z. B. { w: 2, h: 0.5, h2: 0.1, z: 0.3, rot: 90 }.
+     * h2: null entfernt die Neigung. Gibt true zurück oder false, wenn abgelehnt (Meldung in meldungen()).
+     */
+    form(id, felder) {
+      const e = el(id);
+      if (!felder) return formDaten(e);
+      const aenderung = kopie(felder);
+      if (aenderung.punkte) { aenderung.points = aenderung.punkte; delete aenderung.punkte; }
+      const err = MF.setForm(e, aenderung);
+      if (err) { MF.ui.message(err); return false; }
+      geaendert();
+      return true;
+    },
+    /** Körperart lesen oder wechseln; gibt beim Wechsel die entfernten Funktionen zurück */
+    koerperart(id, art) {
+      const e = el(id);
+      if (art === undefined) return e.kind;
+      if (MF.file.KINDS.indexOf(art) < 0) throw new Error('Körperart "' + art + '" gibt es nicht');
+      const res = MF.setKind(e, art);
+      MF.store.dropSignals(e.id, res.signals);
+      geaendert();
+      return kopie(res.fns.map(fnName));
+    },
+    /**
+     * Funktion lesen (felder weglassen; null, wenn nicht vorhanden), anlegen bzw. Felder
+     * ändern (felder = Objekt, {} = Standardwerte) oder entfernen (felder = null).
+     * Gibt beim Ändern true zurück oder false, wenn die Funktion hier nicht erlaubt ist.
+     */
+    funktion(id, name, felder) {
+      const e = el(id), fn = fnKey(name);
+      if (arguments.length < 3) return e[fn] ? kopie(e[fn]) : null;
+      if (felder === null) {
+        MF.store.dropSignals(e.id, MF.removeFunction(e, fn));
+        geaendert();
+        return true;
+      }
+      const err = MF.addFunction(e, fn);
+      if (err) { MF.ui.message(err); return false; }
+      const f = kopie(felder);
+      Object.keys(f).forEach(function (k) { e[fn][k] = f[k]; });
+      geaendert();
+      return true;
+    },
+    /**
+     * Griff ziehen wie im Editor: eine Geste mit mehreren Zwischenständen
+     * (z. B. [{ w: 1.2 }, { w: 1.5 }, { w: 1.8 }]), dazwischen vergeht echte Zeit.
+     * Gibt die Anzahl abgelehnter Zwischenstände zurück.
+     */
+    griffZiehen(id, staende) {
+      const e = el(id);
+      let abgelehnt = 0;
+      MF.history.begin();
+      staende.forEach(function (st) {
+        const f = kopie(st);
+        if (f.punkte) { f.points = f.punkte; delete f.punkte; }
+        if (MF.setForm(e, f)) abgelehnt++;
+        else MF.store.changed();
+        MF.history.lastTime -= 10000;   // wie eine lange Pause beim Ziehen
+      });
+      MF.history.end();
+      return abgelehnt;
+    },
+    /** Werkstoff lesen oder ändern, z. B. { friction: 0.1 } */
+    material(id, felder) {
+      const e = el(id);
+      if (!felder) return kopie(e.material);
+      const f = kopie(felder);
+      Object.keys(f).forEach(function (k) { e.material[k] = f[k]; });
+      geaendert();
+    },
+    /** Aktuelle Lage in der Simulation { x, y, z, rot } (dynamisch: wo die Physik ihn hat) */
+    lage(id) {
+      const p = MF.engine.worldPose(el(id));
+      return kopie({ x: p.x, y: p.y, z: p.z, rot: p.rot });
+    },
+    /** Punkt fangen wie beim Zeichnen; ohneFangen = Alt gedrückt */
+    fangen(x, y, ohneFangen) {
+      return kopie(MF.geom.snapPoint(x, y, MF.model.settings.snap, !!ohneFangen));
+    },
+    /** Winkel fangen wie beim Drehen */
+    fangWinkel(grad, ohneFangen) { return MF.geom.snapAngle(grad, MF.model.settings.snap, !!ohneFangen); },
+    /** Fangen einstellen, z. B. { on: false } oder { pos: 0.1, angle: 15 } */
+    fangenEinstellen(felder) {
+      Object.keys(felder).forEach(function (k) { MF.model.settings.snap[k] = felder[k]; });
+    },
 
     // ---------- Regeln und SCL ----------
 

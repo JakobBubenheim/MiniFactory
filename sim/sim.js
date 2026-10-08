@@ -1,6 +1,8 @@
 // Sim: Zeichenfläche (Draufsicht). Zeichnet Körper aus ihrem Grundriss (Rechteck,
 // Kreis, Polygon) mit Lage und Drehung, dazu die Kisten aus der Physik, und findet
 // Körper unter der Maus. Alle Längen in Metern; das Raster ist nur Zeichenhilfe.
+// Dazu die Griffe des gewählten Körpers (drehen, Größe, Polygonpunkte) und die
+// Vorschau beim Zeichnen neuer Formen mit Maßen (Werkzeuge in ui/editor.js).
 window.MF = window.MF || {};
 
 MF.sim = {
@@ -43,9 +45,12 @@ MF.sim = {
     return { x: (px - this.offsetX) / c, y: (py - this.offsetY) / c };
   },
 
-  // Aktuelle Lage eines Körpers fürs Zeichnen (kinematisch: Achse interpoliert)
+  // Aktuelle Lage eines Körpers fürs Zeichnen (kinematisch: Achse interpoliert,
+  // dynamisch: aus der Physik interpoliert)
   drawPose: function (b) {
-    if (!b.axis || b.kind !== 'kinematic' || !MF.engine.world) return b.pose;
+    if (!MF.engine.world) return b.pose;
+    if (b.kind === 'dynamic') return MF.engine.dynamicPose(b, MF.engine.alpha());
+    if (!b.axis || b.kind !== 'kinematic') return b.pose;
     var rt = b.rt || {};
     var pos = MF.engine.axisPos(b);
     var prev = rt.prevPos !== undefined ? rt.prevPos : pos;
@@ -128,7 +133,11 @@ MF.sim = {
 
     if (this.showTags) this.drawTags();
     this.drawSelection();
+    this.drawDraft();
+    if (this.editLabel) this.drawLabel(this.editLabel.text, this.editLabel.x + 12, this.editLabel.y + 14);
   },
+
+  editLabel: null,   // Maße beim Ziehen eines Griffs: { text, x, y } in Pixeln
 
   drawGrid: function () {
     var ctx = this.ctx;
@@ -207,10 +216,11 @@ MF.sim = {
     } else {
       ctx.fillStyle = b.kind === 'kinematic' ? '#9AA3AE' : b.look.color;
       ctx.fill();
-      ctx.strokeStyle = b.kind === 'kinematic' ? b.look.color : 'rgba(244, 242, 236, 0.5)';
+      ctx.strokeStyle = b.kind === 'kinematic' ? b.look.color : b.kind === 'dynamic' ? '#1B2430' : 'rgba(244, 242, 236, 0.5)';
       ctx.stroke();
     }
 
+    if (MF.geom.isSloped(sh)) this.drawSlope(sh, lw);
     if (b.surface) this.drawSurface(b, sh, lw);
     if (b.spawner) this.drawSpawner(sh);
     if (b.sink) this.drawSink(sh, lw);
@@ -246,6 +256,38 @@ MF.sim = {
     ctx.moveTo(ex - 0.1 - a * 1.6, -a);
     ctx.lineTo(ex - 0.1, 0);
     ctx.lineTo(ex - 0.1 - a * 1.6, a);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  },
+
+  // Geneigte Oberseite: hoch = hell, tief = dunkel, Pfeil zeigt bergab
+  drawSlope: function (sh, lw) {
+    var ctx = this.ctx;
+    var r = MF.geom.xRange(sh), down = sh.h2 < sh.h ? 1 : -1;
+    var e = this.halfExtent(sh);
+    ctx.save();
+    this.outlinePath(sh);
+    ctx.clip();
+    var g = ctx.createLinearGradient(r.x0, 0, r.x1, 0);
+    g.addColorStop(0, down > 0 ? 'rgba(255, 255, 255, 0.35)' : 'rgba(27, 36, 48, 0.35)');
+    g.addColorStop(1, down > 0 ? 'rgba(27, 36, 48, 0.35)' : 'rgba(255, 255, 255, 0.35)');
+    ctx.fillStyle = g;
+    ctx.fillRect(r.x0, -e.y, r.x1 - r.x0, 2 * e.y);
+    // Pfeil bergab durch die Mitte
+    var len = (r.x1 - r.x0) * 0.3, a = Math.min(0.12, e.y * 0.5);
+    var cx = (r.x0 + r.x1) / 2;
+    ctx.strokeStyle = '#F4F2EC';
+    ctx.fillStyle = '#F4F2EC';
+    ctx.lineWidth = lw * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - down * len, 0);
+    ctx.lineTo(cx + down * (len - a), 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + down * len, 0);
+    ctx.lineTo(cx + down * (len - a * 1.6), -a);
+    ctx.lineTo(cx + down * (len - a * 1.6), a);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -392,16 +434,53 @@ MF.sim = {
     });
   },
 
-  // Orangefarbener Rahmen um den gewählten Körper (Grundriss) mit Griffen am Hüllrechteck
+  // Meter -> Bildschirmpixel
+  toScreen: function (x, y) {
+    var c = this.pxPerM();
+    return { x: this.offsetX + x * c, y: this.offsetY + y * c };
+  },
+
+  // ---------- Griffe des gewählten Körpers ----------
+  //
+  // Liste in Bildschirmpixeln: { kind, x, y, … }
+  //   rotate              – Drehgriff über der lokalen Oberkante (−y)
+  //   size  (sx, sy)      – Rechteck: Ecken (sx, sy = ±1) und Kantenmitten (eins davon 0)
+  //   radius              – Kreis: Radius auf der lokalen +x-Achse
+  //   vertex (i)          – Polygonpunkt i
+  ROTATE_PX: 26,     // Abstand des Drehgriffs vom Körper
+
+  handles: function (b) {
+    var self = this, pose = this.drawPose(b), sh = b.shape, out = [];
+    function at(kind, lx, ly, extra) {
+      var w = MF.geom.toWorld(pose, lx, ly), p = self.toScreen(w.x, w.y);
+      var h = { kind: kind, x: p.x, y: p.y, lx: lx, ly: ly };
+      for (var k in extra) h[k] = extra[k];
+      out.push(h);
+    }
+    if (sh.type === 'rect') {
+      [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]].forEach(function (s) {
+        at('size', s[0] * sh.w / 2, s[1] * sh.d / 2, { sx: s[0], sy: s[1] });
+      });
+    } else if (sh.type === 'circle') {
+      at('radius', sh.r, 0, {});
+    } else {
+      sh.points.forEach(function (p, i) { at('vertex', p[0], p[1], { i: i }); });
+    }
+    // Drehgriff: über der lokalen Oberkante, mit festem Abstand in Pixeln
+    var top = -this.halfExtent(sh).y, up = MF.geom.toWorld({ x: 0, y: 0, rot: pose.rot }, 0, -1);
+    var base = MF.geom.toWorld(pose, 0, top), bp = this.toScreen(base.x, base.y);
+    out.push({ kind: 'rotate', x: bp.x + up.x * this.ROTATE_PX, y: bp.y + up.y * this.ROTATE_PX, bx: bp.x, by: bp.y });
+    return out;
+  },
+
+  // Orangefarbener Rahmen um den gewählten Körper (Grundriss); mit Griffen, wenn
+  // das Werkzeug sie anbietet und der Körper nicht gesperrt ist
   drawSelection: function () {
     var b = MF.store.findBody(MF.store.selectedId);
     if (!b || !b.look.visible) return;
     var ctx = this.ctx, self = this;
-    var c = this.pxPerM();
     var pose = this.drawPose(b);
-    var pts = MF.geom.worldOutline(b.shape, pose).map(function (p) {
-      return { x: self.offsetX + p.x * c, y: self.offsetY + p.y * c };
-    });
+    var pts = MF.geom.worldOutline(b.shape, pose).map(function (p) { return self.toScreen(p.x, p.y); });
     ctx.strokeStyle = '#D9701A';
     ctx.lineWidth = 1.5;
     ctx.setLineDash([5, 3]);
@@ -410,12 +489,105 @@ MF.sim = {
     ctx.closePath();
     ctx.stroke();
     ctx.setLineDash([]);
-    var r = MF.geom.bounds(b.shape, pose);
-    var x0 = Math.round(this.offsetX + r.x0 * c) - 3.5, y0 = Math.round(this.offsetY + r.y0 * c) - 3.5;
-    var x1 = Math.round(this.offsetX + r.x1 * c) + 3.5, y1 = Math.round(this.offsetY + r.y1 * c) + 3.5;
-    ctx.fillStyle = '#D9701A';
-    [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].forEach(function (p) {
-      ctx.fillRect(p[0] - 3, p[1] - 3, 6, 6);
+    if (!MF.editor || !MF.editor.handlesFor(b)) return;
+    var hot = MF.editor.hotHandle;
+    this.handles(b).forEach(function (h) {
+      var on = hot && hot.kind === h.kind && hot.sx === h.sx && hot.sy === h.sy && hot.i === h.i;
+      ctx.fillStyle = on ? '#1B2430' : '#D9701A';
+      ctx.strokeStyle = '#F4F2EC';
+      ctx.lineWidth = 1.5;
+      if (h.kind === 'rotate') {
+        ctx.strokeStyle = '#D9701A';
+        ctx.beginPath();
+        ctx.moveTo(h.bx, h.by);
+        ctx.lineTo(h.x, h.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, 5.5, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = '#F4F2EC';
+        ctx.stroke();
+      } else if (h.kind === 'vertex') {
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, 4.5, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillRect(Math.round(h.x) - 4, Math.round(h.y) - 4, 8, 8);
+        ctx.strokeRect(Math.round(h.x) - 4, Math.round(h.y) - 4, 8, 8);
+      }
     });
+  },
+
+  // ---------- Vorschau beim Zeichnen ----------
+  //
+  // draft (vom Editor gesetzt): { type: 'rect'|'circle'|'polygon', points: [{x, y}, …] in m,
+  // cursor: {x, y} oder null, closing: Cursor auf dem Startpunkt, label: Maßtext, bad: ungültig }
+  draft: null,
+
+  drawDraft: function () {
+    var d = this.draft;
+    if (!d) return;
+    var ctx = this.ctx, self = this;
+    var pts = d.points.map(function (p) { return self.toScreen(p.x, p.y); });
+    var cur = d.cursor ? this.toScreen(d.cursor.x, d.cursor.y) : null;
+    var color = d.bad ? '#C0392B' : '#D9701A';
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = d.bad ? 'rgba(192, 57, 43, 0.12)' : 'rgba(217, 112, 26, 0.15)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (d.type === 'rect' && pts.length && cur) {
+      ctx.rect(Math.min(pts[0].x, cur.x), Math.min(pts[0].y, cur.y), Math.abs(cur.x - pts[0].x), Math.abs(cur.y - pts[0].y));
+      ctx.fill();
+      ctx.stroke();
+    } else if (d.type === 'circle' && pts.length && cur) {
+      var r = Math.sqrt((cur.x - pts[0].x) * (cur.x - pts[0].x) + (cur.y - pts[0].y) * (cur.y - pts[0].y));
+      ctx.arc(pts[0].x, pts[0].y, r, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      ctx.lineTo(cur.x, cur.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (d.type === 'polygon' && pts.length) {
+      pts.forEach(function (p, i) { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+      if (cur) ctx.lineTo(cur.x, cur.y);
+      if (pts.length > 1) { ctx.save(); ctx.closePath(); ctx.fill(); ctx.restore(); }
+      ctx.stroke();
+      pts.forEach(function (p, i) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, i === 0 && d.closing ? 7 : 3.5, 0, 2 * Math.PI);
+        ctx.fillStyle = i === 0 && d.closing ? '#1B2430' : color;
+        ctx.fill();
+      });
+    }
+    // Fadenkreuz am (gefangenen) Mauspunkt
+    if (cur) {
+      ctx.strokeStyle = 'rgba(27, 36, 48, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cur.x - 6, cur.y); ctx.lineTo(cur.x + 6, cur.y);
+      ctx.moveTo(cur.x, cur.y - 6); ctx.lineTo(cur.x, cur.y + 6);
+      ctx.stroke();
+    }
+    if (d.label && cur) this.drawLabel(d.label, cur.x + 12, cur.y + 14, d.bad);
+    ctx.restore();
+  },
+
+  // Kleines Schild mit Text (Maße beim Zeichnen und Bearbeiten), in Bildschirmpixeln
+  drawLabel: function (text, x, y, bad) {
+    var ctx = this.ctx;
+    ctx.font = '600 11px ui-monospace, Menlo, monospace';
+    ctx.textBaseline = 'middle';
+    var w = ctx.measureText(text).width + 10;
+    x = Math.min(x, this.width - w - 4);
+    y = Math.min(y, this.height - 20);
+    ctx.fillStyle = bad ? 'rgba(192, 57, 43, 0.92)' : 'rgba(27, 36, 48, 0.88)';
+    ctx.fillRect(Math.round(x), Math.round(y), w, 18);
+    ctx.fillStyle = '#F4F2EC';
+    ctx.fillText(text, Math.round(x) + 5, Math.round(y) + 9);
   }
 };
