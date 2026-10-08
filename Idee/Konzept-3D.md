@@ -250,8 +250,9 @@ Phasen 3 und 5 können parallel laufen.
   entsteht erst, wenn die Ansicht zum ersten Mal sichtbar ist.
 - **Prisma allgemein, nicht je Vorlage:** jede Form (`rect`, `circle`, `polygon`, auch konkav) wird ein
   eigenes Prisma (Ober-/Unterseite über `MF.geom.convexParts` in Dreiecke zerlegt, Seiten je Kante,
-  Kreis glatt mit 48 Teilen). **Eine schräge Oberseite (Rutsche) wird nur in `MF.view3dCore.topZ()`
-  ergänzt**; dazu gehört dann der passende Schlüssel in `bodyKey()`.
+  Kreis glatt mit 48 Teilen). **Die schräge Oberseite (Rutsche, `shape.h2`) steckt nur in
+  `MF.view3dCore.topZ()`** (ruft `MF.geom.topAt` wie Engine und Draufsicht); `bodyKey()` enthält die
+  ganze Form, ändert sich `h2`, wird das Mesh neu gebaut. Einpassen nutzt `MF.geom.maxHeight`.
 - **Darstellung der Körperarten:** `ghost` halbtransparent, ohne Schatten, mit Kanten in der Körperfarbe
   (Sensor in Strahlfarbe Orange, belegt Rot; Erzeuger kräftiger; Senke dunkel mit Kreuz); `static` fest
   in der Körperfarbe; `kinematic` fest in Stahlgrau mit Kanten in der Körperfarbe (wie Draufsicht);

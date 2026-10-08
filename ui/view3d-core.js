@@ -38,10 +38,10 @@ MF.view3dCore = {
   },
 
   // Höhe der Oberseite über der Unterseite an der lokalen Stelle (x, y).
-  // Heute überall shape.h. Eine schräge Oberseite (Rutsche, Phase 3) wird nur
-  // hier ergänzt – Prisma, Normalen und Bänder rechnen alle damit.
+  // Bei geneigter Oberseite (shape.h2, Rutsche) läuft sie entlang x von h nach h2
+  // (MF.geom.topAt, wie Engine und Draufsicht) – Prisma, Normalen und Bänder rechnen alle damit.
   topZ: function (shape, x, y) {
-    return shape.h;
+    return MF.geom.topAt(shape, x);
   },
 
   // Dreiecke der Grundfläche (auch konkav) als Indizes in pts, alle gegen den
@@ -268,9 +268,10 @@ MF.view3dCore = {
     bodies.forEach(function (b) {
       if (b.look && b.look.visible === false) return;
       var q = MF.geom.bounds(b.shape, b.pose);
-      if (!r) r = { x0: q.x0, y0: q.y0, z0: b.pose.z, x1: q.x1, y1: q.y1, z1: b.pose.z + b.shape.h };
+      var top = b.pose.z + MF.geom.maxHeight(b.shape);
+      if (!r) r = { x0: q.x0, y0: q.y0, z0: b.pose.z, x1: q.x1, y1: q.y1, z1: top };
       r.x0 = Math.min(r.x0, q.x0); r.y0 = Math.min(r.y0, q.y0); r.z0 = Math.min(r.z0, b.pose.z);
-      r.x1 = Math.max(r.x1, q.x1); r.y1 = Math.max(r.y1, q.y1); r.z1 = Math.max(r.z1, b.pose.z + b.shape.h);
+      r.x1 = Math.max(r.x1, q.x1); r.y1 = Math.max(r.y1, q.y1); r.z1 = Math.max(r.z1, top);
     });
     return r;
   },

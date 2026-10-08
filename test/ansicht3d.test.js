@@ -82,6 +82,31 @@ test('Rechteck wird ein Quader mit Höhe h, Unterseite bei z = 0', function () {
   pruefeAussen(MF, shape, p);
 });
 
+test('Geneigte Oberseite (Rutsche, shape.h2): Höhe läuft entlang x von h nach h2', function () {
+  const { C, MF } = kern();
+  const shape = { type: 'rect', w: 2, d: 0.6, h: 0.8, h2: 0.2 };
+  const p = C.prism(shape);
+  const oben = [];
+  dreiecke(p, 'top').forEach(function (t) { t.forEach(function (i) { oben.push(ecke(p, i)); }); });
+  oben.forEach(function (e) {
+    const soll = e[0] < 0 ? 0.8 : 0.2;   // linke Kante hoch, rechte Kante tief
+    assert.ok(Math.abs(e[2] - soll) < 1e-9, 'Oberseite bei x = ' + e[0] + ': ' + e[2] + ' statt ' + soll);
+  });
+  // Normale der Oberseite kippt zur tiefen Seite (+x) und steht senkrecht auf der Schräge
+  const n = normale(p, dreiecke(p, 'top')[0][0]);
+  assert.ok(n[0] > 0 && n[2] > 0, 'Normale zeigt schräg nach oben zur tiefen Seite: ' + n);
+  assert.ok(Math.abs(punkt(n, norm([2, 0, -0.6]))) < 1e-9, 'Normale senkrecht zur Schräge');
+  // Seiten reichen bis an die Schräge
+  const seiteZ = [];
+  dreiecke(p, 'side').forEach(function (t) { t.forEach(function (i) { seiteZ.push(ecke(p, i)[2]); }); });
+  assert.equal(Math.max.apply(null, seiteZ), 0.8);
+  pruefeUmlauf(p);
+  pruefeAussen(MF, shape, p);
+  // Einpassen berücksichtigt die hohe Seite
+  const b = C.bounds([{ shape: shape, pose: { x: 0, y: 0, z: 0.5, rot: 0 } }]);
+  assert.ok(Math.abs(b.z1 - 1.3) < 1e-9, 'Hüllquader bis zur hohen Kante: ' + b.z1);
+});
+
 test('Konkaves Polygon (Schieber mit Fangwinkel) wird richtig gefüllt', function () {
   const { C, MF } = kern();
   const pts = MF.pusherOutline(0.5, 0.5, 0.6, 1);
