@@ -1,4 +1,4 @@
-// UI: Ribbon, Splitter zwischen den Bereichen und Statusleiste.
+// UI: Ribbon, Splitter zwischen den Bereichen, Teilung Draufsicht/3D und Statusleiste.
 window.MF = window.MF || {};
 
 MF.ui = {
@@ -10,6 +10,7 @@ MF.ui = {
     this.initRibbonTabs();
     this.initActions();
     this.initSplitters();
+    this.initViewLayout();
     this.initSimControls();
     this.initFileKeys();
     this.updateStatus();
@@ -133,7 +134,15 @@ MF.ui = {
         case 'zoom-fit': MF.sim.fit(); break;
         case 'toggle-grid': MF.sim.showGrid = !MF.sim.showGrid; MF.sim.draw(); break;
         case 'toggle-tags': MF.sim.showTags = !MF.sim.showTags; MF.sim.draw(); break;
-        case 'reset-panels': self.setPanelWidth('left', self.DEFAULT_LEFT); self.setPanelWidth('right', self.DEFAULT_RIGHT); break;
+        case 'reset-panels':
+          self.setPanelWidth('left', self.DEFAULT_LEFT);
+          self.setPanelWidth('right', self.DEFAULT_RIGHT);
+          self.setViewSplit(0.5);
+          break;
+        case 'layout-split': self.setViewMode('split'); break;
+        case 'layout-2d':    self.setViewMode('2d'); break;
+        case 'layout-3d':    self.setViewMode('3d'); break;
+        case 'view3d-fit':   MF.view3d.fit(); break;
         case 'sim-start': MF.engine.start(); break;
         case 'sim-pause': MF.engine.pause(); break;
         case 'sim-step':  MF.engine.stepOnce(); break;
@@ -205,6 +214,13 @@ MF.ui = {
     document.querySelectorAll('[data-action="toggle-tags"]').forEach(function (b) {
       b.classList.toggle('is-active', MF.sim.showTags);
     });
+    var mode = this.viewMode;
+    ['split', '2d', '3d'].forEach(function (m) {
+      document.querySelectorAll('[data-action="layout-' + m + '"]').forEach(function (b) {
+        b.classList.toggle('is-active', mode === m);
+        b.setAttribute('aria-pressed', String(mode === m));
+      });
+    });
   },
 
   // Kurze Meldung in der Statusleiste
@@ -259,6 +275,64 @@ MF.ui = {
         e.preventDefault();
       });
     });
+  },
+
+  // ---------- Draufsicht und 3D-Ansicht ----------
+  //
+  // Nebeneinander (Teiler verschiebbar), nur Draufsicht oder nur 3D. Die Wahl und
+  // die Teilung merkt sich der Browser (localStorage), nicht die Anlage.
+
+  viewMode: 'split',
+  viewSplit: 0.5,
+
+  initViewLayout: function () {
+    var self = this;
+    var stage = document.getElementById('stage');
+    var sp = document.getElementById('view-splitter');
+    var mode = 'split';
+    try { mode = localStorage.getItem('mf.view.mode') || 'split'; } catch (e) { /* egal */ }
+    var split = parseFloat(this.load('mf.view.split', 500)) / 1000;
+    this.setViewSplit(split);
+    this.setViewMode(mode);
+
+    sp.addEventListener('pointerdown', function (e) {
+      sp.setPointerCapture(e.pointerId);
+      sp.classList.add('is-dragging');
+      var r = stage.getBoundingClientRect();
+      function move(ev) { self.setViewSplit((ev.clientX - r.left) / r.width); }
+      function up() {
+        sp.classList.remove('is-dragging');
+        sp.removeEventListener('pointermove', move);
+        sp.removeEventListener('pointerup', up);
+      }
+      sp.addEventListener('pointermove', move);
+      sp.addEventListener('pointerup', up);
+    });
+    sp.addEventListener('dblclick', function () { self.setViewSplit(0.5); });
+    sp.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      var step = e.shiftKey ? 0.1 : 0.02;
+      self.setViewSplit(self.viewSplit + (e.key === 'ArrowRight' ? step : -step));
+      e.preventDefault();
+    });
+  },
+
+  // 'split' | '2d' | '3d'
+  setViewMode: function (mode) {
+    mode = MF.view3dCore.normMode(mode);
+    this.viewMode = mode;
+    document.getElementById('stage').setAttribute('data-mode', mode);
+    try { localStorage.setItem('mf.view.mode', mode); } catch (e) { /* egal */ }
+    MF.view3d.setVisible(mode !== '2d');
+    this.syncToggles();
+  },
+
+  // Anteil der Draufsicht an der Breite (0,15 … 0,85)
+  setViewSplit: function (f) {
+    f = MF.view3dCore.normSplit(f);
+    this.viewSplit = f;
+    document.getElementById('stage').style.setProperty('--split', String(f));
+    this.save('mf.view.split', Math.round(f * 1000));
   },
 
   panelWidth: function (side) {

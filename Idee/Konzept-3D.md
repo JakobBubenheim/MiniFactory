@@ -238,9 +238,50 @@ das Verhalten der Anlage.
 | 2 | `feature/physik-kern` | ✅ Datenmodell v3 + Migration (`sim/migrate.js`), neue Engine auf Rapier (`sim/engine.js`), alle Katalog-Elemente als Vorlagen mit Funktionen, Draufsicht zeichnet Körper (`sim/geom.js`, `sim/sim.js`); alte Raster-Engine entfernt. Festlegungen siehe Abschnitte 1, 3 und 4 | 0a, 0b, 1 |
 | 3 | `feature/formen` | ✅ Rechteck/Kreis/Polygon zeichnen, Höhe, freie Lage und Drehung, Körperart und Funktionen im Eigenschaften-Panel, Fangen; geneigte Oberseite `shape.h2` für Rutschen. Festlegungen siehe Abschnitt 3 | 2 |
 | 4 | `feature/achsen` | Achsen linear/rotatorisch mit allen Betriebsarten, Kopplung über den Baum, Achse in der Draufsicht anzeigen und ziehen. Vorbereitet in Phase 3: Achse lässt sich an jeden kinematischen Körper hängen (`MF.addFunction`), Felder im Panel aus `MF.FUNCTIONS.axis.fields` (bisher Richtung, min, max, vmax, returnDelay) – dort ergänzen | 2 (besser nach 3) |
-| 5 | `feature/3d-ansicht` | Three.js-Ansicht zum Zuschauen: Orbit-Kamera, Licht, Schatten, Auswahl per Klick, Draufsicht und 3D nebeneinander | 2 |
+| 5 | `feature/3d-ansicht` | ✅ Three.js-Ansicht zum Zuschauen (`ui/view3d-core.js`, `ui/view3d.js`): Orbit-Kamera, Licht, Schatten, Auswahl per Klick, Draufsicht und 3D nebeneinander. Festlegungen siehe Abschnitt 5a | 2 |
 
 Phasen 3 und 5 können parallel laufen.
+
+### 5a. Festlegungen aus Phase 5 (3D-Ansicht)
+
+- **Zwei Dateien:** `ui/view3d-core.js` (`MF.view3dCore`) rechnet ohne Three.js und DOM – Prisma aus dem
+  Grundriss, Interpolation, Spiegelung, Kamera prüfen/einpassen – und wird headless getestet.
+  `ui/view3d.js` (`MF.view3d`) baut daraus Three.js-Objekte; sie lädt auch ohne Three.js, der Renderer
+  entsteht erst, wenn die Ansicht zum ersten Mal sichtbar ist.
+- **Prisma allgemein, nicht je Vorlage:** jede Form (`rect`, `circle`, `polygon`, auch konkav) wird ein
+  eigenes Prisma (Ober-/Unterseite über `MF.geom.convexParts` in Dreiecke zerlegt, Seiten je Kante,
+  Kreis glatt mit 48 Teilen). **Eine schräge Oberseite (Rutsche) wird nur in `MF.view3dCore.topZ()`
+  ergänzt**; dazu gehört dann der passende Schlüssel in `bodyKey()`.
+- **Darstellung der Körperarten:** `ghost` halbtransparent, ohne Schatten, mit Kanten in der Körperfarbe
+  (Sensor in Strahlfarbe Orange, belegt Rot; Erzeuger kräftiger; Senke dunkel mit Kreuz); `static` fest
+  in der Körperfarbe; `kinematic` fest in Stahlgrau mit Kanten in der Körperfarbe (wie Draufsicht);
+  Kisten in ihrer Farbe. Transportflächen: Streifen alle 25 cm wandern mit `rt.travel`, Pfeil am Ende
+  in Laufrichtung (orange läuft, grau steht).
+- **Neu gebaut wird ein Mesh nur, wenn sich sein Aufbau ändert** (`bodyKey`: Art, Form, Farbe,
+  Sichtbarkeit, Laufrichtung, Funktionen). Lage, Achsstellung (interpoliert über `MF.sim.drawPose`),
+  Bandstreifen und Sensorfarbe liest jedes Bild. Angebunden an `MF.store.on` wie die Draufsicht.
+- **Kisten:** Lage linear, Drehung `slerp`; Meshes aus einem Vorrat, Geometrie je Form und Werkstoff je
+  Farbe geteilt und freigegeben, wenn keine Kiste sie mehr nutzt (geprüft: 12 000 Kisten, Speicher konstant).
+- **Kamera:** Orbit (drehen, rechts schieben, Rad zoomen), nicht unter den Boden. `view.camera3d =
+  { pos: [x, y, z], target: [x, y, z] }` in **Mini-Fabrik-Koordinaten** (nicht gespiegelt), auf mm
+  gerundet; gespeichert 0,4 s nach der letzten Bewegung über den Autosave, **kein Undo-Schritt, macht die
+  Anlage nicht „ungespeichert“**. Fehlt der Stand oder ist er ungültig, wird eingepasst (alle Ecken des
+  Hüllquaders im Bild, Blick vom unteren Rand der Draufsicht schräg von oben).
+- **Layout:** Draufsicht und 3D nebeneinander (Teiler verschiebbar, Doppelklick = Hälfte), umschaltbar
+  auf nur Draufsicht / nur 3D (Ribbon „Ansicht“ und Knöpfe in beiden Ansichtsleisten). Wahl und Teilung
+  merkt sich der **Browser** (localStorage `mf.view.mode`, `mf.view.split`), nicht die Anlage.
+- **Rendern:** nur wenn die 3D-Ansicht sichtbar ist; läuft die Simulation, jedes Bild; sonst nur bei
+  Modelländerung, Auswahl, Kamerabewegung (auch Nachlauf), Einzelschritt/Reset oder geänderten
+  Signalen (Sensor, Band). Im Stillstand 0 Bilder je Sekunde.
+- **Ohne WebGL oder ohne `lib/three.js`:** Hinweis in der 3D-Fläche, Draufsicht voll nutzbar.
+- Auswahl per Klick (ohne Ziehen): Raycast auf sichtbare Körper, Kisten nicht; Klick ins Leere hebt die
+  Auswahl auf. Hervorhebung: orangefarbene Kanten (auch durch andere Körper) und leichtes Leuchten.
+- Firefox meldet bei `PCFShadowMap` einmal die WebGL-**Warnung** „Depth texture comparison … LINEAR“ –
+  kein Fehler, kommt aus Three.js.
+
+**Für Phase 3/4:** Neue Formfelder in `MF.view3dCore.prism()`/`topZ()` und `bodyKey()` nachtragen.
+Kinematische Körper erscheinen an `MF.sim.drawPose(b)` – rotatorische Achsen und Kopplung (Phase 4)
+müssen dort bzw. in `MF.engine.worldPose()` die Drehung liefern, dann folgt die 3D-Ansicht von selbst.
 
 **Fertig ist der Umbau, wenn:** die Beispielanlage aus einer alten `.mfab`-Datei lädt, mit der
 Regel R1 Kisten über den Schieber in SE2 landen, eine selbst gezeichnete schräge Rutsche Kisten

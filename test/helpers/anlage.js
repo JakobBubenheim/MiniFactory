@@ -397,6 +397,13 @@ function neueAnlage(datei) {
       return kopie(MF.store.treeOrder(bereich).map(function (o) { return o.id; }));
     },
 
+    // ---------- 3D-Ansicht ----------
+
+    /** Kamera der 3D-Ansicht bewegen wie mit der Maus; pos/ziel [x, y, z] in Metern */
+    kameraBewegen(pos, ziel) { MF.view3d.cameraChanged({ pos: kopie(pos), target: kopie(ziel) }); },
+    /** Kamera-Stand der 3D-Ansicht { pos, target } oder null (= einpassen) */
+    kamera3d() { return kopie(MF.view3d.cameraData()); },
+
     // ---------- Rückgängig / Wiederholen ----------
 
     rueckgaengig() { MF.history.undo(); },
