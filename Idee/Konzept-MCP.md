@@ -93,7 +93,13 @@ Claude Code 2.1.292, Server mit `claude mcp add` eingebunden, Aufrufe mit `claud
 
 - „Bau mir eine Strecke mit Quelle, 4-m-Band und Senke …“: Anleitung gelesen, 3 Körper gebaut, Bild, `validate`, `simulate` (12 Kisten
   in der Senke, nichts heruntergefallen), gespeichert – fehlerfrei in 12 Schritten.
-- Schwierigere Aufgabe (Ecke, Lichtschranke, Schieber, SCL mit Zähler): Ergebnis siehe Bericht des Branches.
+- „Quelle → 3 m nach rechts → 90° auf 3 m nach unten, Lichtschranke zählt, jede zweite Kiste per Schieber in eine eigene Senke
+  (SCL mit Zähler)“: in 25 Schritten gelöst. Ein SCL-Fehler (`SR` mit falschem Eingang) kam mit Zeile/Spalte zurück und wurde sofort
+  behoben. `simulate` zeigte 4 heruntergefallene Kisten an der Ecke und Stau; der Agent ergänzte eine Führungswand, kürzte Band 1
+  und legte Band 2 1 cm tiefer – danach 20 Kisten ausgeschleust, 20 am Bandende, nichts heruntergefallen. Die gespeicherte Datei
+  liefert in der App-Fassade dieselben Zähler (20/20). Die Ecken-Regel der Anleitung wurde daraufhin ergänzt.
+- Beobachtung: Der Agent nutzte Bild, `validate` und `simulate` (mit `trace` und `render`) wie vorgesehen; die Zusammenfassung von
+  `simulate` (onFloor, standingStill) war der entscheidende Hinweis zum Nachbessern.
 
 ## 6. Offen / später
 

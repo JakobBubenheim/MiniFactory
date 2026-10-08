@@ -54,7 +54,9 @@ Kisten: 0,3 m Würfel, 5,4 kg. Kommen später neue Vorlagen dazu (z. B. Drehtisc
 3. **Senke** direkt **hinter das Bandende** (Kante an Kante), Höhe 0–0,6 m: die Kiste fällt hinein. Am Fuß einer Rutsche genauso.
 4. **Bänder hintereinander** nie exakt bündig: das abnehmende Band **2 mm tiefer** (`z: 0.598`), sonst hakt die Kiste.
 5. **Ecke (90°)**: das zuliefernde Band endet in der **Mitte** des abnehmenden (das abnehmende liegt 2 mm tiefer darunter).
-   Endet es erst am Rand, fallen die Kisten herunter. Eine Wand am Bandende stoppt Kisten (Stau).
+   Endet es erst am Rand, fallen die Kisten herunter. Rutschen Kisten mit Schwung über die Außenkante: eine glatte
+   **Führungswand** außen neben das abnehmende Band (`draw_shape`, static, 0,1 m breit, 1 m hoch, Reibung 0,05) und das
+   zuliefernde Band etwas kürzer (endet ~10 cm vor der Wand), das abnehmende 1 cm tiefer. Eine Wand **quer** am Bandende stoppt Kisten (Stau).
 6. **Lichtschranke quer** über das Band (bei einem Band in x-Richtung `rot: 0`, in y-Richtung `rot: 90`), mitten auf der Bandachse.
 7. **Schieber** neben das Band: seine Vorderkante (lokal y = +0,25) liegt an der Bandkante, Schubrichtung quer zum Band.
    Hub ≈ Bandbreite + 0,1 m (`stroke: 600` bei 0,5 m), Tempo **1 m/s** (bei 0,3 m/s staut es sich, wenn alle 2 s eine Kiste kommt).
@@ -82,7 +84,7 @@ zaehler(CU := "LS1".Belegt, R := FALSE, PV := 3);
 IF zaehler.Q THEN "S1".Ausfahren := TRUE; ELSE "S1".Ausfahren := FALSE; END_IF;
 ```
 
-Typen BOOL, INT, DINT, REAL, TIME; Bausteine TON, TOF, TP, R_TRIG, F_TRIG, CTU, CTD, SR, RS; Funktionen ABS, SQRT,
+Typen BOOL, INT, DINT, REAL, TIME; Bausteine TON, TOF, TP, R_TRIG, F_TRIG, CTU, CTD, SR (Eingänge S1, R), RS (S, R1); Funktionen ABS, SQRT,
 ROUND, TRUNC, MIN, MAX, LIMIT, SEL; IF/ELSIF/ELSE, CASE, AND/OR/XOR/NOT, `:=`. Ein Ausgang, den keine Regel mehr schreibt,
 fällt auf seinen Startwert zurück. Ein SCL-Fehler kommt mit Zeile und Spalte zurück – korrigieren und erneut senden.
 
