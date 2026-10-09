@@ -1,0 +1,35 @@
+{
+  "manifest_version": "0.3",
+  "name": "mini-fabrik",
+  "display_name": "Mini-Fabrik",
+  "version": "0.1.0",
+  "description": "Förderanlagen bauen, steuern und simulieren – Claude baut eine Mini-Fabrik-Anlage aus Beschreibung oder Skizze und speichert sie als .mfab.",
+  "long_description": "Lern-Simulation einer Förderanlage mit echter 3D-Physik. Claude legt Bänder, Quellen, Senken, Lichtschranken, Schieber und frei gezeichnete Körper an, schreibt Wenn-dann-Regeln oder SCL, simuliert die Anlage, prüft das Ergebnis mit einem Bild der Draufsicht und speichert sie im Anlagen-Ordner. Die Datei öffnest du in der Mini-Fabrik über Datei → Öffnen.",
+  "author": { "name": "Jakob Bubenheim" },
+  "server": {
+    "type": "node",
+    "entry_point": "mcp/server.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/mcp/server.js"],
+      "env": { "MINI_FABRIK_DIR": "${user_config.plant_dir}" }
+    }
+  },
+  "user_config": {
+    "plant_dir": {
+      "type": "directory",
+      "title": "Anlagen-Ordner",
+      "description": "Hier liest und speichert Claude die .mfab-Dateien. Andere Ordner sind gesperrt.",
+      "default": "${HOME}/Mini-Fabrik",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "node": ">=18.0.0" }
+  },
+  "tools_generated": true,
+  "prompts_generated": true,
+  "keywords": ["simulation", "sps", "scl", "förderanlage", "lernen"],
+  "license": "UNLICENSED"
+}

@@ -1,0 +1,198 @@
+{
+  "format": "mini-fabrik",
+  "version": 3,
+  "name": "Band und Rutsche",
+  "settings": {
+    "dtMs": 20,
+    "gravity": -9.81,
+    "snap": {
+      "on": true,
+      "pos": 0.05,
+      "angle": 5
+    }
+  },
+  "folders": [],
+  "bodies": [
+    {
+      "id": "B1",
+      "name": "Förderband 1",
+      "parent": null,
+      "template": "conveyor",
+      "kind": "static",
+      "shape": {
+        "type": "rect",
+        "w": 4,
+        "d": 0.5,
+        "h": 0.1
+      },
+      "pose": {
+        "x": 2.5,
+        "y": 1,
+        "z": 0.6,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0.8,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": {
+        "speed": 0.5,
+        "dir": 0,
+        "running": true
+      },
+      "axis": null,
+      "sensor": null,
+      "spawner": null,
+      "sink": null,
+      "inputs": {
+        "Ein": 1
+      },
+      "look": {
+        "color": "#1B2430",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "Q1",
+      "name": "Quelle 1",
+      "parent": null,
+      "template": "source",
+      "kind": "ghost",
+      "shape": {
+        "type": "rect",
+        "w": 0.5,
+        "d": 0.5,
+        "h": 0.35
+      },
+      "pose": {
+        "x": 0.75,
+        "y": 1,
+        "z": 0.72,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": null,
+      "spawner": {
+        "interval": 2,
+        "maxCount": 0,
+        "enabled": true,
+        "template": {
+          "shape": {
+            "type": "rect",
+            "w": 0.3,
+            "d": 0.3,
+            "h": 0.3
+          },
+          "material": {
+            "friction": 0.6,
+            "restitution": 0,
+            "density": 200
+          },
+          "look": {
+            "color": "#C79A5B"
+          }
+        }
+      },
+      "sink": null,
+      "inputs": {
+        "Freigabe": 1
+      },
+      "look": {
+        "color": "#D9701A",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "K1",
+      "name": "Rutsche",
+      "parent": null,
+      "template": null,
+      "kind": "static",
+      "shape": {
+        "type": "rect",
+        "w": 1.5,
+        "d": 0.5,
+        "h": 0.68,
+        "h2": 0.1
+      },
+      "pose": {
+        "x": 5.25,
+        "y": 1,
+        "z": 0,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0.1,
+        "restitution": 0,
+        "density": 500
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": null,
+      "spawner": null,
+      "sink": null,
+      "inputs": {},
+      "look": {
+        "color": "#3A7CA5",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "SE1",
+      "name": "Senke 1",
+      "parent": null,
+      "template": "sink",
+      "kind": "ghost",
+      "shape": {
+        "type": "rect",
+        "w": 0.5,
+        "d": 0.5,
+        "h": 0.6
+      },
+      "pose": {
+        "x": 6.25,
+        "y": 1,
+        "z": 0,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": null,
+      "spawner": null,
+      "sink": {},
+      "inputs": {
+        "Reset": 0
+      },
+      "look": {
+        "color": "#1B2430",
+        "visible": true,
+        "locked": false
+      }
+    }
+  ],
+  "rules": [],
+  "view": {
+    "zoom": 1,
+    "panX": 0,
+    "panY": 0,
+    "grid": true,
+    "tags": true,
+    "folded": [],
+    "camera3d": null
+  }
+}

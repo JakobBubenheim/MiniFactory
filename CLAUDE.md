@@ -21,8 +21,10 @@ und sich an die Entscheidungen und Phasen dort halten.
 | `lib/` | gebündelte Bibliotheken: `rapier.js` (Physik), `three.js` (3D-Ansicht, ab Phase 5); Bau in `tools/vendor/` |
 | `logic/` | Wenn-dann-Regeln (`logic.js`), SCL-Interpreter (`scl.js`), Lexikon |
 | `ui/` | Oberfläche: Ribbon, Baum, Eigenschaften, Editor, Signalliste, SCL-Editor, Verlauf (Undo/Redo), 3D-Ansicht (`view3d-core.js` ohne Three.js, `view3d.js`) |
+| `mcp/` | MCP-Server für KI-Agents (Claude Desktop/Code): `server.js` (stdio), `protokoll.js`, `werkzeuge.js`, `sitzung-headless.js`, Bild der Draufsicht (`bild.js`), Anleitung und Beispiele, `.mcpb`-Bau (`pack.js`). Node, CommonJS, ohne Abhängigkeiten – Konzept: `Idee/Konzept-MCP.md` |
+| `tools/` | `headless.js` lädt die App ohne Browser (Tests und MCP; neue Skripte hier in `SKRIPTE`), `vendor/` baut `lib/` |
 | `test/` | Headless-Tests mit `node:test`; `helpers/load.js` lädt die Skripte in einen vm-Kontext |
-| `Idee/` | Pitch und Konzepte |
+| `Idee/` | Pitch und Konzepte (3D-Umbau, MCP) |
 
 ## Tests
 
