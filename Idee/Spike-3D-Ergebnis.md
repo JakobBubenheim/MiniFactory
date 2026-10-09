@@ -6,7 +6,8 @@ Stand: 08.10.2026, Branch `feat/3d-spike`. Gehört zu [Konzept-3D.md](Konzept-3D
 schnell genug (200 Kisten: < 1,5 ms pro Schritt, 60 FPS) und **bitgenau deterministisch – auch
 zwischen Node, Chromium und Firefox**. Gewählte Transportflächen-Methode: **a) Geschwindigkeit
 nachführen**, gewichtet nach Normalkraft. Drei Dinge muss Phase 2 beachten: Kontaktsteifigkeit
-60 Hz, 2 mm Absatz zwischen Bändern, und das Konzept-Koordinatensystem ist linkshändig.
+60 Hz, 2 mm Absatz zwischen Bändern (seit 09.10.2026: bündig mit Umlenkrolle, 4a), und das
+Konzept-Koordinatensystem ist linkshändig.
 
 ## 1. Was gebaut wurde
 
@@ -131,7 +132,8 @@ Beide Methoden erfüllen alle Kriterien.
 2. **Kante zwischen zwei Bändern gleicher Höhe:** Die Kiste hakt an der Kante des nächsten
    Bands ein und springt bis 3 cm hoch (bekanntes Problem „interne Kanten“ aneinanderstoßender
    Quader). Lösung: das abnehmende Band **2 mm tiefer** legen (wie in echten Anlagen). 1–2 mm
-   reichen, 5 mm sind schon wieder unruhiger.
+   reichen, 5 mm sind schon wieder unruhiger. **Überholt** (09.10.2026): Bänder liegen bündig,
+   die Stirnenden sind gerundet wie eine Umlenkrolle – siehe 4a.
 3. **Methode a, erste Fassung:** Bei Mittelung über alle berührten Bänder wurde die Kiste an der
    Ecke schon voll auf Band B gezogen, sobald sie es nur berührte (40° Drehung). Lösung:
    Zielgeschwindigkeit **mit der Normalkraft gewichten** (Kontaktimpuls des letzten Schritts)
@@ -154,6 +156,46 @@ Beide Methoden erfüllen alle Kriterien.
    Test-Hilfe von `feature/tests` (`test/helpers/load.js`) muss beide in den Kontext legen.
 7. Three r186 kennt `PCFSoftShadowMap` nicht mehr → `PCFShadowMap`.
 8. Firefox misst `performance.now()` nur auf 1 ms genau – Physik-ms dort als Mittelwert lesen.
+
+## 4a. Nachtrag 09.10.2026: Bänder bündig, Stirnenden als Umlenkrolle
+
+Mit dichtem Zug (Takt 0,3 s, Kisten berühren sich) und langsamerem Folgeband hingen Kisten
+auch bei 2 und 5 mm Absatz; 1 cm Absatz half, war aber nicht realitätsnah. Gemessen headless
+(Fassade, dt 20 ms): zwei 2-m-Bänder, Quelle davor, 10 Kisten, 4 Tempo-Paare (0,5→0,25,
+0,5→0,5, 1→0,5, 0,5→1) × Takt 0,3/1 s × Spalt 0/1 cm = 16 Läufe; Zahl = hängende Kisten.
+
+| Stirnenden (bündig) | hängen gesamt | schlimmster Lauf |
+|---|---|---|
+| scharf (Quader) | 48 | 6 von 10 |
+| Schräge 5 cm lang, 5 mm tief | 33 | 6 |
+| Schräge 10 cm lang, 1 cm tief | 4 | 4 |
+| Rundung r 2 cm (Viertelkreis) | 32 | 6 |
+| Rundung r 3 cm | 4 | 2 |
+| **Rundung r 5 cm** (Viertel- oder Halbkreis) | **0** | 0 |
+| scharf, `normalizedPredictionDistance` 0,005 / 0,002 / 0,001 statt 0,02 | 60 / 51 / 24 | 6 |
+
+**Ursache:** Schon die *erste* Kiste bleibt stehen – ohne Zug dahinter. Sie liegt 0,1 mm
+eingesunken auf und fährt mit der Unterkante auf die Kante des nächsten Bands zu. Rapier
+erzeugt Kontakte vorausschauend (bis 2 cm Abstand) und nimmt als Normale die Richtung von der
+nächsten Ecke zur Kiste: an einer scharfen Kante oder am unteren Ende einer Schräge fast
+waagerecht, z. B. (−0,94 | 0 | 0,34). Diese Ebene bremst die Kiste wie eine Wand; erst danach
+nickt sie unter dem Zug nach vorn (bis 4°). Eine Rundung mit genug Radius hat keine solche Ecke:
+die Normale zeigt vom Rollenmittelpunkt zur Kiste und steht fast senkrecht – die Kiste rollt
+0,1 mm hoch über die Rolle. Kleine Radien (≤ 3 cm) reichen nicht, weil die Kiste je Schritt
+bis 2 cm vorankommt. `RoundCuboid` half nicht (rundet auch die Seiten, nur bis 2 cm getestet),
+Physics-Hooks können in rapier3d-compat 0.21 Kontakte nur ganz abschalten, nicht ändern;
+`FIX_INTERNAL_EDGES` gilt nur innerhalb eines TriMesh, nicht zwischen zwei Körpern.
+
+**Festgelegt:** Rechteck mit Transportfläche: an beiden Stirnenden (quer zur Laufrichtung,
+nächste lokale Achse) oben ein Viertelkreis mit **r 5 cm**, unten ebenso, soweit die Höhe
+reicht – beim Katalog-Band ein Halbkreis, Rollendurchmesser = Bandhöhe 10 cm
+(`MF.geom.rollProfile`, als `ConvexPolyhedron`). Seitenkanten bleiben scharf. Drehtisch
+(Kreis mit Transportfläche): Rand rundum gerundet (`RoundCylinder`) – sonst kippte eine Kiste
+beim bündigen Auffahren über die Kante. Die 3D-Ansicht zeigt dieselbe Rundung.
+Nebenwirkung: Auf dem Polyeder blieb eine ruhende Kiste mit 6·10⁻⁹ m/s Rest wach, weil die
+Nachführung jeden Rest „korrigierte“; sie lässt Änderungen unter 1 µm/s jetzt aus.
+Tempo (±5 %), Stau, Stopper, 90°-Ecke und Determinismus: bestehende Tests unverändert grün;
+Messmatrix als Test in `test/naht-matrix.test.js`.
 
 ## 5. Gewählte Transportflächen-Methode: a) Geschwindigkeit nachführen
 
@@ -195,7 +237,8 @@ Die Umsetzung steht in `spike/scene.js` (`applySurfaceVelocity`).
 3. Reibungswerte als Startwerte: Band 0,8 (nur für die Nachführung), Kiste 0,6, Boden 0,6,
    Stahl/Führungen 0,3, Rutsche 0,1 (Kombination `Min`); Dichte Kiste 200 kg/m³.
 4. Migration: Förderbänder, die aneinanderstoßen, beim Umrechnen um 2 mm absenken – oder
-   allgemein: Transportflächen 1–2 mm unterschiedlich hoch, nie exakt bündig.
+   allgemein: Transportflächen 1–2 mm unterschiedlich hoch, nie exakt bündig. (Überholt, 4a:
+   bündig mit Umlenkrolle.)
 5. Sensoren über `world.intersectionsWithShape(…, EXCLUDE_FIXED | EXCLUDE_KINEMATIC)` statt
    Sensor-Collidern – einfach, deterministisch, passt zu „Sensoren lesen“ am Anfang des Zyklus.
 6. Kinematische Achsen: `kinematicPositionBased` + `setNextKinematicTranslation` – funktioniert.

@@ -134,8 +134,13 @@ MF.engine = {
   // [{ shape, t: {x,y,z}, q: {x,y,z,w} }]. Konkave Polygone werden zerlegt.
   // Geneigte Oberseite (shape.h2, Konzept Abschnitt 3): jedes konvexe Teil wird ein
   // Prisma mit schräger Oberseite (ConvexPolyhedron) – auch Rechteck und Kreis.
-  shapeParts: function (sh) {
+  // surface (Transportfläche): ein Rechteck bekommt an den Stirnenden die Rundung
+  // der Umlenkrolle (MF.geom.rollProfile), ein Kreis (Drehtisch) einen gerundeten Rand,
+  // damit Kisten bündig über die Naht laufen (MF.geom.rollOf).
+  shapeParts: function (sh, surface) {
     var R = this.R, h = sh.h, ID = { x: 0, y: 0, z: 0, w: 1 };
+    var roll = MF.geom.rollOf({ shape: sh, surface: surface });
+    if (roll === 'x' || roll === 'y') return [{ shape: new R.ConvexPolyhedron(new Float32Array(this.rollVertices(sh, roll)), null), t: { x: 0, y: 0, z: 0 }, q: ID }];
     if (MF.geom.isSloped(sh)) {
       var polys = sh.type === 'polygon' ? MF.geom.convexParts(sh.points)
         : sh.type === 'circle' ? [this.circlePoly(sh.r)] : [MF.geom.outline(sh)];
@@ -151,15 +156,31 @@ MF.engine = {
     }
     if (sh.type === 'rect') return [{ shape: new R.Cuboid(sh.w / 2, sh.d / 2, h / 2), t: { x: 0, y: 0, z: h / 2 }, q: ID }];
     if (sh.type === 'circle') {
-      // Rapier-Zylinder stehen auf y; um x gedreht stehen sie auf z
-      var s = Math.SQRT1_2;
-      return [{ shape: new R.Cylinder(h / 2, sh.r), t: { x: 0, y: 0, z: h / 2 }, q: { x: s, y: 0, z: 0, w: s } }];
+      // Rapier-Zylinder stehen auf y; um x gedreht stehen sie auf z.
+      // Mit Transportfläche (Drehtisch) ist der Rand rundum gerundet wie die Umlenkrolle.
+      var s = Math.SQRT1_2, rr = roll === 'rim' ? MF.geom.rimRadius(sh) : 0;
+      var cyl = rr > 0 ? new R.RoundCylinder(h / 2 - rr, sh.r - rr, rr) : new R.Cylinder(h / 2, sh.r);
+      return [{ shape: cyl, t: { x: 0, y: 0, z: h / 2 }, q: { x: s, y: 0, z: 0, w: s } }];
     }
     return MF.geom.convexParts(sh.points).map(function (poly) {
       var v = [];
       poly.forEach(function (p) { v.push(p[0], p[1], 0, p[0], p[1], h); });
       return { shape: new R.ConvexPolyhedron(new Float32Array(v), null), t: { x: 0, y: 0, z: 0 }, q: ID };
     });
+  },
+
+  // Eckpunkte eines Bands mit gerundeten Stirnenden (Laufrichtung entlang der Achse roll)
+  rollVertices: function (sh, roll) {
+    var len = roll === 'x' ? sh.w : sh.d, half = len / 2, side = (roll === 'x' ? sh.d : sh.w) / 2;
+    var v = [];
+    MF.geom.rollProfile(sh.h, len).forEach(function (p) {
+      [half - p[0], p[0] - half].forEach(function (u) {
+        [-side, side].forEach(function (s) {
+          if (roll === 'x') v.push(u, s, p[1]); else v.push(s, u, p[1]);
+        });
+      });
+    });
+    return v;
   },
 
   circlePoly: function (r) {
@@ -214,6 +235,7 @@ MF.engine = {
   // Die Lage gekoppelter Körper hängt vom Eltern ab; sie wird nachgeführt, nicht neu gebaut.
   signature: function (b) {
     return JSON.stringify([this.rapierKind(b), b.shape, b.pose, b.material, !!b.surface,
+      MF.geom.rollOf(b),
       b.axis && [b.axis.origin, b.axis.dir, b.axis.type]]);
   },
 
@@ -230,7 +252,7 @@ MF.engine = {
       if (p && p.sig === sig) return;
       if (p && p.rb) world.removeRigidBody(p.rb);
       rebuilt = true;
-      p = self.phys[b.id] = { sig: sig, rb: null, parts: self.shapeParts(b.shape) };
+      p = self.phys[b.id] = { sig: sig, rb: null, parts: self.shapeParts(b.shape, b.surface) };
       delete b.rt.cur;    // dynamischer Körper: neu an seiner gezeichneten Lage
       delete b.rt.prev;
       if (b.kind === 'ghost') return;   // nur Abfragen (Sensor, Erzeuger, Senke), keine Kollision
@@ -504,7 +526,8 @@ MF.engine = {
       var w = rb.angvel();
       var dw = t.w / t.j - w.z;   // Ziel: Drehung der Fläche (meist 0)
       var wz = Math.abs(dw) <= maxDw ? w.z + dw : w.z + (dw > 0 ? maxDw : -maxDw);
-      if (len < 1e-12 && wz === w.z) return;       // nichts zu tun – Kiste darf schlafen
+      // nichts zu tun – Kiste darf schlafen (Reste unter 1 µm/s bzw. µrad/s zählen nicht)
+      if (len < 1e-6 && Math.abs(wz - w.z) < 1e-6) return;
       rb.setLinvel({ x: v.x + dx, y: v.y + dy, z: v.z }, true);
       rb.setAngvel({ x: w.x, y: w.y, z: wz }, true);
     });

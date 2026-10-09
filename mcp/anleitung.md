@@ -42,8 +42,8 @@ Funktionen (optional, `set_function`): `surface` Transportfläche (static/kinema
 | `sensor` Lichtschranke | LS1 … | 0,05 × 0,5 m, h 0,3 | 0,71 | `Belegt` (AUS) |
 | `pusher` Schieber | S1 … | 0,5 × 0,5 m, schiebt lokal +y | 0,72 | `Ausfahren` (EIN), `Ausgefahren`, `Eingefahren`, `Ist` (AUS) |
 | `sink` Senke | SE1 … | 0,5 × 0,5 m, h 0,6 | 0 / 0,6 | `Reset` (EIN), `Anzahl` (AUS) |
-| `turntable` Drehtisch | DT1 … | Kreis r 0,4 m mit Band | top 0,69 | Band-Signale + `Ausfahren` (EIN): 1 dreht auf 90°, 0 zurück auf 0° |
-| `lift` Hubtisch | HT1 … | 0,6 × 0,5 m mit Band | top 0,69 | Band-Signale + `Ausfahren`: 1 hebt um 0,3 m |
+| `turntable` Drehtisch | DT1 … | Kreis r 0,4 m mit Band, Rand gerundet | top 0,7 | Band-Signale + `Ausfahren` (EIN): 1 dreht auf 90°, 0 zurück auf 0° |
+| `lift` Hubtisch | HT1 … | 0,6 × 0,5 m mit Band | top 0,7 | Band-Signale + `Ausfahren`: 1 hebt um 0,3 m |
 | `stopper` Stopper | ST1 … | Leiste 0,05 × 0,4 m quer im Band | eingefahren 2 cm unter dem Band | `Ausfahren`: 1 hält Kisten an |
 | `diverter` Weiche | W1 … | Arm 0,8 × 0,05 m, dreht ums linke Ende | 2 cm über dem Band | `Ausfahren`: 1 schwenkt 45° über das Band |
 
@@ -66,11 +66,11 @@ Grenzen `min`/`max` gelten immer, z. B. Drehtisch `{"mode": "position", "min": -
 1. **Band**: Oberkante 0,7 m. Länge über `shape: {"w": 4}`. Laufrichtung über `rot` oder `props.direction`.
 2. **Quelle** über den **Anfang** des Bands legen, ganz auf dem Band (z bleibt 0,72 = 2 cm über der Oberkante).
 3. **Senke** direkt **hinter das Bandende** (Kante an Kante), Höhe 0–0,6 m: die Kiste fällt hinein. Am Fuß einer Rutsche genauso.
-4. **Bänder hintereinander** nie exakt bündig: das abnehmende Band **1 cm tiefer** (`z: 0.59`), sonst hakt die Kiste. Die App stellt das an jeder Naht selbst ein (auch bei Tischen); höher setzen geht dort nicht.
-5. **Ecke (90°)**: das zuliefernde Band endet in der **Mitte** des abnehmenden (das abnehmende liegt 1 cm tiefer darunter).
+4. **Bänder hintereinander bündig**: alle Bänder und Tische mit Oberkante 0,7 m (`z: 0.6`), Stirnkante an Stirnkante. Die Bandenden sind in der Physik gerundet wie eine Umlenkrolle (r 5 cm), Kisten laufen darüber. Ein Folgeband **höher** als das liefernde hakt – `validate` meldet das.
+5. **Ecke (90°)**: das zuliefernde Band endet in der **Mitte** des abnehmenden, beide bündig.
    Endet es erst am Rand, fallen die Kisten herunter. Rutschen Kisten mit Schwung über die Außenkante: eine glatte
    **Führungswand** außen neben das abnehmende Band (`draw_shape`, static, 0,1 m breit, 1 m hoch, Reibung 0,05) und das
-   zuliefernde Band etwas kürzer (endet ~10 cm vor der Wand), das abnehmende 1 cm tiefer. Eine Wand **quer** am Bandende stoppt Kisten (Stau).
+   zuliefernde Band etwas kürzer (endet ~10 cm vor der Wand). Eine Wand **quer** am Bandende stoppt Kisten (Stau).
 6. **Lichtschranke quer** über das Band (bei einem Band in x-Richtung `rot: 0`, in y-Richtung `rot: 90`), mitten auf der Bandachse.
 7. **Schieber** neben das Band: seine Vorderkante (lokal y = +0,25) liegt an der Bandkante, Schubrichtung quer zum Band.
    Hub ≈ Bandbreite + 0,1 m (`stroke: 600` bei 0,5 m), Tempo **1 m/s** (bei 0,3 m/s staut es sich, wenn alle 2 s eine Kiste kommt).

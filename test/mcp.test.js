@@ -350,3 +350,19 @@ test('Handbetrieb-Standards über MCP: Ventil in list_templates, set_function sc
   const v = jsonAus(await werkzeug('validate'));
   assert.deepEqual(v.errors || v.fehler || [], [], JSON.stringify(v));
 });
+
+test('validate: bündige Bänder sind in Ordnung, ein höheres Folgeband wird gemeldet', async function () {
+  await werkzeug('new_plant', { name: 'Naht' });
+  await werkzeug('add_from_template', { template: 'conveyor', x: 1, y: 1 });
+  await werkzeug('add_from_template', { template: 'conveyor', x: 3, y: 1 });
+  await werkzeug('add_from_template', { template: 'sink', x: 4.25, y: 1 });
+  function naht(pr) { return pr.hinweise.filter(function (h) { return h.indexOf('schließt an') >= 0; }); }
+  assert.deepEqual(naht(jsonAus(await werkzeug('validate'))), [], 'bündig: kein Hinweis');
+  await werkzeug('update_body', { id: 'B2', fields: { z: 0.61 } });
+  const h = naht(jsonAus(await werkzeug('validate')));
+  assert.equal(h.length, 1);
+  assert.match(h[0], /^B2 schließt an B1 an, liegt aber 10 mm höher/);
+  // Ein Absatz nach unten (alte Dateien) hakt nicht und wird nicht gemeldet
+  await werkzeug('update_body', { id: 'B2', fields: { z: 0.59 } });
+  assert.deepEqual(naht(jsonAus(await werkzeug('validate'))), []);
+});

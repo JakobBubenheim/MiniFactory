@@ -1,74 +1,65 @@
-// Nähte zwischen Förderbändern (MF.fixBeltSeams): Stoßen zwei Transportflächen
-// aneinander, liegt die abnehmende 1 cm tiefer – egal, wie die Bänder dorthin
-// kamen (Objektfang, ohne Fangen, Zahleneingabe). Sonst bleiben dicht folgende
-// Kisten an der Stirnkante des nächsten Bands hängen, vor allem, wenn es
-// langsamer läuft (Fehler vom 09.10.2026, gemessen: bei 2 mm Absatz hingen 6 von 10).
+// Nähte zwischen Förderbändern (Messmatrix: naht-matrix*.test.js): Alle Bänder liegen bündig (Oberkante 0,7 m), keine
+// Absenkung. Über die Naht hilft die Umlenkrolle – die Stirnenden einer Transportfläche
+// sind in der Physik gerundet (Konzept, Abschnitt 4). Vorher blieben bei bündigen
+// Bändern bis zu 6 von 10 Kisten an der Stirnkante des nächsten Bands hängen
+// (gemessen 09.10.2026, Spike-3D-Ergebnis 4a).
 'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { neueAnlage } = require('./helpers/anlage');
+const { leer, strecke, haengen } = require('./helpers/naht');
 
-function leer() {
-  return neueAnlage({ format: 'mini-fabrik', version: 3, name: 'Naht',
-    settings: { dtMs: 20, gravity: -9.81, snap: { on: true, pos: 0.05, angle: 5 } },
-    folders: [], bodies: [], rules: [] });
-}
-
-// Zwei Katalog-Bänder (je 2 m) hintereinander, ohne Fangen exakt bündig angelegt
-// und per Zahleneingabe auf gleiche Höhe gesetzt; Quelle vor dem ersten.
-function strecke(v1, v2, takt) {
-  const a = leer();
-  const b1 = a.anlegen('conveyor', 0, 0);
-  const b2 = a.anlegen('conveyor', 4, 2);
-  a.ziehen(b2, 2, 0, { ohneFangen: true });
-  a.form(b2, { z: 0.6 });
-  a.eigenschaft(b1, 'speed', v1);
-  a.eigenschaft(b2, 'speed', v2);
-  const q = a.anlegen('source', -0.7, 0);
-  a.funktion(q, 'Erzeuger', { interval: takt, maxCount: 10 });
-  return { a: a, b1: b1, b2: b2 };
-}
-
-// Kisten, die vor der Naht (x = 1) auf dem ersten Band stehen
-function haengen(a) {
-  const v = a.kistenTempo();
-  return a.kisten3d().filter(function (k, i) { return k.x < 1.2 && k.z > 0.8 && Math.abs(v[i].x) < 0.15; }).length;
-}
-
-test('Bündig angelegtes Band wird zur Naht: das abnehmende liegt 1 cm tiefer, auch nach Zahleneingabe', function () {
+test('Bänder bleiben bündig: keine Absenkung nach Einfügen, Ziehen, Zahleneingabe und Objektfang', function () {
   const s = strecke(0.5, 0.5, 1);
   assert.equal(s.a.koerper(s.b1).pose.z, 0.6);
-  assert.equal(s.a.koerper(s.b2).pose.z, 0.59, 'B2 nimmt ab');
-  // Höher setzen geht nicht: die Naht stellt sich wieder ein
+  assert.equal(s.a.koerper(s.b2).pose.z, 0.6, 'B2 nimmt ab und bleibt bündig');
+  // Zahleneingabe gilt so, wie sie ist – auch höher oder tiefer
   s.a.form(s.b2, { z: 0.61 });
-  assert.equal(s.a.koerper(s.b2).pose.z, 0.59);
-  // Tiefer ist erlaubt (keine Naht-Verletzung)
+  assert.equal(s.a.koerper(s.b2).pose.z, 0.61);
   s.a.form(s.b2, { z: 0.55 });
   assert.equal(s.a.koerper(s.b2).pose.z, 0.55);
+  // Objektfang an das Bandende legt es wieder bündig
+  s.a.ziehen(s.b2, 2.03, 0.02);
+  assert.equal(s.a.koerper(s.b2).pose.z, 0.6);
+
+  // Drehtisch und Hubtisch aus dem Katalog liegen bündig mit den Bändern
+  const dt = s.a.anlegen('turntable', 6, 0), ht = s.a.anlegen('lift', 8, 0);
+  assert.equal(s.a.lage(dt).z + 0.1, 0.7);
+  assert.equal(s.a.lage(ht).z + 0.1, 0.7);
 });
 
-test('Dicht folgende Kisten laufen über die Naht, auch wenn das Folgeband langsamer ist', function () {
-  [[0.5, 0.25], [0.5, 0.5], [1, 0.5]].forEach(function (v) {
-    const s = strecke(v[0], v[1], 0.3);
-    s.a.laufen(25);
-    assert.equal(haengen(s.a), 0, 'Tempo ' + v[0] + ' → ' + v[1] + ': Kisten hängen vor der Naht');
-    assert.equal(s.a.signal('Q1.Erzeugt'), 10);
+// Takt so, dass das abnehmende Band die Kisten wegschafft (0,3 m Kiste / Tempo); bei
+// Überlast schiebt der Zug Kisten über die Kanten – mit dem alten 1-cm-Absatz genauso.
+// Gegen Schwung über die Außenkante hilft die Führungswand (mcp/anleitung.md).
+test('90°-Ecke bündig: das Band endet in der Mitte des abnehmenden, keine Kiste hängt', function () {
+  [[0.5, 0.5, 1], [0.5, 0.25, 1.5], [1, 0.5, 0.8]].forEach(function (f) {
+    const a = leer();
+    const b1 = a.anlegen('conveyor', 0, 0);
+    a.form(b1, { x: 1.25, y: 2 });                          // nach rechts bis x = 2,25
+    const b2 = a.anlegen('conveyor', 4, 4);
+    a.form(b2, { x: 2.25, y: 2.75, rot: 90 });              // nach unten, y 1,75 … 3,75
+    a.eigenschaft(b1, 'speed', f[0]);
+    a.eigenschaft(b2, 'speed', f[1]);
+    assert.equal(a.koerper(b2).pose.z, 0.6, 'bündig');
+    const wand = a.formAnlegen('rect', { w: 0.1, d: 2, h: 1 }, { x: 2.55, y: 2.75 });   // glatte Führungswand außen
+    a.koerperart(wand, 'static');
+    a.material(wand, { friction: 0.05 });
+    const q = a.anlegen('source', 0.5, 2);
+    a.funktion(q, 'Erzeuger', { interval: f[2], maxCount: 6 });
+    const se = a.anlegen('sink', 2.25, 4.05);
+    const t = a.laufenBis(function () { return a.signal(se + '.Anzahl') === 6; }, 25);
+    assert.notEqual(t, null, 'Tempo ' + f[0] + ' → ' + f[1] + ': nur ' + a.signal(se + '.Anzahl') + ' von 6 in der Senke, ' +
+      a.kisten().map(function (k) { return k.x.toFixed(2) + '|' + k.y.toFixed(2); }).join(' '));
   });
 });
 
-test('Band hinter einem Drehtisch wird abgesenkt, eine Stufe nach oben (Hubtisch) nicht', function () {
-  const a = leer();
-  const dt = a.anlegen('turntable', 2.4, 2);              // Oberkante 0,69 m
-  const ab = a.anlegen('conveyor', 2.4, 3.4);             // abgehend nach unten, Rückseite am Tisch
-  a.form(ab, { rot: 90, z: 0.6 });
-  assert.ok(a.koerper(ab).pose.z <= a.koerper(dt).pose.z + 0.1 - 0.01 - 0.1 + 1e-9,
-    'abgehendes Band 1 cm unter dem Tisch: z = ' + a.koerper(ab).pose.z);
-
-  // Oberes Band am Hubtisch liegt 30 cm höher: das ist keine Naht und bleibt
-  const b = leer();
-  b.anlegen('lift', 2.3, 2);
-  const oben = b.anlegen('conveyor', 3.6, 2);
-  b.form(oben, { z: 0.88 });
-  assert.equal(b.koerper(oben).pose.z, 0.88);
+test('Alte Datei mit Absatz an der Naht lädt unverändert, Kisten laufen weiter darüber', function () {
+  const s = strecke(0.5, 0.25, 0.3);
+  s.a.form(s.b2, { z: 0.59 });                            // 1 cm Absatz wie bis 09.10.2026
+  const b = neueAnlage(s.a.datei());
+  assert.equal(b.koerper(s.b2).pose.z, 0.59, 'Absatz bleibt');
+  b.laufen(15);
+  assert.equal(haengen(b), 0);
+  assert.equal(b.signal('Q1.Erzeugt'), 10);
 });
