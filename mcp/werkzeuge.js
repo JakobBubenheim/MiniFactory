@@ -174,7 +174,8 @@ const WERKZEUGE = [
     title: 'Körper aus Vorlage',
     description: 'Neuer Körper aus einer Vorlage (list_templates), Mitte bei (x, y) in m. rot = Drehung in Grad im Uhrzeigersinn ' +
       '(0 = Standardrichtung der Vorlage). Optional z (Unterseite, m), shape (z. B. {"w": 4} für ein 4 m langes Band), props ' +
-      '(Eigenschaften der Vorlage, z. B. {"speed": 0.5, "direction": "unten"}), name, parent (Ordner-ID). Gibt die neue ID zurück.',
+      '(Eigenschaften der Vorlage, z. B. {"speed": 0.5, "direction": 90}; direction = Lauf-/Schubrichtung in Grad, auch schräg wie 37.5, ' +
+      'oder "rechts"/"unten"/"links"/"oben"), name, parent (Ordner-ID). Gibt die neue ID zurück.',
     inputSchema: objekt({
       template: T('Schlüssel der Vorlage, z. B. "conveyor", "source", "sink", "sensor", "pusher" (siehe list_templates)'),
       x: Z('Mitte x in m (nach rechts)'), y: Z('Mitte y in m (in der Draufsicht nach unten)'),

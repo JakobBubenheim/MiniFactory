@@ -4,7 +4,9 @@
 // - Werkzeuge im Ribbon "Modell" (Kürzel V / M / D):
 //   Auswählen  – Klick wählt aus, Ziehen verschiebt die Ansicht
 //   Verschieben – Körper ziehen
-//   Drehen     – Klick dreht den Körper um 90° im Uhrzeigersinn (um seine Lage)
+//   Drehen     – Klick dreht den Körper um 90° im Uhrzeigersinn (um seine Lage),
+//                Ziehen dreht ihn frei um seine Lage (Winkel-Fangen, Alt = 0,1°) –
+//                dieselbe Rechnung wie der Dreh-Griff (MF.snap.dragAngle)
 //   Die Werkzeuge greifen auch, während die Simulation läuft.
 // - Zeichnen (Kürzel E / K / P), neue Körper sind immateriell (ghost), 0,1 m hoch:
 //   Rechteck   – von Ecke zu Ecke ziehen
@@ -147,21 +149,27 @@ MF.editor = {
 
   // Körper auf eine Drehung (Grad) bringen; er dreht sich um seine Lage (pose).
   // Beim Förderband dreht die Laufrichtung mit, beim Schieber die Schubrichtung.
+  // Auf 0,1° genau (MF.setRotation), unabhängig vom Fangen.
   setRotation: function (b, rot) {
-    rot = MF.geom.normDeg(rot);
-    if (rot === b.pose.rot) return false;
+    if (MF.snap.angle(rot, null, true) === b.pose.rot) return false;
     if (b.look.locked) { MF.ui.message(b.name + ' ist gesperrt.'); return false; }
-    b.pose.rot = rot;
+    MF.setRotation(b, rot);
     MF.store.changed();
     return true;
   },
 
   rotateBody: function (b) {
     if (this.setRotation(b, b.pose.rot + 90)) {
-      var dir = MF.propDef(b, 'direction') ? MF.getProp(b, 'direction') : '';
-      MF.ui.message(b.name + ' auf ' + MF.props.formatNumber(b.pose.rot) + '° gedreht' +
-        (dir ? (b.surface ? ', läuft nach ' : ', schiebt nach ') + dir : '') + '.');
+      MF.ui.message(b.name + ' auf ' + MF.props.formatNumber(b.pose.rot) + '° gedreht' + this.dirText(b) + '.');
     }
+  },
+
+  // ", läuft nach unten (90°)" bzw. ", schiebt nach 37,5°" – leer ohne Eigenschaft Richtung
+  dirText: function (b) {
+    if (!MF.propDef(b, 'direction')) return '';
+    var d = MF.getProp(b, 'direction'), n = MF.dirName(d);
+    return (b.surface ? ', läuft nach ' : ', schiebt nach ') +
+      (n ? n + ' (' + MF.props.formatNumber(d) + '°)' : MF.props.formatNumber(d) + '°');
   },
 
   // Einfügen, Löschen, Duplizieren nur, wenn die Simulation nicht läuft
@@ -384,7 +392,9 @@ MF.editor = {
     function len(v) { return exact ? G.round6(v) : S.len(v, snap, off); }
     if (exact) { w = q; hit = q.hit; }
     if (h.kind === 'rotate') {
-      ch.rot = S.angle(Math.atan2(w.y - pose.y, w.x - pose.x) * 180 / Math.PI + 90, snap, off);
+      // Griff: angefasst über der lokalen Oberkante (−y); Werkzeug Drehen: dort, wo geklickt wurde
+      var from = h.from || G.toWorld(pose, 0, -1);
+      ch.rot = S.dragAngle(pose.rot, pose, from, w, snap, off);
       label = MF.props.formatNumber(ch.rot) + '°';
     } else if (h.kind === 'size') {
       var l = G.toLocal(pose, w.x, w.y), cx = 0, cy = 0;
@@ -622,12 +632,15 @@ MF.editor = {
       // Griff am gewählten Körper anfassen
       var sel = MF.store.findBody(MF.store.selectedId);
       var h = e.button === 0 && self.handlesFor(sel) ? self.handleAt(sel, p) : null;
+      function handleDrag(b, hh) {
+        return { mode: 'handle', el: b, h: hh, sx: p.x, sy: p.y, active: false,
+          pose0: { x: b.pose.x, y: b.pose.y, z: b.pose.z, rot: b.pose.rot },
+          shape0: JSON.parse(JSON.stringify(b.shape)),
+          draw0: MF.sim.drawPose(b), rest0: MF.sim.restDrawPose(b),
+          axis0: b.axis ? JSON.parse(JSON.stringify(b.axis)) : null, snapCtx: self.snapContext(b.id) };
+      }
       if (h) {
-        drag = { mode: 'handle', el: sel, h: h, sx: p.x, sy: p.y, active: false,
-          pose0: { x: sel.pose.x, y: sel.pose.y, z: sel.pose.z, rot: sel.pose.rot },
-          shape0: JSON.parse(JSON.stringify(sel.shape)),
-          draw0: MF.sim.drawPose(sel), rest0: MF.sim.restDrawPose(sel),
-          axis0: sel.axis ? JSON.parse(JSON.stringify(sel.axis)) : null, snapCtx: self.snapContext(sel.id) };
+        drag = handleDrag(sel, h);
         canvas.setPointerCapture(e.pointerId);
         return;
       }
@@ -638,14 +651,18 @@ MF.editor = {
       if (sel && sel.shape.type === 'polygon' && self.handlesFor(sel) && self.edgeAt(sel, p)) hit = sel;
       if (e.button === 0) MF.store.select(hit ? hit.id : null);
 
-      if (hit && self.tool === 'move') {
+      if (hit && self.tool === 'rotate') {
+        // Werkzeug Drehen: Klick dreht um 90°, Ziehen frei – wie der Dreh-Griff, angefasst am Klickpunkt
+        drag = handleDrag(hit, { kind: 'rotate' });
+        drag.h.from = self.modelPoint(drag.draw0, drag.pose0, MF.sim.toWorld(p.x, p.y));
+        drag.rotateTool = true;
+      } else if (hit && self.tool === 'move') {
         var dp = MF.sim.drawPose(hit), p0 = { x: hit.pose.x, y: hit.pose.y, z: hit.pose.z, rot: hit.pose.rot };
         var w = self.modelPoint(dp, p0, MF.sim.toWorld(p.x, p.y));
         drag = { mode: 'move', el: hit, wx: w.x, wy: w.y, ox: hit.pose.x, oy: hit.pose.y, oz: hit.pose.z, sx: p.x, sy: p.y, active: false,
           draw0: dp, pose0: p0, mx: MF.sim.toWorld(p.x, p.y), snapCtx: self.snapContext(hit.id) };
       } else {
-        // Ansicht ziehen – auch über Körpern, damit Auswählen/Drehen nichts verschiebt.
-        // Ein Klick ohne Ziehen dreht beim Werkzeug "Drehen" den Körper.
+        // Ansicht ziehen – auch über Körpern, damit Auswählen nichts verschiebt.
         drag = { mode: 'pan', sx: p.x, sy: p.y, ox: MF.sim.offsetX, oy: MF.sim.offsetY, el: hit, active: false };
       }
       canvas.setPointerCapture(e.pointerId);
@@ -683,7 +700,7 @@ MF.editor = {
       if (!drag.active) {
         if (drag.mode === 'draw') return;
         if (Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) < self.DRAG_START_PX) return;
-        if (drag.mode === 'move' && drag.el.look.locked) { MF.ui.message(drag.el.name + ' ist gesperrt.'); drag = null; return; }
+        if ((drag.mode === 'move' || drag.rotateTool) && drag.el.look.locked) { MF.ui.message(drag.el.name + ' ist gesperrt.'); drag = null; return; }
         drag.active = true;
         if (drag.mode === 'pan') canvas.style.cursor = 'grabbing';
         if (drag.mode === 'handle' || drag.mode === 'move') MF.history.begin();
@@ -760,14 +777,14 @@ MF.editor = {
         var what = drag.h.kind === 'axis' ? (drag.h.part === 'origin' ? 'Achsursprung verschoben'
             : drag.h.part === 'dir' ? 'Achsrichtung geändert'
             : 'Achse ' + MF.props.formatNumber(ax.min) + ' … ' + MF.props.formatNumber(ax.max) + u)
-          : drag.h.kind === 'rotate' ? 'auf ' + MF.props.formatNumber(b.pose.rot) + '° gedreht'
+          : drag.h.kind === 'rotate' ? 'auf ' + MF.props.formatNumber(b.pose.rot) + '° gedreht' + self.dirText(b)
           : drag.h.kind === 'vertex' ? 'Punkt ' + (drag.h.i + 1) + ' verschoben'
           : sh.type === 'circle' ? 'Radius ' + self.fmtLen(sh.r) + ' m'
           : 'Größe ' + self.fmtLen(sh.w) + ' × ' + self.fmtLen(sh.d) + ' m';
         MF.ui.message(b.name + ': ' + what + (drag.err ? ' (' + drag.err + ')' : '') + '.');
       }
       if (drag && drag.active && (drag.mode === 'handle' || drag.mode === 'move')) MF.history.end();
-      if (drag && drag.mode === 'pan' && !drag.active && drag.el && self.tool === 'rotate' && e.type === 'pointerup') {
+      if (drag && drag.rotateTool && !drag.active && e.type === 'pointerup') {
         self.rotateBody(drag.el);
       }
       drag = null;
