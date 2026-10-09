@@ -26,7 +26,7 @@ Meter, Grad, Sekunden. Draufsicht wie in der App: **x nach rechts, y nach unten*
 |---|---|---|
 | `ghost` | keine Kollision, nur Fläche/Raum | Lichtschranke, Quelle, Senke |
 | `static` | fest, Kisten stoßen dagegen | Band, Wand, Tisch, Rutsche |
-| `kinematic` | bewegt sich nur über eine Achse | Schieber |
+| `kinematic` | bewegt sich nur über eine Achse | Schieber, Drehtisch, Hubtisch, Stopper, Weiche |
 | `dynamic` | fällt und rutscht (Physik) | lose Teile |
 
 Funktionen (optional, `set_function`): `surface` Transportfläche (static/kinematic: `speed` m/s, `dir` Grad lokal),
@@ -42,10 +42,24 @@ Funktionen (optional, `set_function`): `surface` Transportfläche (static/kinema
 | `sensor` Lichtschranke | LS1 … | 0,05 × 0,5 m, h 0,3 | 0,71 | `Belegt` (AUS) |
 | `pusher` Schieber | S1 … | 0,5 × 0,5 m, schiebt lokal +y | 0,72 | `Ausfahren` (EIN), `Ausgefahren`, `Eingefahren`, `Ist` (AUS) |
 | `sink` Senke | SE1 … | 0,5 × 0,5 m, h 0,6 | 0 / 0,6 | `Reset` (EIN), `Anzahl` (AUS) |
+| `turntable` Drehtisch | DT1 … | Kreis r 0,4 m mit Band | top 0,698 | Band-Signale + `Ausfahren` (EIN): 1 dreht auf 90°, 0 zurück auf 0° |
+| `lift` Hubtisch | HT1 … | 0,6 × 0,5 m mit Band | top 0,698 | Band-Signale + `Ausfahren`: 1 hebt um 0,3 m |
+| `stopper` Stopper | ST1 … | Leiste 0,05 × 0,4 m quer im Band | eingefahren 2 cm unter dem Band | `Ausfahren`: 1 hält Kisten an |
+| `diverter` Weiche | W1 … | Arm 0,8 × 0,05 m, dreht ums linke Ende | 2 cm über dem Band | `Ausfahren`: 1 schwenkt 45° über das Band |
 
 Eigenschaften setzt du mit `props`, z. B. Band `{"speed": 0.5, "direction": "unten"}`, Quelle `{"interval": 2}`,
 Schieber `{"stroke": 600, "speed": 1, "direction": "unten"}` (Hub in **mm**). `direction` dreht den ganzen Körper.
-Kisten: 0,3 m Würfel, 5,4 kg. Kommen später neue Vorlagen dazu (z. B. Drehtisch), stehen sie in `list_templates`.
+Kisten: 0,3 m Würfel, 5,4 kg. Weitere Vorlagen und alle Standardwerte stehen in `list_templates`.
+
+**Achsen** (`set_function` mit `function: "axis"`): Alle Vorlagen mit Achse starten in Betriebsart `zweipunkt`
+(Ausgänge `Ausgefahren`, `Eingefahren`, `Ist`). Ventil `valve`:
+- `"mono"` (Standard): ein Eingang `Ausfahren`; 1 = ausfahren, 0 = nach `returnDelay` (Schieber 0,5 s, sonst 0) einfahren.
+- `"bi"`: zwei Eingänge `Ausfahren` und `Einfahren`; ein kurzer Impuls reicht, die Achse **bleibt** dann, bis der Gegenbefehl kommt
+  (beide 0 oder beide 1: keine Änderung). Gut für SCL mit Flanken, z. B. `"S1".Einfahren := "LS2".Belegt;`.
+
+Für einen beliebigen Winkel bzw. Weg `mode: "position"` (Eingänge `Soll` in m bzw. Grad und `Freigabe`, Ausgang `InPosition`);
+Grenzen `min`/`max` gelten immer, z. B. Drehtisch `{"mode": "position", "min": -180, "max": 180}`, dann
+`"DT1".Soll := 180.0; "DT1".Freigabe := TRUE;`. `mode: "geschwindigkeit"`: `Soll` in m/s bzw. °/s.
 
 ## 4. Bauregeln (wichtig)
 
