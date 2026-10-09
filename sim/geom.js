@@ -124,6 +124,65 @@ MF.geom = {
     return Math.atan2(Math.abs(shape.h2 - shape.h), r.x1 - r.x0) * 180 / Math.PI;
   },
 
+  // ---------- Umlenkrolle (Stirnenden einer Transportfläche) ----------
+  //
+  // Bänder liegen bündig (Konzept, Abschnitt 4). Damit eine Kiste an der Naht nicht
+  // an der Stirnkante des nächsten Bands hängen bleibt, ist ein Rechteck mit
+  // Transportfläche an beiden Stirnenden (quer zur Laufrichtung) gerundet wie eine
+  // Umlenkrolle: oben ein Viertelkreis mit ROLL_R, unten ebenso, soweit die Höhe
+  // reicht (Band 0,1 m: Halbkreis, Rollendurchmesser = Bandhöhe). Seitenkanten bleiben
+  // scharf. Gemessen (Spike-3D-Ergebnis 4a): erst ab 5 cm Radius hängt nichts mehr –
+  // an einer kleinen Rundung oder einer Schräge rechnet Rapier vorausschauend mit der
+  // Ecke darunter und bremst die Kiste wie an einer Wand.
+  ROLL_R: 0.05,
+  ROLL_SEGMENTS: 8,      // je Viertelkreis
+
+  // Läuft die Transportfläche entlang der lokalen x- oder y-Achse? (nächste Achse;
+  // null: keine Rundung – nur ebene Rechtecke haben Stirnenden)
+  rollAxis: function (shape, dir) {
+    if (shape.type !== 'rect' || this.isSloped(shape)) return null;
+    var v = this.dirVec(dir || 0);
+    return Math.abs(v.x) >= Math.abs(v.y) ? 'x' : 'y';
+  },
+
+  // Rundung eines Körpers: 'x' / 'y' beim ebenen Rechteck mit Transportfläche,
+  // 'rim' beim Kreis mit Transportfläche (Drehtisch: Rand rundum gerundet), sonst null.
+  // Engine und 3D-Ansicht fragen beide hier.
+  rollOf: function (b) {
+    if (!b.surface || !b.shape || this.isSloped(b.shape)) return null;
+    if (b.shape.type === 'circle') return 'rim';
+    return this.rollAxis(b.shape, b.surface.dir);
+  },
+
+  // Radius am Rand eines Drehtischs: oben und unten gleich (Rapier: RoundCylinder)
+  rimRadius: function (shape) {
+    return Math.min(this.ROLL_R, shape.h / 2, shape.r);
+  },
+
+  // Schnitt durch ein Stirnende: Punkte [a, z] von unten nach oben, a = Abstand
+  // von der Stirn nach innen, z = Höhe über der Unterseite. len = Länge in Laufrichtung.
+  // r: fester Radius oben und unten (Drehtisch, rimRadius), sonst ROLL_R so weit die Höhe reicht.
+  rollProfile: function (h, len, r) {
+    var ro = r !== undefined ? r : Math.min(this.ROLL_R, h, len / 2);
+    var ru = r !== undefined ? r : Math.min(ro, h - ro), n = this.ROLL_SEGMENTS;
+    var out = [], i, a;
+    if (ru > 1e-9) {
+      for (i = 0; i <= n; i++) {   // unten: von (ru, 0) nach (0, ru)
+        a = Math.PI / 2 * i / n;
+        out.push([ru - ru * Math.sin(a), ru - ru * Math.cos(a)]);
+      }
+    } else {
+      out.push([0, 0]);
+    }
+    for (i = 0; i <= n; i++) {     // oben: von (0, h − ro) nach (ro, h)
+      a = Math.PI / 2 * i / n;
+      out.push([ro - ro * Math.cos(a), h - ro + ro * Math.sin(a)]);
+    }
+    return out.filter(function (p, k) {   // doppelte Punkte (Übergang der Bögen) weg
+      return k === 0 || Math.abs(p[0] - out[k - 1][0]) + Math.abs(p[1] - out[k - 1][1]) > 1e-9;
+    });
+  },
+
   // Nur der Grundriss (Draufsicht), z. B. für die Maus
   containsXY: function (shape, pose, x, y) {
     var l = this.toLocal(pose, x, y);

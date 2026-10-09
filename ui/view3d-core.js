@@ -70,8 +70,10 @@ MF.view3dCore = {
   //   { position, normal, uv, index, groups: [{ start, count, role }] }
   //   role 'top' | 'side' | 'bottom' – die Ansicht gibt jeder Rolle einen Werkstoff.
   // Seiten haben eigene Eckpunkte je Kante (kantig); beim Kreis glatt.
+  // opt.roll: Rundung der Umlenkrolle (MF.geom.rollOf) – dann baut rollSolid den Körper.
   prism: function (shape, opt) {
     opt = opt || {};
+    if (opt.roll) return this.rollSolid(shape, opt);
     var self = this;
     var pts = this.outline(shape);
     var n = pts.length;
@@ -133,6 +135,103 @@ MF.view3dCore = {
     return { position: position, normal: normal, uv: uv, index: index, groups: groups };
   },
 
+  // Körper mit gerundeten Stirnenden bzw. Rand, genau wie in der Physik (MF.geom.rollProfile):
+  // Rechteck ('x'/'y') = Querschnitt in Laufrichtung, quer extrudiert; Kreis ('rim') =
+  // Profil um die Hochachse gedreht. Was zur Oberseite gehört (ebene Fläche und obere
+  // Rundung, der Gurt läuft darum herum), bekommt die Rolle 'top'. Rückgabe wie prism.
+  rollSolid: function (shape, opt) {
+    var G = MF.geom, h = shape.h, rim = opt.roll === 'rim';
+    var position = [], normal = [], uv = [], index = [], groups = [];
+    var dir = G.rad(opt.uvDir || 0), cd = Math.cos(dir), sd = Math.sin(dir);
+    var tris = { top: [], side: [], bottom: [] };
+    function vertex(p, n) {
+      position.push(p[0], p[1], p[2]);
+      normal.push(n[0], n[1], n[2]);
+      uv.push(p[0] * cd + p[1] * sd, -p[0] * sd + p[1] * cd);
+      return position.length / 3 - 1;
+    }
+    // Dreieck mit Umlaufsinn passend zur Normale; entartete (an der Achse) entfallen
+    function tri(role, a, b, c, na, nb, nc) {
+      var u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+      var x = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+      if (Math.abs(x[0]) + Math.abs(x[1]) + Math.abs(x[2]) < 1e-14) return;
+      var m = [na[0] + nb[0] + nc[0], na[1] + nb[1] + nc[1], na[2] + nb[2] + nc[2]];
+      var t = [vertex(a, na), vertex(b, nb), vertex(c, nc)];
+      tris[role].push(x[0] * m[0] + x[1] * m[1] + x[2] * m[2] >= 0 ? t : [t[0], t[2], t[1]]);
+    }
+
+    // Querschnitt [c, z] gegen den Uhrzeigersinn (c nach rechts, z nach oben)
+    var len = rim ? 2 * shape.r : opt.roll === 'x' ? shape.w : shape.d, half = len / 2;
+    var prof = rim ? G.rollProfile(h, len, G.rimRadius(shape)) : G.rollProfile(h, len);
+    var ro = prof[prof.length - 1][0], sec = [];
+    if (rim) {
+      sec.push([0, 0]);
+      prof.forEach(function (p) { sec.push([half - p[0], p[1]]); });
+      sec.push([0, h]);
+    } else {
+      prof.forEach(function (p) { sec.push([half - p[0], p[1]]); });
+      for (var k = prof.length - 1; k >= 0; k--) sec.push([prof[k][0] - half, prof[k][1]]);
+    }
+    var n = sec.length, closed = !rim;
+    var edges = [];   // je Kante: Normale [nc, nz] und Rolle
+    for (var i = 0; i < n - (closed ? 0 : 1); i++) {
+      var a = sec[i], b = sec[(i + 1) % n], dc = b[0] - a[0], dz = b[1] - a[1], l = Math.sqrt(dc * dc + dz * dz);
+      var role = a[1] < 1e-9 && b[1] < 1e-9 ? 'bottom' : Math.min(a[1], b[1]) >= h - ro - 1e-9 ? 'top' : 'side';
+      edges.push({ a: a, b: b, n: [dz / l, -dc / l], role: role });
+    }
+    // Glatt über die Rundung: Normale am Punkt gemittelt, wenn der Knick unter 30° liegt
+    function smooth(e, f) {
+      if (!f || e.n[0] * f.n[0] + e.n[1] * f.n[1] < Math.cos(Math.PI / 6)) return e.n;
+      var c = e.n[0] + f.n[0], z = e.n[1] + f.n[1], l = Math.sqrt(c * c + z * z);
+      return [c / l, z / l];
+    }
+    var m = edges.length;
+    edges.forEach(function (e, j) {
+      e.na = smooth(e, closed || j > 0 ? edges[(j - 1 + m) % m] : null);
+      e.nb = smooth(e, closed || j < m - 1 ? edges[(j + 1) % m] : null);
+    });
+
+    if (rim) {
+      var segs = this.CIRCLE_SEGMENTS;
+      edges.forEach(function (e) {
+        for (var j = 0; j < segs; j++) {
+          var t0 = 2 * Math.PI * j / segs, t1 = 2 * Math.PI * (j + 1) / segs;
+          var c0 = Math.cos(t0), s0 = Math.sin(t0), c1 = Math.cos(t1), s1 = Math.sin(t1);
+          var p00 = [e.a[0] * c0, e.a[0] * s0, e.a[1]], p01 = [e.a[0] * c1, e.a[0] * s1, e.a[1]];
+          var p10 = [e.b[0] * c0, e.b[0] * s0, e.b[1]], p11 = [e.b[0] * c1, e.b[0] * s1, e.b[1]];
+          var n00 = [e.na[0] * c0, e.na[0] * s0, e.na[1]], n01 = [e.na[0] * c1, e.na[0] * s1, e.na[1]];
+          var n10 = [e.nb[0] * c0, e.nb[0] * s0, e.nb[1]], n11 = [e.nb[0] * c1, e.nb[0] * s1, e.nb[1]];
+          tri(e.role, p00, p10, p11, n00, n10, n11);
+          tri(e.role, p00, p11, p01, n00, n11, n01);
+        }
+      });
+    } else {
+      // Laufrichtung c entlang lokal x bzw. y, quer dazu q
+      var side = (opt.roll === 'x' ? shape.d : shape.w) / 2;
+      var at = opt.roll === 'x' ? function (c, q, z) { return [c, q, z]; } : function (c, q, z) { return [q, c, z]; };
+      edges.forEach(function (e) {
+        var na = at(e.na[0], 0, e.na[1]), nb = at(e.nb[0], 0, e.nb[1]);
+        var a0 = at(e.a[0], -side, e.a[1]), a1 = at(e.a[0], side, e.a[1]);
+        var b0 = at(e.b[0], -side, e.b[1]), b1 = at(e.b[0], side, e.b[1]);
+        tri(e.role, a0, b0, b1, na, nb, nb);
+        tri(e.role, a0, b1, a1, na, nb, na);
+      });
+      [-side, side].forEach(function (q) {   // Seitenflächen: Querschnitt als Fächer (konvex)
+        var nq = at(0, q > 0 ? 1 : -1, 0);
+        for (var j = 1; j + 1 < n; j++) {
+          tri('side', at(sec[0][0], q, sec[0][1]), at(sec[j][0], q, sec[j][1]), at(sec[j + 1][0], q, sec[j + 1][1]), nq, nq, nq);
+        }
+      });
+    }
+
+    ['top', 'bottom', 'side'].forEach(function (role) {
+      var start = index.length;
+      tris[role].forEach(function (t) { index.push(t[0], t[1], t[2]); });
+      if (index.length > start) groups.push({ start: start, count: index.length - start, role: role });
+    });
+    return { position: position, normal: normal, uv: uv, index: index, groups: groups };
+  },
+
   // Normalen der Oberseite aus ihren Dreiecken (bei waagerechter Oberseite (0, 0, 1))
   fixTopNormals: function (position, normal, index, start) {
     if (index.length <= start) return;
@@ -164,7 +263,7 @@ MF.view3dCore = {
   // sein Mesh neu gebaut; Lage und Laufzeitwerte (Achse, Band, Sensor) nicht.
   bodyKey: function (b) {
     return JSON.stringify([b.kind, b.shape, b.look && b.look.color, b.look && b.look.visible !== false,
-      b.surface ? b.surface.dir : null, !!b.sensor, !!b.spawner, !!b.sink, !!b.axis]);
+      b.surface ? b.surface.dir : null, MF.geom.rollOf(b), !!b.sensor, !!b.spawner, !!b.sink, !!b.axis]);
   },
 
   // Darstellung einer Körperart (Werte für die Werkstoffe in ui/view3d.js)

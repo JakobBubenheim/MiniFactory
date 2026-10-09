@@ -38,7 +38,7 @@ Die Skizze liest der Agent selbst; der Server liefert Werkzeuge, Anleitung und K
 | `get_overview` | Anlage als JSON: Körper (Form, `pose`, `bounds`, `top`, Funktionen, `props`, Signale), Ordner, Regeln/SCL mit Fehlern, Signalwerte |
 | `list_templates` | Vorlagen, Funktionen (Felder, Körperarten, Signale, Betriebsarten), Körperarten, Werkstoffe – aus der App erzeugt |
 | `new_plant`, `load_plant` (`path` oder `example`), `save_plant`, `list_plants` | Datei |
-| `validate` | `MF.file.validate` + Bauregeln: Erzeuger über Fläche, was hinter jedem Bandende liegt, 1–2 mm Versatz, Sensor über Fläche, unvollständige Regeln, SCL-Fehler |
+| `validate` | `MF.file.validate` + Bauregeln: Erzeuger über Fläche, was hinter jedem Bandende liegt, Folgeband höher als das liefernde (Nähte bündig, seit 09.10.2026), Sensor über Fläche, unvollständige Regeln, SCL-Fehler |
 | `add_from_template`, `draw_shape`, `update_body`, `set_function`, `delete`, `create_folder`, `move_to_folder` | Bauen |
 | `add_rule`, `add_scl`, `update_rule`, `delete_rule` | Logik; SCL wird vorher übersetzt, Fehler mit Zeile/Spalte, dann wird nichts angelegt |
 | `simulate`, `set_signal`, `get_signals` | Prüfen und Bedienen wie im I/O-Tab |

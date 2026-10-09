@@ -127,7 +127,7 @@ test('Betriebsart geschwindigkeit: fährt mit Soll (höchstens vmax) und bleibt 
   a.setzen(ht + '.Freigabe', 1);
   a.laufen(1);
   nahe(a.signal(ht + '.Ist'), 0.1, 1e-6, 'Hubtisch nach 1 s');
-  nahe(a.lage(ht).z, 0.59 + 0.1, 1e-6, 'Hubtisch fährt nach oben');
+  nahe(a.lage(ht).z, 0.6 + 0.1, 1e-6, 'Hubtisch fährt nach oben');
   a.laufen(5);
   assert.equal(a.signal(ht + '.Ist'), 0.3, 'steht oben (max)');
 });
@@ -249,8 +249,8 @@ test('Kiste fährt auf den Drehtisch, der Tisch dreht 90°, die Kiste dreht mit 
   const q = a.anlegen('source', 0.5, 2);
   a.eigenschaft(q, 'maxCount', 1);
   band(a, 1, 2, 2);                          // zuführend nach rechts bis x = 2
-  drehtischPosition(a, 2.4, 2);              // r = 0,4 m, Oberkante 0,69 m (1 cm unter dem Band)
-  band(a, 2.4, 3.4, 2, 90, 0.68);            // abgehend nach unten, 1 cm tiefer
+  drehtischPosition(a, 2.4, 2);              // r = 0,4 m, Oberkante 0,7 m (bündig mit dem Band)
+  band(a, 2.4, 3.4, 2, 90);                  // abgehend nach unten, bündig
   const se = a.anlegen('sink', 2.4, 4.65);
 
   // Kiste fährt auf den Tisch; mittig angekommen hält das Band auf dem Tisch an
@@ -282,8 +282,8 @@ test('Hubtisch hebt eine Kiste auf die Höhe eines zweiten Bands, die Kiste fäh
   const q = a.anlegen('source', 0.5, 2);
   a.eigenschaft(q, 'maxCount', 1);
   band(a, 1, 2, 2);                          // unten, Oberkante 0,7 m
-  a.anlegen('lift', 2.3, 2);                 // Hub 0,3 m: Oberkante 0,69 -> 0,99 m
-  band(a, 3.6, 2, 2, 0, 0.98);               // oben, 1 cm tiefer als der gehobene Tisch
+  a.anlegen('lift', 2.3, 2);                 // Hub 0,3 m: Oberkante 0,7 -> 1,0 m
+  band(a, 3.6, 2, 2, 0, 1.0);                // oben, bündig mit dem gehobenen Tisch
   const se = a.anlegen('sink', 4.85, 2);
   a.form(se, { h: 0.85 });
 
@@ -292,13 +292,13 @@ test('Hubtisch hebt eine Kiste auf die Höhe eines zweiten Bands, die Kiste fäh
   a.setzen('HT1.Ausfahren', 1);
   assert.notEqual(a.laufenBis(function () { return a.signal('HT1.Ausgefahren') === 1; }, 3), null);
   a.laufen(0.2);
-  nahe(a.kisten3d()[0].z, 0.99 + 0.15, 0.005, 'Kiste liegt oben auf dem Tisch');
+  nahe(a.kisten3d()[0].z, 1.0 + 0.15, 0.005, 'Kiste liegt oben auf dem Tisch');
   nahe(a.kisten()[0].x, 2.3, 0.05, 'Kiste ist nicht verrutscht');
 
   a.setzen('HT1.Ein', 1);
   const t = a.laufenBis(function () { return a.kistenAnzahl() === 1 && a.kisten()[0].x > 3; }, 5);
   assert.notEqual(t, null, 'Kiste fährt nicht auf das obere Band');
-  nahe(a.kisten3d()[0].z, 0.98 + 0.15, 0.005, 'auf dem oberen Band');
+  nahe(a.kisten3d()[0].z, 1.0 + 0.15, 0.005, 'auf dem oberen Band');
   assert.notEqual(a.laufenBis(function () { return a.signal(se + '.Anzahl') === 1; }, 10), null);
 });
 
@@ -332,7 +332,7 @@ test('Weiche lenkt Kisten je nach Stellung auf Band A oder Band B', function () 
     a.eigenschaft(q, 'interval', 2.5);
     band(a, 2.25, 2, 4);                     // Band A geradeaus nach rechts
     const w = a.anlegen('diverter', 2.1, 1.775);   // an der oberen Bandkante, Drehpunkt links
-    band(a, 2.25, 3.25, 2, 90, 0.698);       // Band B zweigt nach unten ab
+    band(a, 2.25, 3.25, 2, 90);              // Band B zweigt nach unten ab (bündig)
     const sa = a.anlegen('sink', 4.5, 2);
     const sb = a.anlegen('sink', 2.25, 4.5);
     a.setzen(w + '.Ausfahren', stellung);

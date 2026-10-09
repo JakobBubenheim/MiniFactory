@@ -5,8 +5,8 @@
 //   (Lage-Drehung 0), außer Schiebern, die in Schubrichtung gedreht werden.
 // - Förderband: static, Rechteck, 0,1 m hoch, Oberkante 0,7 m, Transportfläche.
 //   Richtung -> surface.dir in Grad (rechts 0°, unten 90°, links 180°, oben 270°).
-//   Ein Band, das von einem anderen beliefert wird, liegt 1 cm tiefer (nie exakt bündig,
-//   sonst hakt die Kiste an der Kante ein – Spike-Ergebnis 4.2).
+//   Alle Bänder liegen bündig; über die Naht hilft die Umlenkrolle an den
+//   Stirnenden (Engine, Spike-3D-Ergebnis 4a).
 // - Lichtschranke: ghost, 5 cm schmaler Streifen quer über dem Band (wie der
 //   alte Strahl durch die Zellmitte), Sensor.
 // - Schieber: kinematic, lineare Achse "zweipunkt", Hub -> max, Tempo -> vmax.
@@ -22,7 +22,6 @@ window.MF = window.MF || {};
 
 (function () {
   var DIR_VEC = { rechts: [1, 0], links: [-1, 0], oben: [0, -1], unten: [0, 1] };
-  var LOWER = MF.BELT_SEAM;   // abnehmendes Band tiefer (1 cm, wie MF.fixBeltSeams)
 
   function isObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
   function isNum(v) { return typeof v === 'number' && isFinite(v); }
@@ -71,34 +70,9 @@ window.MF = window.MF || {};
       return null;
     }
 
-    // Höhen der Bänder: liefert A auf B (B berührt die Stirnkante von A), liegt B
-    // MF.BELT_SEAM tiefer. Ketten werden weitergereicht, Kreise nach einer Runde abgebrochen.
-    var z = {};
-    belts.forEach(function (b) { z[b.id] = MF.BELT_TOP - 0.1; });
-    function feeds(a, b) {
-      var v = DIR_VEC[a.props.direction] || DIR_VEC.rechts, e = 1e-6;
-      var sx0, sx1, sy0, sy1;   // schmaler Streifen hinter der Stirnkante von a
-      if (v[0] > 0) { sx0 = a.x + a.w; sx1 = sx0 + 0.01; sy0 = a.y; sy1 = a.y + a.h; }
-      else if (v[0] < 0) { sx1 = a.x; sx0 = sx1 - 0.01; sy0 = a.y; sy1 = a.y + a.h; }
-      else if (v[1] > 0) { sy0 = a.y + a.h; sy1 = sy0 + 0.01; sx0 = a.x; sx1 = a.x + a.w; }
-      else { sy1 = a.y; sy0 = sy1 - 0.01; sx0 = a.x; sx1 = a.x + a.w; }
-      return b.x < sx1 - e && b.x + b.w > sx0 + e && b.y < sy1 - e && b.y + b.h > sy0 + e;
-    }
-    for (var round = 0; round < belts.length; round++) {
-      var changed = false;
-      belts.forEach(function (a) {
-        belts.forEach(function (b) {
-          if (a !== b && feeds(a, b) && z[b.id] > z[a.id] - LOWER + 1e-9) {
-            z[b.id] = r6(z[a.id] - LOWER);
-            changed = true;
-          }
-        });
-      });
-      if (!changed) break;
-    }
     function topAt(x, y) {
       var b = beltAt(x, y);
-      return b ? r6(z[b.id] + 0.1) : null;
+      return b ? MF.BELT_TOP : null;
     }
 
     // Alte Engine: Schubrichtung, bei "auto" vom Schieber weg zum angrenzenden Band
@@ -151,7 +125,7 @@ window.MF = window.MF || {};
         case 'conveyor':
           b.shape.w = m(el.w);
           b.shape.d = m(el.h);
-          b.pose.z = z[el.id];
+          b.pose.z = MF.BELT_TOP - 0.1;
           b.surface = { speed: p.speed, dir: MF.DIRS[p.direction] || 0, running: p.running !== false };
           break;
 
@@ -180,7 +154,7 @@ window.MF = window.MF || {};
           }
           var stroke = Math.max(0, (isNum(p.stroke) ? p.stroke : 400) / 1000);
           b.shape = { type: 'polygon', points: MF.pusherOutline(m(across), m(along), stroke, side), h: MF.PUSHER.H };
-          b.pose.z = belt ? r6(z[belt.id] + 0.1 + 0.02) : MF.BELT_TOP + 0.02;
+          b.pose.z = MF.BELT_TOP + 0.02;
           b.axis.max = stroke;
           b.axis.vmax = isNum(p.speed) && p.speed > 0 ? p.speed : 0.3;
           b.axis.returnDelay = isNum(p.returnDelay) ? p.returnDelay : 0.5;

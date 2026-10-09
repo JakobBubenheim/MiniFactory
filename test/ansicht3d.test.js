@@ -153,6 +153,36 @@ test('Kreis wird ein glatter Zylinder', function () {
   pruefeUmlauf(p);
 });
 
+test('Band mit Umlenkrolle: Stirnenden gerundet wie in der Physik, Seitenkanten scharf', function () {
+  const { C, MF } = kern();
+  const band = { shape: { type: 'rect', w: 2, d: 0.5, h: 0.1 }, surface: { speed: 0.5, dir: 0 } };
+  assert.equal(MF.geom.rollOf(band), 'x');
+  assert.equal(MF.geom.rollOf({ shape: band.shape, surface: { dir: 90 } }), 'y');
+  assert.equal(MF.geom.rollOf({ shape: band.shape }), null, 'ohne Transportfläche keine Rundung');
+  assert.equal(MF.geom.rollOf({ shape: { type: 'circle', r: 0.4, h: 0.1 }, surface: { dir: 0 } }), 'rim');
+  [['x', 0], ['y', 90]].forEach(function (f) {
+    const shape = f[0] === 'x' ? band.shape : { type: 'rect', w: 0.5, d: 2, h: 0.1 };
+    const p = C.prism(shape, { uvDir: f[1], roll: f[0] });
+    const lang = f[0] === 'x' ? 0 : 1, quer = 1 - lang;
+    const e = []; for (let i = 0; i < p.position.length / 3; i++) e.push(ecke(p, i));
+    const max = function (k) { return Math.max.apply(null, e.map(function (v) { return Math.abs(v[k]); })); };
+    assert.ok(Math.abs(max(lang) - 1) < 1e-9 && Math.abs(max(quer) - 0.25) < 1e-9 && Math.abs(max(2) - 0.1) < 1e-9, 'Maße');
+    // An der Stirn (1 m vom Mittelpunkt) nur auf halber Höhe: Rolle mit Durchmesser = Bandhöhe
+    e.filter(function (v) { return Math.abs(Math.abs(v[lang]) - 1) < 1e-9; })
+      .forEach(function (v) { assert.ok(Math.abs(v[2] - 0.05) < 1e-9, 'Stirn bei z = ' + v[2]); });
+    // Oberseite: eben bis 5 cm vor der Stirn, dann rund nach unten; Fläche in der Draufsicht = ganzes Band
+    const oben = dreiecke(p, 'top');
+    assert.ok(Math.abs(flaeche(p, oben) - 2 * 0.5) < 1e-9, 'Oberseite deckt das Band');
+    assert.ok(Math.abs(flaeche(p, dreiecke(p, 'bottom')) - 1.9 * 0.5) < 1e-9, 'Unterseite bis zur unteren Rundung');
+    pruefeUmlauf(p);
+  });
+  // Drehtisch: Rand rundum gerundet, oben eben
+  const dt = C.prism({ type: 'circle', r: 0.4, h: 0.1 }, { roll: 'rim' });
+  pruefeUmlauf(dt);
+  const r = []; for (let i = 0; i < dt.position.length / 3; i++) { const v = ecke(dt, i); if (v[2] === 0.1) r.push(Math.hypot(v[0], v[1])); }
+  assert.ok(Math.abs(Math.max.apply(null, r) - 0.35) < 1e-9, 'oben eben bis 5 cm vor dem Rand');
+});
+
 test('Oberseite einer Transportfläche: u läuft in Laufrichtung (Meter)', function () {
   const { C } = kern();
   const shape = { type: 'rect', w: 2, d: 1, h: 0.1 };

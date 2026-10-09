@@ -282,7 +282,7 @@ MF.view3d = {
     var T = this.T, C = MF.view3dCore;
     var it = { key: key, body: b, mats: [], geos: [], tex: null, arrow: null, busy: null };
     var group = new T.Group();
-    var data = C.prism(b.shape, { uvDir: b.surface ? b.surface.dir : 0 });
+    var data = C.prism(b.shape, { uvDir: b.surface ? b.surface.dir : 0, roll: MF.geom.rollOf(b) });
     var geo = this.geometry(data);
     it.geo = geo;
     it.geos.push(geo);
