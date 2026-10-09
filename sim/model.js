@@ -114,35 +114,83 @@ MF.FUNCTIONS = {
   },
   axis: {
     label: 'Achse', kinds: ['kinematic'],
-    // Phase 3 legt nur lineare Achsen mit Betriebsart "zweipunkt" an (wie Phase 2);
-    // rotatorisch, weitere Betriebsarten und Achse ziehen folgen in Phase 4.
+    // Linear (Werte in m) oder rotatorisch um die Hochachse (Werte in Grad), mit
+    // Grenzen min/max, Höchstgeschwindigkeit vmax und einer Betriebsart (Konzept,
+    // Abschnitt 2). origin und dir sind lokal zum Körper. Linear verschiebt den
+    // Körper um Stellung · dir; rotatorisch dreht er sich um origin (dir = [0, 0, ±1]).
     make: function () {
       return { type: 'linear', origin: [0, 0, 0], dir: [0, 1, 0], min: 0, max: 0.4, vmax: 0.3, mode: 'zweipunkt', returnDelay: 0.5 };
     },
+    // Felder im Eigenschaften-Panel. Werte, die von der Achse abhängen (Einheit,
+    // Schritt, Grenzen), sind Funktionen der Achse; when blendet Felder aus.
+    // MF.fieldsOf('axis', achse) löst das auf. core: auch bei Vorlagen zeigen,
+    // die für diese Funktion eigene Eigenschaften haben (z. B. Schieber).
     fields: [
-      { key: 'mode', label: 'Betriebsart', type: 'text', readonly: true, hint: 'Weitere Betriebsarten und rotatorische Achsen folgen in Phase 4',
-        get: function (f) { return f.mode + ' (' + (f.type === 'linear' ? 'linear' : f.type) + ')'; } },
-      { key: 'axisDir', label: 'Richtung', type: 'select', options: ['rechts', 'unten', 'links', 'oben'],
-        hint: 'Fahrrichtung lokal zum Körper (dreht mit dem Körper)',
-        get: function (f) { return MF.dirName(MF.vecDeg(f.dir)); },
-        set: function (f, v) { if (v in MF.DIRS) { var d = MF.geom.dirVec(MF.DIRS[v]); f.dir = [d.x, d.y, 0]; } } },
-      { key: 'min', label: 'Grundstellung', type: 'number', unit: 'm', step: 0.05, min: -10, max: 10, hint: 'Stellung "eingefahren" (min)',
+      { key: 'type', label: 'Typ', type: 'select', core: true,
+        options: [{ value: 'linear', label: 'linear (m)' }, { value: 'rotary', label: 'rotatorisch (°)' }],
+        hint: 'Linear: fährt entlang der Richtung (Meter). Rotatorisch: dreht um die Hochachse durch den Ursprung (Grad)',
+        get: function (f) { return f.type; }, set: function (f, v) { MF.setAxisType(f, v); } },
+      { key: 'mode', label: 'Betriebsart', type: 'select', core: true,
+        options: function () {
+          return Object.keys(MF.FUNCTIONS.axis.MODES).map(function (m) { return { value: m, label: MF.FUNCTIONS.axis.MODE_LABELS[m] }; });
+        },
+        hint: 'Zweipunkt: Ausfahren = 1 fährt nach max, sonst nach min · Position: fährt auf Soll, solange Freigabe = 1 · ' +
+          'Geschwindigkeit: fährt mit Soll (m/s bzw. °/s), solange Freigabe = 1. Die Signale passen sich an',
+        get: function (f) { return f.mode; }, set: function (f, v) { if (MF.FUNCTIONS.axis.MODES[v]) f.mode = v; } },
+      { key: 'axisDir', label: 'Richtung', type: 'select', options: ['rechts', 'unten', 'links', 'oben', 'hoch', 'runter'],
+        when: function (f) { return f.type !== 'rotary'; },
+        hint: 'Fahrrichtung lokal zum Körper (dreht mit dem Körper); hoch/runter = senkrecht (z)',
+        get: function (f) { return MF.axisDirName(f.dir); },
+        set: function (f, v) { var d = MF.axisDirVec(v); if (d) f.dir = d; } },
+      { key: 'turn', label: 'Drehsinn', type: 'select', options: ['Uhrzeigersinn', 'Gegenuhrzeigersinn'],
+        when: function (f) { return f.type === 'rotary'; },
+        hint: 'In der Draufsicht: positive Stellung dreht im bzw. gegen den Uhrzeigersinn',
+        get: function (f) { return f.dir[2] < 0 ? 'Gegenuhrzeigersinn' : 'Uhrzeigersinn'; },
+        set: function (f, v) { f.dir = [0, 0, v === 'Gegenuhrzeigersinn' ? -1 : 1]; } },
+      { key: 'min', label: 'Grenze min', type: 'number',
+        unit: function (f) { return MF.axisUnit(f).pos; }, step: function (f) { return f.type === 'rotary' ? 5 : 0.05; },
+        min: function (f) { return f.type === 'rotary' ? -720 : -10; }, max: function (f) { return f.type === 'rotary' ? 720 : 10; },
+        hint: 'Kleinste Stellung; zweipunkt: Stellung "eingefahren"',
         get: function (f) { return f.min; }, set: function (f, v) { f.min = v; if (f.max < v) f.max = v; } },
-      { key: 'max', label: 'Endstellung', type: 'number', unit: 'm', step: 0.05, min: -10, max: 10, hint: 'Stellung "ausgefahren" (max)',
+      { key: 'max', label: 'Grenze max', type: 'number',
+        unit: function (f) { return MF.axisUnit(f).pos; }, step: function (f) { return f.type === 'rotary' ? 5 : 0.05; },
+        min: function (f) { return f.type === 'rotary' ? -720 : -10; }, max: function (f) { return f.type === 'rotary' ? 720 : 10; },
+        hint: 'Größte Stellung; zweipunkt: Stellung "ausgefahren"',
         get: function (f) { return f.max; }, set: function (f, v) { f.max = v; if (f.min > v) f.min = v; } },
-      { key: 'vmax', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0.01, max: 5, hint: 'Höchstgeschwindigkeit', field: 'vmax' },
-      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren', field: 'returnDelay' }
+      { key: 'vmax', label: 'Tempo', type: 'number',
+        unit: function (f) { return MF.axisUnit(f).speed; }, step: function (f) { return f.type === 'rotary' ? 5 : 0.1; },
+        min: 0.01, max: function (f) { return f.type === 'rotary' ? 1080 : 5; },
+        hint: 'Höchstgeschwindigkeit (gilt in jeder Betriebsart)', field: 'vmax' },
+      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60,
+        when: function (f) { return f.mode === 'zweipunkt'; },
+        hint: 'Wartezeit vor dem Einfahren (Betriebsart zweipunkt)', field: 'returnDelay' },
+      { key: 'pos', label: 'Stellung', type: 'number', readonly: true, live: true, body: true,
+        unit: function (b) { return MF.axisUnit(b.axis).pos; },
+        hint: 'Aktuelle Stellung der Achse (Signal Ist)',
+        get: function (b) { return Math.round(MF.axisPos(b) * 1000) / 1000; } }
     ],
-    // Signale je Betriebsart. Phase 2 kennt nur 'zweipunkt' (linear);
-    // 'position' und 'geschwindigkeit' sowie rotatorische Achsen folgen in Phase 4.
+    // Signale je Betriebsart (Konzept, Abschnitt 2). Werte linear in m bzw. m/s,
+    // rotatorisch in Grad bzw. °/s.
     MODES: {
       zweipunkt: [
         { name: 'Ausfahren', dir: 'in', type: 'BOOL' },
         { name: 'Ausgefahren', dir: 'out', type: 'BOOL' },
         { name: 'Eingefahren', dir: 'out', type: 'BOOL' },
         { name: 'Ist', dir: 'out', type: 'FLOAT32' }
+      ],
+      position: [
+        { name: 'Soll', dir: 'in', type: 'FLOAT32' },
+        { name: 'Freigabe', dir: 'in', type: 'BOOL' },
+        { name: 'Ist', dir: 'out', type: 'FLOAT32' },
+        { name: 'InPosition', dir: 'out', type: 'BOOL' }
+      ],
+      geschwindigkeit: [
+        { name: 'Soll', dir: 'in', type: 'FLOAT32' },
+        { name: 'Freigabe', dir: 'in', type: 'BOOL' },
+        { name: 'Ist', dir: 'out', type: 'FLOAT32' }
       ]
     },
+    MODE_LABELS: { zweipunkt: 'Zweipunkt', position: 'Position', geschwindigkeit: 'Geschwindigkeit' },
     io: function (axis) {
       return (this.MODES[axis.mode] || this.MODES.zweipunkt).map(function (s) {
         var c = {};
@@ -184,6 +232,223 @@ MF.ioDef = function (body, name) {
   var list = MF.io(body);
   for (var i = 0; i < list.length; i++) if (list[i].name === name) return list[i];
   return null;
+};
+
+// Felder einer Funktion, wie das Eigenschaften-Panel sie zeigt: ausgeblendete
+// (when) fallen weg, Werte als Funktion (Einheit, Schritt, Grenzen, Auswahl)
+// werden für diesen Körper ausgerechnet. get/set bleiben Funktionen.
+MF.fieldsOf = function (body, fn) {
+  var f = body[fn];
+  if (!f) return [];
+  return MF.FUNCTIONS[fn].fields.filter(function (d) { return !d.when || d.when(f); }).map(function (d) {
+    var c = {};
+    for (var k in d) {
+      c[k] = typeof d[k] === 'function' && k !== 'get' && k !== 'set' && k !== 'when' ? d[k](d.body ? body : f) : d[k];
+    }
+    return c;
+  });
+};
+
+// Wert eines Funktionsfelds lesen bzw. schreiben (wie das Panel). Ändern sich
+// dabei die Signale (z. B. Betriebsart), werden sie angeglichen; Regeln auf
+// weggefallene Signale verlieren den Bezug. Gibt false zurück, wenn es das Feld
+// nicht gibt oder es nur lesbar ist.
+MF.getField = function (body, fn, key) {
+  var d = MF.fieldsOf(body, fn).filter(function (x) { return x.key === key; })[0];
+  if (!d) return undefined;
+  return d.get ? d.get(d.body ? body : body[fn]) : body[fn][d.field];
+};
+
+MF.setField = function (body, fn, key, v) {
+  var d = MF.fieldsOf(body, fn).filter(function (x) { return x.key === key; })[0];
+  if (!d || d.readonly) return false;
+  var before = MF.io(body).map(function (s) { return s.name; });
+  if (d.set) d.set(body[fn], v);
+  else body[fn][d.field] = v;
+  MF.store.dropSignals(body.id, MF.syncIo(body, before));
+  return true;
+};
+
+// ---------- Achse (Konzept, Abschnitt 2) ----------
+//
+// Stellung: linear in m, rotatorisch in Grad. Die Laufzeit (rt.pos) rechnet die
+// Engine; hier stehen die reinen Rechnungen, die Engine, Draufsicht, 3D-Ansicht
+// und Editor teilen.
+
+MF.AXIS = {
+  TOL: { linear: 0.001, rotary: 0.1 },   // InPosition: |Ist − Soll| höchstens so groß (1 mm bzw. 0,1°)
+  DEFAULTS: {
+    linear: { dir: [0, 1, 0], min: 0, max: 0.4, vmax: 0.3 },
+    rotary: { dir: [0, 0, 1], min: 0, max: 90, vmax: 45 }
+  }
+};
+
+MF.axisUnit = function (ax) {
+  return ax && ax.type === 'rotary' ? { pos: '°', speed: '°/s' } : { pos: 'm', speed: 'm/s' };
+};
+
+// Typ wechseln: Richtung, Grenzen und Tempo auf sinnvolle Werte des neuen Typs
+MF.setAxisType = function (ax, type) {
+  var d = MF.AXIS.DEFAULTS[type];
+  if (!d || ax.type === type) return;
+  ax.type = type;
+  ax.dir = d.dir.slice();
+  ax.min = d.min;
+  ax.max = d.max;
+  ax.vmax = d.vmax;
+};
+
+// Richtung einer linearen Achse als Name (rechts, unten, links, oben, hoch, runter)
+MF.axisDirName = function (dir) {
+  var len = Math.sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]) || 1;
+  if (Math.abs(dir[2]) / len > 0.999) return dir[2] > 0 ? 'hoch' : 'runter';
+  if (Math.abs(dir[2]) > 1e-9) return '';
+  return MF.dirName(MF.vecDeg(dir));
+};
+
+MF.axisDirVec = function (name) {
+  if (name === 'hoch') return [0, 0, 1];
+  if (name === 'runter') return [0, 0, -1];
+  if (!(name in MF.DIRS)) return null;
+  var d = MF.geom.dirVec(MF.DIRS[name]);
+  return [d.x, d.y, 0];
+};
+
+// Grundstellung nach Reset: zweipunkt eingefahren (min), sonst 0 (innerhalb der Grenzen)
+MF.axisHome = function (ax) {
+  return ax.mode === 'zweipunkt' ? ax.min : Math.max(ax.min, Math.min(ax.max, 0));
+};
+
+// Aktuelle Stellung (aus der Laufzeit der Engine, sonst Grundstellung)
+MF.axisPos = function (b) {
+  var rt = b.rt || {};
+  return rt.pos !== undefined && rt.axisType === b.axis.type ? rt.pos : MF.axisHome(b.axis);
+};
+
+// Hat der Körper eine Achse, die ihn bewegt?
+MF.hasAxis = function (b) {
+  return !!b.axis && b.kind === 'kinematic';
+};
+
+// Lage pose (relativ zum Eltern), verschoben bzw. gedreht um die Achsstellung s
+MF.axisMoved = function (pose, ax, s) {
+  var d = ax.dir;
+  if (ax.type === 'rotary') {
+    // um origin drehen: lokaler Punkt l -> origin + R(θ)·(l − origin), hier für l = 0
+    var th = (d[2] < 0 ? -s : s), a = MF.geom.rad(th), c = Math.cos(a), sn = Math.sin(a);
+    var ox = ax.origin[0], oy = ax.origin[1];
+    var w = MF.geom.toWorld(pose, ox - (ox * c - oy * sn), oy - (ox * sn + oy * c));
+    return { x: w.x, y: w.y, z: pose.z, rot: pose.rot + th };
+  }
+  var len = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) || 1;
+  var o = MF.geom.toWorld({ x: 0, y: 0, rot: pose.rot }, d[0] / len * s, d[1] / len * s);
+  return { x: pose.x + o.x, y: pose.y + o.y, z: pose.z + d[2] / len * s, rot: pose.rot };
+};
+
+// ---------- Kopplung über den Strukturbaum (Konzept, Abschnitt 2) ----------
+//
+// Ein Körper kann einen Körper als Eltern haben (parent = Körper-ID). Seine Lage
+// ist dann relativ zur aktuellen Lage des Elternkörpers (mit dessen Achse), er
+// bewegt sich mit. Ordner haben keine Lage. Höchstens zwei Ebenen: ein Körper,
+// der an einem Körper hängt, trägt selbst keine Körper (Konzept, Abschnitt 6).
+
+MF.COUPLE_DEPTH = 2;
+
+// Eltern-Körper oder null (Ordner und unbekannte Verweise zählen nicht)
+MF.parentBody = function (b) {
+  if (!b || !b.parent) return null;
+  var p = MF.store.findBody(b.parent);
+  return p && p !== b ? p : null;
+};
+
+// Körper, die direkt an b hängen
+MF.childBodies = function (b) {
+  return MF.model.bodies.filter(function (c) { return c !== b && c.parent === b.id; });
+};
+
+// Lage local im Koordinatensystem frame -> Welt
+MF.composePose = function (frame, local) {
+  var w = MF.geom.toWorld(frame, local.x, local.y);
+  return { x: w.x, y: w.y, z: frame.z + local.z, rot: frame.rot + local.rot };
+};
+
+// Weltlage world -> relativ zu frame (auf µm bzw. 1e-6° gerundet)
+MF.relativePose = function (frame, world) {
+  var l = MF.geom.toLocal(frame, world.x, world.y), r = MF.geom.round6;
+  return { x: r(l.x), y: r(l.y), z: r(world.z - frame.z), rot: MF.geom.normDeg(world.rot - frame.rot) };
+};
+
+MF.WORLD = { x: 0, y: 0, z: 0, rot: 0 };
+
+// Lage eines Körpers in der Welt mit allen Achsstellungen und Kopplungen.
+// posOf(b) liefert die Achsstellung eines Körpers (Standard: MF.axisPos).
+// Ohne Kopplung und Achse ist das die gezeichnete Lage (b.pose selbst).
+MF.poseInWorld = function (b, posOf, depth) {
+  posOf = posOf || MF.axisPos;
+  var local = MF.hasAxis(b) ? MF.axisMoved(b.pose, b.axis, posOf(b)) : b.pose;
+  var p = MF.parentBody(b);
+  if (!p || (depth || 0) > MF.COUPLE_DEPTH) return local;
+  return MF.composePose(MF.poseInWorld(p, posOf, (depth || 0) + 1), local);
+};
+
+// Koordinatensystem, in dem b.pose gilt: Lage des Elternkörpers oder die Welt
+MF.parentFrame = function (b, posOf) {
+  var p = MF.parentBody(b);
+  return p ? MF.poseInWorld(p, posOf) : MF.WORLD;
+};
+
+// Lage in der Welt ohne die eigene Achsstellung (Achse in Stellung 0)
+MF.restPose = function (b, posOf) {
+  var p = MF.parentBody(b);
+  return p ? MF.composePose(MF.parentFrame(b, posOf), b.pose) : b.pose;
+};
+
+// Bewegt sich der Körper in der Simulation? (eigene Achse oder an einem Körper)
+MF.isMoving = function (b) {
+  return b.kind !== 'dynamic' && (MF.hasAxis(b) || !!MF.parentBody(b));
+};
+
+// Fehlertext, wenn die Achse so nicht gültig ist, sonst ''
+MF.axisError = function (ax) {
+  function num(v) { return typeof v === 'number' && isFinite(v); }
+  if (ax.type !== 'linear' && ax.type !== 'rotary') return 'Achstyp muss "linear" oder "rotary" sein.';
+  if (!MF.FUNCTIONS.axis.MODES[ax.mode]) return 'Unbekannte Betriebsart "' + ax.mode + '".';
+  if (!(num(ax.min) && num(ax.max) && num(ax.vmax) && num(ax.returnDelay))) return 'min, max, vmax und returnDelay müssen Zahlen sein.';
+  if (ax.max < ax.min) return 'Grenze max ist kleiner als min.';
+  if (ax.vmax <= 0) return 'Tempo (vmax) muss größer als 0 sein.';
+  if (ax.returnDelay < 0) return 'Rückfahrverzug darf nicht negativ sein.';
+  var vec = function (v) { return Array.isArray(v) && v.length === 3 && v.every(num); };
+  if (!vec(ax.origin) || !vec(ax.dir)) return 'Ursprung und Richtung müssen [x, y, z] sein.';
+  var d = ax.dir;
+  if (Math.abs(d[0]) + Math.abs(d[1]) + Math.abs(d[2]) < 1e-9) return 'Die Achsrichtung ist null.';
+  if (ax.type === 'rotary' && (Math.abs(d[0]) > 1e-9 || Math.abs(d[1]) > 1e-9)) {
+    return 'Drehachsen gibt es nur um die Hochachse (Richtung [0, 0, 1] oder [0, 0, −1]); Kippen folgt später.';
+  }
+  return '';
+};
+
+// Achse ändern: changes mit type, mode, origin, dir, min, max, vmax, returnDelay.
+// Geprüft wird vorher; bei einem Fehler bleibt alles, wie es war. Signale werden
+// an eine neue Betriebsart angeglichen. Gibt einen Fehlertext zurück oder ''.
+MF.setAxis = function (body, changes) {
+  if (!body.axis) return body.name + ' hat keine Achse.';
+  var ax = JSON.parse(JSON.stringify(body.axis));
+  if (changes.type !== undefined && changes.type !== ax.type) {
+    if (!MF.AXIS.DEFAULTS[changes.type]) return 'Achstyp muss "linear" oder "rotary" sein.';
+    MF.setAxisType(ax, changes.type);
+  }
+  for (var k in changes) {
+    if (k === 'type') continue;
+    if (['mode', 'origin', 'dir', 'min', 'max', 'vmax', 'returnDelay'].indexOf(k) < 0) return 'Die Achse hat kein Feld "' + k + '".';
+    ax[k] = changes[k];
+  }
+  ['min', 'max'].forEach(function (k) { if (typeof ax[k] === 'number') ax[k] = MF.geom.round6(ax[k]); });
+  var err = MF.axisError(ax);
+  if (err) return err;
+  var before = MF.io(body).map(function (s) { return s.name; });
+  body.axis = ax;
+  MF.store.dropSignals(body.id, MF.syncIo(body, before));
+  return '';
 };
 
 // Eingänge auf ihre Startwerte, keine geforcten Ausgänge.
@@ -238,11 +503,19 @@ MF.vecDeg = function (v) {
   return MF.geom.normDeg(Math.atan2(v[1], v[0]) * 180 / Math.PI);
 };
 
+// Vorlagen (Katalog, Reiter "Komponenten"): jede beschreibt sich vollständig –
+//   label, icon (Symbol in index.html), prefix (IDs, z. B. "DT" -> DT1), color,
+//   group (Gruppe im Ribbon), hint (Hinweistext), make() (Körper ohne ID/Lage x, y)
+//   und props (Eigenschaften der Vorlage).
+// Oberfläche, Engine und Datei haben keine Sonderfälle je Vorlage: der Katalog
+// entsteht aus dieser Liste, alles Weitere aus den Funktionen des Körpers.
 // Eigenschaft der Vorlage: Lesen/Schreiben geht immer über die Funktionen.
 // key, label, type … wie das Eigenschaften-Panel sie zeigt; get/set greifen auf den Körper zu.
+// Ohne props zeigt das Panel die allgemeinen Felder der Funktionen (MF.FUNCTIONS[fn].fields).
 MF.templates = {
   source: {
-    label: 'Quelle', icon: 'i-source', prefix: 'Q', color: '#D9701A',
+    label: 'Quelle', icon: 'i-source', prefix: 'Q', color: '#D9701A', group: 'Materialfluss',
+    hint: 'Erzeugt im Takt Kisten und legt sie auf das Band darunter',
     make: function () {
       return {
         kind: 'ghost',
@@ -259,7 +532,8 @@ MF.templates = {
     ]
   },
   conveyor: {
-    label: 'Förderband', icon: 'i-conveyor', prefix: 'B', color: '#1B2430',
+    label: 'Förderband', icon: 'i-conveyor', prefix: 'B', color: '#1B2430', group: 'Materialfluss',
+    hint: 'Band (Transportfläche), das aufliegende Kisten mitnimmt; Oberkante 0,7 m',
     make: function () {
       return {
         kind: 'static',
@@ -279,7 +553,8 @@ MF.templates = {
     ]
   },
   sensor: {
-    label: 'Lichtschranke', icon: 'i-sensor', prefix: 'LS', color: '#1B2430',
+    label: 'Lichtschranke', icon: 'i-sensor', prefix: 'LS', color: '#1B2430', group: 'Sensoren',
+    hint: 'Meldet, ob eine Kiste den Strahl unterbricht (Belegt)',
     make: function () {
       return {
         kind: 'ghost',
@@ -295,7 +570,8 @@ MF.templates = {
     ]
   },
   pusher: {
-    label: 'Schieber', icon: 'i-pusher', prefix: 'S', color: '#1B2430',
+    label: 'Schieber', icon: 'i-pusher', prefix: 'S', color: '#1B2430', group: 'Aktoren',
+    hint: 'Schiebt Kisten quer vom Band (Achse linear, zweipunkt: Ausfahren)',
     make: function () {
       return {
         kind: 'kinematic',
@@ -319,7 +595,8 @@ MF.templates = {
     ]
   },
   sink: {
-    label: 'Senke', icon: 'i-sink', prefix: 'SE', color: '#1B2430',
+    label: 'Senke', icon: 'i-sink', prefix: 'SE', color: '#1B2430', group: 'Materialfluss',
+    hint: 'Nimmt Kisten auf und zählt sie (Anzahl); liegt etwas tiefer als das Band',
     make: function () {
       return {
         kind: 'ghost',
@@ -333,7 +610,89 @@ MF.templates = {
       { key: 'count', label: 'Zählerstand', type: 'number', readonly: true, live: true, hint: 'Aufgenommene Kisten', fn: 'sink',
         get: function (b) { return (b.rt && b.rt.count) || 0; } }
     ]
+  },
+
+  // ---------- Achsen (Phase 4) ----------
+  // Tische mit Band liegen 2 mm unter der Bandoberkante (0,7 m), damit Kisten
+  // vom Band sauber auffahren (Konzept, Abschnitt 4: nie exakt bündig). Ein
+  // abnehmendes Band dahinter wieder 2 mm tiefer legen.
+  turntable: {
+    label: 'Drehtisch', icon: 'i-turntable', prefix: 'DT', color: '#1B2430', group: 'Tische',
+    hint: 'Runder Tisch mit Band, dreht um die Hochachse auf einen Winkel: Soll (Grad) und Freigabe setzen, ' +
+      'InPosition meldet das Ziel. Liegt 2 mm unter der Bandoberkante',
+    make: function () {
+      return {
+        kind: 'kinematic',
+        shape: { type: 'circle', r: 0.4, h: 0.1 },
+        pose: { z: MF.BELT_TOP - 0.1 - 0.002 },
+        material: MF.MATERIALS.belt,
+        surface: { speed: 0.5, dir: 0, running: true },
+        axis: { type: 'rotary', origin: [0, 0, 0], dir: [0, 0, 1], min: -180, max: 180, vmax: 90, mode: 'position', returnDelay: 0 }
+      };
+    },
+    props: []
+  },
+  lift: {
+    label: 'Hubtisch', icon: 'i-lift', prefix: 'HT', color: '#1B2430', group: 'Tische',
+    hint: 'Tisch mit Band, fährt senkrecht nach oben: Ausfahren hebt um den Hub (max), Ausgefahren meldet oben. ' +
+      'Für beliebige Höhen Betriebsart Position wählen',
+    make: function () {
+      return {
+        kind: 'kinematic',
+        shape: { type: 'rect', w: 0.6, d: 0.5, h: 0.1 },
+        pose: { z: MF.BELT_TOP - 0.1 - 0.002 },
+        material: MF.MATERIALS.belt,
+        surface: { speed: 0.5, dir: 0, running: true },
+        axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 0, 1], min: 0, max: 0.3, vmax: 0.2, mode: 'zweipunkt', returnDelay: 0 }
+      };
+    },
+    props: []
+  },
+  stopper: {
+    label: 'Stopper', icon: 'i-stopper', prefix: 'ST', color: '#1B2430', group: 'Aktoren',
+    hint: 'Sperre quer im Band: Ausfahren hebt sie aus der Bandebene und hält Kisten an, Einfahren gibt sie frei. ' +
+      'Eingefahren liegt sie 2 cm unter der Bandoberkante',
+    make: function () {
+      return {
+        kind: 'kinematic',
+        shape: { type: 'rect', w: 0.05, d: 0.4, h: 0.08 },
+        pose: { z: MF.BELT_TOP - 0.1 },
+        // Gleitbelag: mit Stahl zieht der einfahrende Stopper die vorderste Kiste
+        // eines Staus mit nach unten, sie hakt an seiner Kante ein
+        material: MF.MATERIALS.slide,
+        axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 0, 1], min: 0, max: 0.14, vmax: 0.5, mode: 'zweipunkt', returnDelay: 0 }
+      };
+    },
+    props: []
+  },
+  diverter: {
+    label: 'Weiche', icon: 'i-diverter', prefix: 'W', color: '#1B2430', group: 'Aktoren',
+    hint: 'Schwenkarm über dem Band, dreht um sein linkes Ende: Ausfahren schwenkt ihn um 45° quer über das Band ' +
+      'und lenkt Kisten zur Seite auf ein abgehendes Band. An die obere Bandkante legen',
+    make: function () {
+      return {
+        kind: 'kinematic',
+        shape: { type: 'rect', w: 0.8, d: 0.05, h: 0.15 },
+        pose: { z: MF.BELT_TOP + 0.02 },
+        // Gleitbelag: Kisten rutschen am Arm entlang statt hängenzubleiben
+        material: MF.MATERIALS.slide,
+        axis: { type: 'rotary', origin: [-0.4, 0, 0], dir: [0, 0, 1], min: 0, max: 45, vmax: 90, mode: 'zweipunkt', returnDelay: 0 }
+      };
+    },
+    props: []
   }
+};
+
+// Gruppen des Katalogs in der Reihenfolge ihres ersten Auftretens:
+// [{ name, templates: ['source', …] }]
+MF.templateGroups = function () {
+  var out = [], byName = {};
+  Object.keys(MF.templates).forEach(function (k) {
+    var g = MF.templates[k].group || 'Weitere';
+    if (!byName[g]) { byName[g] = { name: g, templates: [] }; out.push(byName[g]); }
+    byName[g].templates.push(k);
+  });
+  return out;
 };
 
 // Symbol im Baum und im Panel: das der Vorlage, sonst ein allgemeiner Körper
@@ -366,8 +725,10 @@ MF.getProp = function (body, key) {
 MF.setProp = function (body, key, v) {
   var p = MF.propDef(body, key);
   if (!p || p.readonly) return false;
+  var before = MF.io(body).map(function (s) { return s.name; });
   if (p.set) p.set(body, v);
   else if (body[p.fn]) body[p.fn][p.field] = v;
+  MF.store.dropSignals(body.id, MF.syncIo(body, before));
   return true;
 };
 
@@ -507,7 +868,14 @@ MF.setKind = function (body, kind, dryRun) {
     if (body[fn] && MF.FUNCTIONS[fn].kinds.indexOf(kind) < 0) res.fns.push(fn);
   });
   res.slope = kind !== 'static' && MF.geom.isSloped(body.shape);
+  // Dynamische Körper bewegen sich nur mit der Physik: Kopplung (an einem Körper
+  // hängen oder Körper tragen) wird gelöst, alle bleiben dort, wo sie gerade sind.
+  res.couple = kind === 'dynamic' && (!!MF.parentBody(body) || MF.childBodies(body).length > 0);
   if (dryRun || kind === body.kind) return res;
+  if (res.couple) {
+    MF.childBodies(body).forEach(function (c) { MF.store.reparent(c, MF.store.folderOf(body, 'plant')); });
+    if (MF.parentBody(body)) MF.store.reparent(body, MF.store.folderOf(body, 'plant'));
+  }
   var before = MF.io(body).map(function (s) { return s.name; });
   body.kind = kind;
   res.fns.forEach(function (fn) { body[fn] = null; });
@@ -732,10 +1100,14 @@ MF.store = {
   },
 
   // Körper entfernen. Regeln, die seine Signale benutzen, verlieren den Bezug.
+  // Körper, die an ihm hängen, bleiben, wo sie sind, und hängen danach eine Ebene höher.
   deleteBody: function (id) {
     var bs = MF.model.bodies;
-    var i = bs.indexOf(this.findBody(id));
+    var b = this.findBody(id);
+    var i = bs.indexOf(b);
     if (i < 0) return false;
+    var self = this;
+    MF.childBodies(b).forEach(function (c) { self.reparent(c, self.parentOf(b, 'plant')); });
     bs.splice(i, 1);
     MF.model.rules.forEach(function (r) {
       if (r.when && r.when.indexOf(id + '.') === 0) r.when = '';
@@ -793,11 +1165,12 @@ MF.store = {
     return true;
   },
 
-  // ---------- Strukturbaum: Ordner ----------
+  // ---------- Strukturbaum: Ordner und Kopplung ----------
   //
-  // "parent" ist bewusst allgemein gehalten: heute Ordner-ID oder null, im
-  // 3D-Umbau (Phase 4) dürfen dort auch Körper-IDs stehen (Kopplung). Alle
-  // Funktionen fragen deshalb über parentOf()/childrenOf() und nicht direkt nach Ordnern.
+  // "parent" ist eine Ordner-ID, null (oberste Ebene) oder – nur bei Körpern –
+  // die ID eines Körpers (Kopplung, Phase 4): der Körper hängt im Baum unter dem
+  // anderen und bewegt sich mit ihm. Alle Funktionen fragen über parentOf()/
+  // childrenOf() und nicht direkt nach Ordnern; folderOf() liefert den Ordner.
 
   AREAS: { plant: 'Anlage', logic: 'Logik' },
 
@@ -828,10 +1201,62 @@ MF.store = {
     return n ? n.area : null;
   },
 
-  // Gültiger Eltern-Ordner eines Objekts; unbekannte Verweise zählen als oberste Ebene.
+  // Gültiger Eltern-Knoten eines Objekts: Ordner im Bereich oder (bei Körpern)
+  // ein anderer Körper. Unbekannte Verweise zählen als oberste Ebene.
   parentOf: function (obj, area) {
-    var f = obj && obj.parent ? this.findFolder(obj.parent) : null;
-    return f && f.area === area ? f.id : null;
+    if (!obj || !obj.parent) return null;
+    var f = this.findFolder(obj.parent);
+    if (f) return f.area === area ? f.id : null;
+    if (area !== 'plant' || !obj.shape) return null;
+    var p = this.findBody(obj.parent);
+    return p && p !== obj ? p.id : null;
+  },
+
+  // Ordner, in dem ein Objekt liegt – bei gekoppelten Körpern der Ordner des Elternkörpers
+  folderOf: function (obj, area) {
+    var p = this.parentOf(obj, area), guard = 0;
+    while (p && guard++ < 100) {
+      if (this.findFolder(p)) return p;
+      p = this.parentOf(this.findBody(p), area);
+    }
+    return null;
+  },
+
+  // Körper an einen neuen Eltern-Knoten hängen (Ordner, Körper oder null), ohne
+  // dass er sich in der Welt bewegt: seine Lage wird ins neue Koordinatensystem
+  // umgerechnet (Achsen in ihrer aktuellen Stellung). Prüft nichts (moveError).
+  reparent: function (b, parent) {
+    var oldBody = MF.parentBody(b);
+    var newBody = parent ? this.findBody(parent) : null;
+    if (oldBody || newBody) {
+      var world = MF.restPose(b);
+      b.parent = parent || null;
+      b.pose = MF.relativePose(newBody ? MF.poseInWorld(newBody) : MF.WORLD, world);
+    } else {
+      b.parent = parent || null;
+    }
+  },
+
+  // Name des Ziels für Meldungen: Ordnerpfad, Körpername oder Bereich
+  placeName: function (parent, area) {
+    var b = parent ? this.findBody(parent) : null;
+    if (b) return b.name;
+    return parent ? this.folderPath(parent).join(' / ') : this.AREAS[area];
+  },
+
+  // Darf Körper b an den Körper target gehängt werden? Fehlertext oder ''
+  coupleError: function (b, target) {
+    if (target === b) return 'Ein Körper kann nicht an sich selbst hängen.';
+    if (this.isWithin(target.id, b.id)) return target.name + ' hängt an ' + b.name + ' – Kopplung im Kreis ist nicht möglich.';
+    if (b.kind === 'dynamic') return b.name + ' ist dynamisch und bewegt sich nur mit der Physik – keine Kopplung möglich.';
+    if (target.kind === 'dynamic') return target.name + ' ist dynamisch – an ihn lässt sich nichts koppeln.';
+    if (MF.parentBody(target)) {
+      return 'Höchstens zwei Ebenen: ' + target.name + ' hängt selbst an einem Körper (tiefere Ketten folgen später).';
+    }
+    if (MF.childBodies(b).length) {
+      return 'Höchstens zwei Ebenen: an ' + b.name + ' hängen selbst Körper (tiefere Ketten folgen später).';
+    }
+    return '';
   },
 
   // Direkte Kinder: { folders: [...], items: [...] } in Array-Reihenfolge
@@ -847,7 +1272,8 @@ MF.store = {
   },
 
   // Körper bzw. Regeln in Baum-Reihenfolge (Tiefensuche: erst die Ordner einer
-  // Ebene mit ihrem ganzen Inhalt, dann die Körper/Regeln dieser Ebene).
+  // Ebene mit ihrem ganzen Inhalt, dann die Körper/Regeln dieser Ebene, jeder
+  // Körper gefolgt von den Körpern, die an ihm hängen).
   // folder: nur den Inhalt dieses Ordners (samt Unterordnern) liefern.
   treeOrder: function (area, folder) {
     var self = this, out = [], seen = {};
@@ -856,7 +1282,10 @@ MF.store = {
       seen[parent] = true;
       var c = self.childrenOf(area, parent);
       c.folders.forEach(function (f) { walk(f.id); });
-      c.items.forEach(function (o) { out.push(o); });
+      c.items.forEach(function (o) {
+        out.push(o);
+        if (area === 'plant') walk(o.id);
+      });
     })(folder || null);
     return out;
   },
@@ -946,6 +1375,10 @@ MF.store = {
     var n = this.findNode(id);
     if (!n) return 'Unbekannter Knoten.';
     if (n.area !== area) return 'Nur innerhalb von "' + this.AREAS[n.area] + '" verschiebbar.';
+    if (parent && area === 'plant' && this.findBody(parent)) {
+      if (n.kind !== 'body') return 'Nur Körper lassen sich an einen Körper hängen.';
+      return this.coupleError(n.obj, this.findBody(parent));
+    }
     if (parent) {
       var p = this.findFolder(parent);
       if (!p || p.area !== area) return 'Ziel ist kein Ordner in "' + this.AREAS[area] + '".';
@@ -968,8 +1401,10 @@ MF.store = {
     var nodes = ids.map(function (id) { return self.findNode(id); });
     nodes.forEach(function (n) {
       var arr = n.kind === 'folder' ? MF.model.folders : self.itemsOf(area);
+      // Körper bleiben beim Koppeln und Lösen dort, wo sie in der Welt sind
+      if (n.kind === 'body') self.reparent(n.obj, parent);
+      else n.obj.parent = parent;
       arr.splice(arr.indexOf(n.obj), 1);
-      n.obj.parent = parent;
     });
     nodes.forEach(function (n) {
       var arr = n.kind === 'folder' ? MF.model.folders : self.itemsOf(area);

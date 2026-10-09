@@ -16,6 +16,10 @@
       <symbol id="i-conveyor" viewBox="0 0 16 16"><rect x="1" y="5" width="14" height="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 5v6M8 5v6M12 5v6" stroke="currentColor" stroke-width="1"/></symbol>
       <symbol id="i-sensor" viewBox="0 0 16 16"><rect x="1" y="2" width="4" height="4" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="10" width="4" height="4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 6l6 4" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 1.5"/></symbol>
       <symbol id="i-pusher" viewBox="0 0 16 16"><rect x="1" y="4" width="5" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 8h6" stroke="currentColor" stroke-width="1.5"/><rect x="12" y="5" width="2" height="6" fill="currentColor"/></symbol>
+      <symbol id="i-turntable" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 8h8M10 6l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M12.5 2.8a6.5 6.5 0 0 1 2 3" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+      <symbol id="i-lift" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 6l3 4 3-4M5 14l3-4 3 4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 14.5h12" stroke="currentColor" stroke-width="1.5"/></symbol>
+      <symbol id="i-stopper" viewBox="0 0 16 16"><path d="M1 10h14" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="3" width="2.5" height="10" fill="currentColor"/><path d="M2 7.5h5M5.5 6l1.5 1.5L5.5 9" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+      <symbol id="i-diverter" viewBox="0 0 16 16"><path d="M1 5h14M1 11h8M9 11v4M15 11v4" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M3 5.5l7.5 7" stroke="currentColor" stroke-width="2"/><circle cx="3" cy="5.5" r="1.3" fill="currentColor"/></symbol>
       <symbol id="i-body" viewBox="0 0 16 16"><path d="M2 5l6-3 6 3v6l-6 3-6-3z M2 5l6 3 6-3 M8 8v6" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
       <symbol id="i-sink" viewBox="0 0 16 16"><path d="M2 3v11h12V3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 7l3 3 3-3M8 2v8" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
       <!-- Baum -->
@@ -157,28 +161,8 @@
         </div>
       </div>
 
-      <div class="ribbon-page" data-page="komponenten" hidden>
-        <div class="rgroup">
-          <div class="rgroup-items">
-            <button class="rbtn" data-create="source" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-source"/></svg><span>Quelle</span></button>
-            <button class="rbtn" data-create="conveyor" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-conveyor"/></svg><span>Förderband</span></button>
-            <button class="rbtn" data-create="sink" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-sink"/></svg><span>Senke</span></button>
-          </div>
-          <div class="rgroup-label">Materialfluss</div>
-        </div>
-        <div class="rgroup">
-          <div class="rgroup-items">
-            <button class="rbtn" data-create="sensor" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-sensor"/></svg><span>Lichtschranke</span></button>
-          </div>
-          <div class="rgroup-label">Sensoren</div>
-        </div>
-        <div class="rgroup">
-          <div class="rgroup-items">
-            <button class="rbtn" data-create="pusher" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-pusher"/></svg><span>Schieber</span></button>
-          </div>
-          <div class="rgroup-label">Aktoren</div>
-        </div>
-      </div>
+      <!-- Katalog: entsteht aus MF.templates (ui/ui.js, buildCatalog), Gruppen aus template.group -->
+      <div class="ribbon-page" data-page="komponenten" id="catalog-ribbon" hidden></div>
 
       <div class="ribbon-page" data-page="logik" hidden>
         <div class="rgroup">
@@ -292,13 +276,7 @@
         <svg><use href="#i-plus"/></svg>
         <span>Bibliothek</span>
       </div>
-      <div class="library" aria-label="Bibliothek">
-        <button class="lib-item" data-create="source" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-source"/></svg><span>Quelle</span></button>
-        <button class="lib-item" data-create="conveyor" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-conveyor"/></svg><span>Förderband</span></button>
-        <button class="lib-item" data-create="sensor" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-sensor"/></svg><span>Lichtschranke</span></button>
-        <button class="lib-item" data-create="pusher" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-pusher"/></svg><span>Schieber</span></button>
-        <button class="lib-item" data-create="sink" title="Auf die Fläche ziehen oder klicken"><svg><use href="#i-sink"/></svg><span>Senke</span></button>
-      </div>
+      <div class="library" id="catalog-library" aria-label="Bibliothek"></div>
     </aside>
 
     <div class="splitter" data-side="left" role="separator" aria-orientation="vertical" aria-label="Breite Strukturbaum" tabindex="0"></div>

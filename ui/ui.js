@@ -7,6 +7,7 @@ MF.ui = {
 
   init: function () {
     this.app = document.getElementById('app');
+    this.buildCatalog();
     this.initRibbonTabs();
     this.initActions();
     this.initSplitters();
@@ -14,6 +15,45 @@ MF.ui = {
     this.initSimControls();
     this.initFileKeys();
     this.updateStatus();
+  },
+
+  // ---------- Katalog (Reiter "Komponenten" und Bibliothek) ----------
+
+  // Knöpfe aus den Vorlagen (MF.templates): je Gruppe ein Abschnitt im Ribbon,
+  // in der Bibliothek alle in Reihenfolge der Vorlagen. Ziehen bzw. Klicken
+  // erledigt der Editor über data-create. Neue Vorlagen erscheinen so von selbst.
+  buildCatalog: function () {
+    var ribbon = document.getElementById('catalog-ribbon');
+    var lib = document.getElementById('catalog-library');
+    function button(cls, key) {
+      var t = MF.templates[key], b = document.createElement('button');
+      b.className = cls;
+      b.dataset.create = key;
+      b.title = t.label + (t.hint ? ': ' + t.hint : '') + ' – auf die Fläche ziehen oder klicken';
+      b.innerHTML = '<svg><use href="#' + t.icon + '"/></svg><span></span>';
+      b.querySelector('span').textContent = t.label;
+      return b;
+    }
+    if (ribbon) {
+      ribbon.innerHTML = '';
+      MF.templateGroups().forEach(function (g) {
+        var group = document.createElement('div');
+        group.className = 'rgroup';
+        var items = document.createElement('div');
+        items.className = 'rgroup-items';
+        g.templates.forEach(function (k) { items.appendChild(button('rbtn', k)); });
+        var label = document.createElement('div');
+        label.className = 'rgroup-label';
+        label.textContent = g.name;
+        group.appendChild(items);
+        group.appendChild(label);
+        ribbon.appendChild(group);
+      });
+    }
+    if (lib) {
+      lib.innerHTML = '';
+      Object.keys(MF.templates).forEach(function (k) { lib.appendChild(button('lib-item', k)); });
+    }
   },
 
   // ---------- Simulation: Zeitfaktor, Zeitschritt, Tastenkürzel ----------

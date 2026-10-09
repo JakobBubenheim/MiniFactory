@@ -3,7 +3,8 @@
 // Aufbau nach WAI-ARIA "tree": Pfeiltasten, F2 zum Umbenennen, Suche filtert.
 // - Strg/Cmd+Klick und Shift+Klick wählen mehrere Einträge (für Ziehen, Strg+G, Löschen).
 // - Ziehen: Elemente, Regeln und Ordner in Ordner legen oder innerhalb einer Ebene
-//   umsortieren – nur im eigenen Bereich (Anlage bzw. Logik).
+//   umsortieren – nur im eigenen Bereich (Anlage bzw. Logik). Einen Körper auf
+//   einen anderen Körper ziehen koppelt ihn (er bewegt sich mit, Konzept Abschnitt 2).
 // - Rechtsklick (oder Shift+F10 / Kontextmenü-Taste) öffnet das Menü.
 window.MF = window.MF || {};
 
@@ -70,8 +71,8 @@ MF.tree = {
     var p = MF.store.parentOf(n.obj, n.area);
     while (p && guard++ < 1000) {
       this.folded[p] = false;
-      var f = MF.store.findFolder(p);
-      p = f ? MF.store.parentOf(f, f.area) : null;
+      var f = MF.store.findNode(p);   // Ordner oder Elternkörper (Kopplung)
+      p = f ? MF.store.parentOf(f.obj, f.area) : null;
     }
   },
 
@@ -90,7 +91,12 @@ MF.tree = {
         seen[f.id] = true;   // Schutz vor Zyklen
         return { id: f.id, label: f.name, icon: 'i-folder', kind: 'folder', folder: f, area: area, children: kids(area, f.id) };
       }).concat(c.items.map(function (o) {
-        if (area === 'plant') return { id: o.id, label: o.name, icon: MF.bodyIcon(o), kind: o.template || o.kind, el: o, area: area };
+        if (area === 'plant') {
+          // Gekoppelte Körper hängen im Baum unter ihrem Elternkörper
+          var sub = seen[o.id] ? [] : (seen[o.id] = true, kids(area, o.id));
+          return { id: o.id, label: o.name, icon: MF.bodyIcon(o), kind: o.template || o.kind, el: o, area: area,
+            children: sub.length ? sub : undefined };
+        }
         return { id: o.id, label: o.name, icon: 'i-rule', kind: 'rule', rule: o, area: area, sclNo: sclNo[o.id] };
       }));
     }
@@ -408,7 +414,8 @@ MF.tree = {
     var n = MF.store.findNode(id);
     if (!n) return null;
     if (n.kind === 'folder') return { area: n.area, parent: n.obj.id };
-    return { area: n.area, parent: MF.store.parentOf(n.obj, n.area) };
+    // Neben einem gekoppelten Körper: in seinen Ordner (neue Körper werden nicht gekoppelt)
+    return { area: n.area, parent: MF.store.folderOf(n.obj, n.area) };
   },
 
   // Neuer Ordner im Bereich area unter parent; startet im Umbenennen-Modus.
@@ -437,7 +444,7 @@ MF.tree = {
     var area = MF.store.areaOf(sel[0]);
     sel = this.topLevel(sel.filter(function (id) { return MF.store.areaOf(id) === area; }));
     var first = MF.store.findNode(sel[0]);
-    var parent = MF.store.parentOf(first.obj, area);
+    var parent = MF.store.folderOf(first.obj, area);
     var f = MF.store.createFolder(area, parent);
     // Neuer Ordner an die Stelle des ersten ausgewählten Ordners, sonst ans Ende der Ordner
     if (first.kind === 'folder') {
@@ -482,7 +489,7 @@ MF.tree = {
     ids = this.topLevel(ids);
     if (MF.store.moveNodes(ids, area, parent, null)) {
       this.folded[parent || area] = false;
-      var where = parent ? MF.store.folderPath(parent).join(' / ') : MF.store.AREAS[area];
+      var where = MF.store.placeName(parent, area);
       MF.ui.message((ids.length === 1 ? MF.store.findNode(ids[0]).obj.name : ids.length + ' Einträge') + ' nach "' + where + '" verschoben.');
     }
   },
@@ -676,12 +683,14 @@ MF.tree = {
       var t = self.drag.target;
       var d = self.drag;
       self.endDrag();
+      if (t && !t.ok && t.err) MF.ui.message(t.err);
       if (!t || !t.ok) return;
       if (MF.store.moveNodes(d.ids, d.area, t.parent, t.beforeId)) {
         self.folded[t.parent || d.area] = false;
-        var where = t.parent ? MF.store.folderPath(t.parent).join(' / ') : MF.store.AREAS[d.area];
-        MF.ui.message((d.ids.length === 1 ? MF.store.findNode(d.ids[0]).obj.name : d.ids.length + ' Einträge') +
-          (t.mode === 'inside' ? ' nach "' + where + '" verschoben.' : ' umsortiert (' + where + ').'));
+        var where = MF.store.placeName(t.parent, d.area);
+        var names = d.ids.length === 1 ? MF.store.findNode(d.ids[0]).obj.name : d.ids.length + ' Einträge';
+        if (t.mode === 'inside' && MF.store.findBody(t.parent)) MF.ui.message(names + ' an ' + where + ' gekoppelt – bewegt sich mit.');
+        else MF.ui.message(names + (t.mode === 'inside' ? ' nach "' + where + '" verschoben.' : ' umsortiert (' + where + ').'));
       }
     });
 
@@ -725,6 +734,9 @@ MF.tree = {
       // Ordner können davor, hinein oder dahinter.
       if (onlyItems || (y >= 0.25 && (y <= 0.75 || open))) t.mode = 'inside';
       else t.mode = y < 0.25 ? 'before' : 'after';
+    } else if (n.kind === 'body' && onlyItems) {
+      // Körper auf einen Körper: in der Mitte koppeln, am Rand davor/dahinter einsortieren
+      t.mode = y >= 0.3 && y <= 0.7 ? 'inside' : y < 0.5 ? 'before' : 'after';
     } else {
       t.mode = y < 0.5 ? 'before' : 'after';
     }
@@ -745,10 +757,12 @@ MF.tree = {
         t.beforeId = next ? next.id : null;
       }
     }
-    // Nicht auf sich selbst, kein Ordner in sich selbst oder seine Kinder
-    t.ok = d.ids.indexOf(id) < 0 && d.ids.every(function (x) {
-      return !MF.store.moveError(x, d.area, t.parent);
-    });
+    // Nicht auf sich selbst, kein Ordner in sich selbst oder seine Kinder,
+    // Kopplung nur nach den Regeln (MF.store.coupleError); der Grund steht im Tooltip
+    t.err = '';
+    d.ids.forEach(function (x) { if (!t.err) t.err = MF.store.moveError(x, d.area, t.parent); });
+    t.ok = d.ids.indexOf(id) < 0 && !t.err;
+    t.li.title = t.ok ? '' : t.err;
     return t;
   },
 

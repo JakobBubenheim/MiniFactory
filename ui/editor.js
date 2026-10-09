@@ -274,20 +274,72 @@ MF.editor = {
   handleCursor: function (h) {
     if (h.kind === 'rotate') return this.ROTATE_CURSOR;
     if (h.kind === 'vertex') return 'crosshair';
+    if (h.kind === 'axis') return h.part === 'origin' ? 'move' : 'grab';
     var b = MF.store.findBody(MF.store.selectedId);
     var c = b ? MF.sim.toScreen(MF.sim.drawPose(b).x, MF.sim.drawPose(b).y) : h;
     var a = (Math.atan2(h.y - c.y, h.x - c.x) * 180 / Math.PI + 360) % 180;
     return a < 22.5 || a >= 157.5 ? 'ew-resize' : a < 67.5 ? 'nwse-resize' : a < 112.5 ? 'ns-resize' : 'nesw-resize';
   },
 
+  // Weltpunkt w -> Koordinaten, in denen b.pose gilt (Eltern-Körper bzw. Welt,
+  // eigene Achse in Stellung 0). draw = gezeichnete Lage, pose = Modell-Lage beim
+  // Anfassen: der Punkt behält seine Lage relativ zum Körper.
+  modelPoint: function (draw, pose, w) {
+    var l = MF.geom.toLocal(draw, w.x, w.y);
+    return MF.geom.toWorld(pose, l.x, l.y);
+  },
+
+  // Achs-Griff ziehen (Ursprung, Grenzen, Richtung). Gerechnet wird im
+  // Koordinatensystem des Körpers mit Achse in Stellung 0 (drag.rest0).
+  applyAxisHandle: function (drag, w, e) {
+    var b = drag.el, ax = drag.axis0, G = MF.geom, part = drag.h.part;
+    var snap = MF.model.settings.snap, off = e.altKey, ch = {}, label;
+    var l = G.toLocal(drag.rest0, w.x, w.y), o = ax.origin;
+    var astep = !off && snap.on !== false ? snap.angle || 5 : 0.1;
+    var unit = MF.axisUnit(ax).pos;
+    if (part === 'origin') {
+      var q = G.snapPoint(l.x, l.y, snap, off);
+      ch.origin = [q.x, q.y, o[2]];
+      label = 'Ursprung ' + this.fmtLen(q.x) + ' | ' + this.fmtLen(q.y) + ' m';
+    } else if (part === 'dir') {
+      var deg = G.snapAngle(Math.atan2(l.y - o[1], l.x - o[0]) * 180 / Math.PI, snap, off), d = G.dirVec(deg);
+      ch.dir = [d.x, d.y, 0];
+      label = 'Richtung ' + MF.props.formatNumber(deg) + '°';
+    } else if (ax.type === 'rotary') {
+      // Winkel ab der lokalen x-Achse, stetig fortgesetzt (Grenzen auch über ±180°)
+      var sign = ax.dir[2] < 0 ? -1 : 1, prev = ax[part];
+      var a = sign * Math.atan2(l.y - o[1], l.x - o[0]) * 180 / Math.PI;
+      a += 360 * Math.round((prev - a) / 360);
+      ch[part] = G.round6(Math.round(a / astep) * astep);
+    } else {
+      var d0 = ax.dir, len = Math.sqrt(d0[0] * d0[0] + d0[1] * d0[1] + d0[2] * d0[2]) || 1;
+      var ux = d0[0] / len, uy = d0[1] / len;
+      ch[part] = G.snapLen(((l.x - o[0]) * ux + (l.y - o[1]) * uy) / (ux * ux + uy * uy), snap, off);
+    }
+    if (part === 'min' || part === 'max') {
+      // Grenzen tauschen nicht die Seite: min bleibt höchstens max
+      if (part === 'min') ch.min = Math.min(ch.min, ax.max);
+      else ch.max = Math.max(ch.max, ax.min);
+      label = (part === 'min' ? 'min ' : 'max ') + MF.props.formatNumber(ch[part]) + ' ' + unit;
+    }
+    var err = MF.setAxis(b, ch);
+    var sp = MF.sim.toScreen(w.x, w.y);
+    MF.sim.editLabel = { text: err || label, x: sp.x, y: sp.y };
+    drag.err = err;
+    if (!err) MF.store.changed();
+    else MF.sim.draw();
+  },
+
   // Griff ziehen: neue Form bzw. Lage aus der Mausposition (Welt, m).
   // drag.pose0/shape0 = Stand beim Anfassen; Fehler (z. B. Selbstschnitt) lassen
   // die letzte gültige Form stehen und zeigen den Grund am Mauszeiger.
   applyHandle: function (drag, w, e) {
+    if (drag.h.kind === 'axis') { this.applyAxisHandle(drag, w, e); return; }
     var b = drag.el, h = drag.h, pose = drag.pose0, sh = drag.shape0, G = MF.geom;
     var snap = MF.model.settings.snap, off = e.altKey;
     var step = G.snapStep(snap, off), ch = {}, label;
-    w = { x: w.x - drag.shift.x, y: w.y - drag.shift.y };   // kinematisch: Achsstellung abziehen
+    var w0 = w;
+    w = this.modelPoint(drag.draw0, pose, w);   // Achse, Kopplung: zurück ins Koordinatensystem der Lage
     if (h.kind === 'rotate') {
       ch.rot = G.snapAngle(Math.atan2(w.y - pose.y, w.x - pose.x) * 180 / Math.PI + 90, snap, off);
       label = MF.props.formatNumber(ch.rot) + '°';
@@ -318,7 +370,7 @@ MF.editor = {
       label = this.fmtLen(lens[(h.i + n - 1) % n]) + ' m | ' + this.fmtLen(lens[h.i]) + ' m';
     }
     var err = MF.setForm(b, ch);
-    var s = MF.sim.toScreen(w.x + drag.shift.x, w.y + drag.shift.y);
+    var s = MF.sim.toScreen(w0.x, w0.y);
     MF.sim.editLabel = { text: err || label, x: s.x, y: s.y };
     drag.err = err;
     if (!err) MF.store.changed();
@@ -522,11 +574,11 @@ MF.editor = {
       var sel = MF.store.findBody(MF.store.selectedId);
       var h = e.button === 0 && self.handlesFor(sel) ? self.handleAt(sel, p) : null;
       if (h) {
-        var dp = MF.sim.drawPose(sel);
         drag = { mode: 'handle', el: sel, h: h, sx: p.x, sy: p.y, active: false,
           pose0: { x: sel.pose.x, y: sel.pose.y, z: sel.pose.z, rot: sel.pose.rot },
           shape0: JSON.parse(JSON.stringify(sel.shape)),
-          shift: { x: dp.x - sel.pose.x, y: dp.y - sel.pose.y } };
+          draw0: MF.sim.drawPose(sel), rest0: MF.sim.restDrawPose(sel),
+          axis0: sel.axis ? JSON.parse(JSON.stringify(sel.axis)) : null };
         canvas.setPointerCapture(e.pointerId);
         return;
       }
@@ -538,8 +590,10 @@ MF.editor = {
       if (e.button === 0) MF.store.select(hit ? hit.id : null);
 
       if (hit && self.tool === 'move') {
-        var w = MF.sim.toWorld(p.x, p.y);
-        drag = { mode: 'move', el: hit, wx: w.x, wy: w.y, ox: hit.pose.x, oy: hit.pose.y, sx: p.x, sy: p.y, active: false };
+        var dp = MF.sim.drawPose(hit), p0 = { x: hit.pose.x, y: hit.pose.y, rot: hit.pose.rot };
+        var w = self.modelPoint(dp, p0, MF.sim.toWorld(p.x, p.y));
+        drag = { mode: 'move', el: hit, wx: w.x, wy: w.y, ox: hit.pose.x, oy: hit.pose.y, sx: p.x, sy: p.y, active: false,
+          draw0: dp, pose0: p0 };
       } else {
         // Ansicht ziehen – auch über Körpern, damit Auswählen/Drehen nichts verschiebt.
         // Ein Klick ohne Ziehen dreht beim Werkzeug "Drehen" den Körper.
@@ -561,7 +615,7 @@ MF.editor = {
         var sel = MF.store.findBody(MF.store.selectedId);
         var h = self.handlesFor(sel) ? self.handleAt(sel, p) : null;
         var changed = (h && h.kind) !== (self.hotHandle && self.hotHandle.kind) ||
-          (h && (h.sx !== self.hotHandle.sx || h.sy !== self.hotHandle.sy || h.i !== self.hotHandle.i));
+          (h && (h.sx !== self.hotHandle.sx || h.sy !== self.hotHandle.sy || h.i !== self.hotHandle.i || h.part !== self.hotHandle.part));
         self.hotHandle = h;
         if (changed) MF.sim.draw();
         self.updateCursor(h ? null : MF.sim.hitTest(p.x, p.y), h);
@@ -590,6 +644,7 @@ MF.editor = {
         self.applyHandle(drag, w, e);
         return;
       }
+      w = self.modelPoint(drag.draw0, drag.pose0, w);   // gekoppelt oder gedreht: im Koordinatensystem der Lage
 
       var nx = self.snapValue(drag.ox + (w.x - drag.wx), e.altKey);
       var ny = self.snapValue(drag.oy + (w.y - drag.wy), e.altKey);
@@ -603,7 +658,9 @@ MF.editor = {
     // Esc während des Ziehens: Form und Lage wie beim Anfassen
     this.cancelDrag = function () {
       if (!drag || !drag.active || (drag.mode !== 'handle' && drag.mode !== 'move')) return false;
-      if (drag.mode === 'handle') {
+      if (drag.mode === 'handle' && drag.h.kind === 'axis') {
+        MF.setAxis(drag.el, drag.axis0);
+      } else if (drag.mode === 'handle') {
         MF.setForm(drag.el, { x: drag.pose0.x, y: drag.pose0.y, rot: drag.pose0.rot });
         drag.el.shape = drag.shape0;
       } else {
@@ -632,8 +689,11 @@ MF.editor = {
           ' m, y ' + MF.props.formatNumber(drag.el.pose.y) + ' m verschoben.');
       }
       if (drag && drag.mode === 'handle' && drag.active) {
-        var b = drag.el, sh = b.shape;
-        var what = drag.h.kind === 'rotate' ? 'auf ' + MF.props.formatNumber(b.pose.rot) + '° gedreht'
+        var b = drag.el, sh = b.shape, ax = b.axis, u = ax ? ' ' + MF.axisUnit(ax).pos : '';
+        var what = drag.h.kind === 'axis' ? (drag.h.part === 'origin' ? 'Achsursprung verschoben'
+            : drag.h.part === 'dir' ? 'Achsrichtung geändert'
+            : 'Achse ' + MF.props.formatNumber(ax.min) + ' … ' + MF.props.formatNumber(ax.max) + u)
+          : drag.h.kind === 'rotate' ? 'auf ' + MF.props.formatNumber(b.pose.rot) + '° gedreht'
           : drag.h.kind === 'vertex' ? 'Punkt ' + (drag.h.i + 1) + ' verschoben'
           : sh.type === 'circle' ? 'Radius ' + self.fmtLen(sh.r) + ' m'
           : 'Größe ' + self.fmtLen(sh.w) + ' × ' + self.fmtLen(sh.d) + ' m';
@@ -748,6 +808,13 @@ MF.editor = {
     var el = MF.store.findBody(MF.store.selectedId);
     if (!el) return false;
     if (el.look.locked) { MF.ui.message(el.name + ' ist gesperrt.'); return true; }
+    // Gekoppelt oder gedreht: Pfeil nach rechts verschiebt auch auf der Fläche nach rechts
+    var a = MF.geom.rad(MF.sim.drawPose(el).rot - el.pose.rot);
+    if (a) {
+      var c = Math.cos(a), s = Math.sin(a), lx = dx * c + dy * s;
+      dy = -dx * s + dy * c;
+      dx = lx;
+    }
     el.pose.x = Math.round((el.pose.x + dx) * 1e6) / 1e6;
     el.pose.y = Math.round((el.pose.y + dy) * 1e6) / 1e6;
     MF.store.changed();

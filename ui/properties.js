@@ -276,6 +276,7 @@ MF.props = {
       this.field(s1, { label: 'Vorlage', type: 'text', readonly: true, hint: 'Vorlagen sind vorkonfigurierte Körper und lassen sich danach frei ändern' },
         t ? t.label : 'keine (gezeichnet)');
       this.folderField(s1, el, 'plant');
+      this.coupleField(s1, el);
 
       this.renderForm(body, el);
       this.renderKind(body, el);
@@ -404,6 +405,7 @@ MF.props = {
     var res = MF.setKind(el, kind, true);
     var lost = res.fns.map(function (fn) { return MF.FUNCTIONS[fn].label; });
     if (res.slope) lost.push('Neigung');
+    if (res.couple) lost.push('Kopplung');
     if (lost.length && !window.confirm('Als "' + this.KIND_LABELS[kind] + '" gibt es ' + lost.join(', ') +
         ' nicht. Entfernen und Körperart wechseln?')) {
       this.render();
@@ -457,28 +459,43 @@ MF.props = {
   renderFunction: function (body, el, fn) {
     var self = this, F = MF.FUNCTIONS[fn];
     var s = this.section(body, 'Funktion: ' + F.label);
-    // Vorlagen zeigen ihre eigenen Eigenschaften (z. B. Hub in mm), sonst die allgemeinen Felder
+    // Was das Panel neu aufbauen muss: andere Signale oder andere Felder (z. B. Betriebsart)
+    function layout() {
+      return MF.io(el).map(function (x) { return x.name; }).join() + '|' +
+        MF.fieldsOf(el, fn).map(function (d) { return d.key + d.unit; }).join();
+    }
+    function changed(before) {
+      if (layout() !== before) { MF.store.changed(); self.render(); }
+      else self.commit();
+    }
+    // Allgemeine Felder der Funktion (MF.fieldsOf); Vorlagen mit eigenen Eigenschaften
+    // (z. B. Hub in mm) zeigen davon nur die grundlegenden (core: Typ, Betriebsart)
     var tprops = MF.propsOf(el).filter(function (p) { return p.fn === fn; });
-    if (tprops.length) {
-      tprops.forEach(function (p) {
-        var input = self.field(s, p, MF.getProp(el, p.key), function (v) {
-          MF.setProp(el, p.key, v);
-          // Richtung dreht den Körper: Lage und Panel neu zeigen
-          if (p.key === 'direction') { MF.store.changed(); self.render(); return; }
-          self.commit();
-        });
-        if (p.live) input.dataset.live = p.key;
+    MF.fieldsOf(el, fn).forEach(function (d) {
+      if (tprops.length && !d.core) return;
+      var input = self.field(s, d, MF.getField(el, fn, d.key), d.readonly || el.look.locked ? null : function (v) {
+        var before = layout();
+        MF.setField(el, fn, d.key, v);
+        changed(before);
       });
-    } else {
-      F.fields.forEach(function (d) {
-        var get = function () { return d.get ? d.get(d.body ? el : el[fn]) : el[fn][d.field]; };
-        var input = self.field(s, d, get(), d.readonly ? null : function (v) {
-          if (d.set) d.set(el[fn], v);
-          else el[fn][d.field] = v;
-          self.commit();
-        });
-        if (d.live) { input.dataset.live = d.key; input.dataset.liveFn = fn; }
+      if (d.live) { input.dataset.live = d.key; input.dataset.liveFn = fn; }
+    });
+    tprops.forEach(function (p) {
+      var input = self.field(s, p, MF.getProp(el, p.key), function (v) {
+        var before = layout();
+        MF.setProp(el, p.key, v);
+        // Richtung dreht den Körper: Lage und Panel neu zeigen
+        if (p.key === 'direction') { MF.store.changed(); self.render(); return; }
+        changed(before);
       });
+      if (p.live) input.dataset.live = p.key;
+    });
+    if (fn === 'axis') {
+      var note = document.createElement('div');
+      note.className = 'io-note';
+      note.textContent = 'Signale: ' + F.io(el.axis).map(function (x) { return el.id + '.' + x.name; }).join(', ') +
+        '. Ursprung, Grenzen und Richtung lassen sich in der Draufsicht an den blauen Griffen ziehen.';
+      s.appendChild(note);
     }
 
     if (fn === 'sink') {
@@ -672,8 +689,30 @@ MF.props = {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   },
 
+  // Kopplung: an welchem Körper der Körper hängt (er bewegt sich mit ihm mit).
+  // Angeboten werden nur Körper, an die er gekoppelt werden darf (MF.store.moveError).
+  coupleField: function (parent, el) {
+    var self = this, cur = MF.parentBody(el);
+    var options = [{ value: '', label: '– (nicht gekoppelt)' }];
+    MF.model.bodies.forEach(function (b) {
+      if (b === cur || !MF.store.moveError(el.id, 'plant', b.id)) options.push({ value: b.id, label: b.name + ' (' + b.id + ')' });
+    });
+    this.field(parent, { label: 'Gekoppelt an', type: 'select', options: options, readonly: el.look.locked || options.length < 2,
+      hint: 'Hängt der Körper an einem anderen, ist seine Lage relativ zu ihm und er bewegt sich mit ihm mit ' +
+        '(z. B. Band auf Hubtisch). Im Baum auch per Ziehen auf den Körper. Höchstens zwei Ebenen' },
+      cur ? cur.id : '', function (v) {
+        if (MF.store.moveNodes([el.id], 'plant', v || MF.store.folderOf(el, 'plant'), null)) {
+          MF.tree.reveal(el.id);
+          MF.ui.message(v ? el.name + ' hängt jetzt an ' + MF.store.findBody(v).name + ' und bewegt sich mit.'
+            : el.name + ' ist nicht mehr gekoppelt.');
+        }
+        self.render();
+      });
+  },
+
   // Auswahlliste "Ordner" mit vollem Pfad, z. B. "Förderstrecke 1 / Ausschleusung".
   // obj: Element, Regel oder Ordner; Ordner können nicht in sich selbst liegen.
+  // Gekoppelte Körper liegen im Ordner ihres Elternkörpers; ein anderer Ordner löst die Kopplung.
   folderField: function (parent, obj, area) {
     var self = this;
     var isFolder = !!MF.store.findFolder(obj.id) && obj.area === area;
@@ -684,7 +723,7 @@ MF.props = {
     });
     this.field(parent, { label: 'Ordner', type: 'select', options: options,
       hint: 'Ordner im Strukturbaum; im Baum auch per Ziehen änderbar' },
-      MF.store.parentOf(obj, area) || '', function (v) {
+      MF.store.folderOf(obj, area) || '', function (v) {
         MF.store.moveNodes([obj.id], area, v || null, null);
         MF.tree.reveal(obj.id);
         self.render();
@@ -858,11 +897,8 @@ MF.props = {
     if (!el) return;
     this.root.querySelectorAll('[data-live]').forEach(function (input) {
       var fn = input.dataset.liveFn, v;
-      if (fn) {
-        // Allgemeines Feld einer Funktion (frei gezeichneter Körper)
-        var d = (MF.FUNCTIONS[fn].fields || []).filter(function (x) { return x.key === input.dataset.live; })[0];
-        v = d && el[fn] ? (d.get ? d.get(d.body ? el : el[fn]) : el[fn][d.field]) : undefined;
-      } else v = MF.getProp(el, input.dataset.live);
+      if (fn) v = el[fn] ? MF.getField(el, fn, input.dataset.live) : undefined;   // allgemeines Feld einer Funktion
+      else v = MF.getProp(el, input.dataset.live);
       input.value = MF.props.formatNumber(v);
     });
     this.root.querySelectorAll('tr[data-signal]').forEach(function (tr) {

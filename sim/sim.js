@@ -45,16 +45,25 @@ MF.sim = {
     return { x: (px - this.offsetX) / c, y: (py - this.offsetY) / c };
   },
 
-  // Aktuelle Lage eines Körpers fürs Zeichnen (kinematisch: Achse interpoliert,
-  // dynamisch: aus der Physik interpoliert)
+  // Aktuelle Lage eines Körpers fürs Zeichnen: Achsen (auch die des Elternkörpers
+  // bei Kopplung) zwischen zwei Schritten interpoliert, dynamisch aus der Physik.
+  // Die 3D-Ansicht benutzt dieselbe Lage.
   drawPose: function (b) {
-    if (!MF.engine.world) return b.pose;
+    if (!MF.engine.world) return MF.poseInWorld(b);
     if (b.kind === 'dynamic') return MF.engine.dynamicPose(b, MF.engine.alpha());
-    if (!b.axis || b.kind !== 'kinematic') return b.pose;
-    var rt = b.rt || {};
-    var pos = MF.engine.axisPos(b);
-    var prev = rt.prevPos !== undefined ? rt.prevPos : pos;
-    return MF.engine.worldPose(b, prev + (pos - prev) * MF.engine.alpha());
+    var a = MF.engine.alpha();
+    return MF.poseInWorld(b, function (x) {
+      var rt = x.rt || {}, pos = MF.axisPos(x);
+      var prev = rt.prevPos !== undefined && rt.axisType === x.axis.type ? rt.prevPos : pos;
+      return prev + (pos - prev) * a;
+    });
+  },
+
+  // Koordinatensystem der Achse beim Zeichnen: Lage des Körpers mit Achse in
+  // Stellung 0 (Elternkörper in seiner gezeichneten Lage)
+  restDrawPose: function (b) {
+    var p = MF.parentBody(b);
+    return p ? MF.composePose(this.drawPose(p), b.pose) : b.pose;
   },
 
   // Sichtbarer Körper unter dem Mauszeiger, sonst null. Liegen mehrere
@@ -91,7 +100,7 @@ MF.sim = {
     if (!bs.length) { this.zoom = 1; this.offsetX = this.offsetY = 0; this.draw(); return; }
     var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     bs.forEach(function (b) {
-      var r = MF.geom.bounds(b.shape, b.pose);
+      var r = MF.geom.bounds(b.shape, MF.poseInWorld(b));
       minX = Math.min(minX, r.x0); minY = Math.min(minY, r.y0);
       maxX = Math.max(maxX, r.x1); maxY = Math.max(maxY, r.y1);
     });
@@ -470,7 +479,142 @@ MF.sim = {
     var top = -this.halfExtent(sh).y, up = MF.geom.toWorld({ x: 0, y: 0, rot: pose.rot }, 0, -1);
     var base = MF.geom.toWorld(pose, 0, top), bp = this.toScreen(base.x, base.y);
     out.push({ kind: 'rotate', x: bp.x + up.x * this.ROTATE_PX, y: bp.y + up.y * this.ROTATE_PX, bx: bp.x, by: bp.y });
+    var g = this.axisGeom(b);
+    if (g) g.handles.forEach(function (h) { out.push(h); });
     return out;
+  },
+
+  // ---------- Achse in der Draufsicht ----------
+  //
+  // Für den gewählten Körper mit Achse (Bildschirmpixel):
+  //   linear in der Ebene: Linie vom Ursprung + min · Richtung bis + max · Richtung,
+  //     Pfeil am Ende, Marke bei der aktuellen Stellung
+  //   linear senkrecht (z): Kreis mit Punkt (hoch) bzw. Kreuz (runter) am Ursprung
+  //   rotatorisch: Bogen um den Ursprung von min bis max, Zeiger auf der Stellung
+  // Griffe { kind: 'axis', part: 'origin'|'min'|'max'|'dir' } zum Ziehen (ui/editor.js).
+  AXIS_DIR_PX: 22,    // Richtungsgriff hinter dem Pfeil
+
+  axisGeom: function (b) {
+    if (!b || !MF.hasAxis(b)) return null;
+    var self = this, ax = b.axis, rest = this.restDrawPose(b), pos = MF.axisPos(b);
+    var rt = b.rt || {};
+    if (MF.engine.world && rt.prevPos !== undefined && rt.axisType === ax.type) pos = rt.prevPos + (pos - rt.prevPos) * MF.engine.alpha();
+    function scr(lx, ly) { var w = MF.geom.toWorld(rest, lx, ly); return self.toScreen(w.x, w.y); }
+    var o = ax.origin, g = { type: ax.type, origin: scr(o[0], o[1]), handles: [] };
+    g.handles.push({ kind: 'axis', part: 'origin', x: g.origin.x, y: g.origin.y });
+    if (ax.type === 'rotary') {
+      var sign = ax.dir[2] < 0 ? -1 : 1, r = 0;
+      MF.geom.outline(b.shape).forEach(function (p) {
+        r = Math.max(r, Math.sqrt((p[0] - o[0]) * (p[0] - o[0]) + (p[1] - o[1]) * (p[1] - o[1])));
+      });
+      g.r = r * this.pxPerM() + 14;
+      g.sign = sign;
+      // Winkel auf dem Bildschirm (y nach unten, wie die Welt): Drehung der Ruhelage + Stellung
+      g.ang = function (s) { return MF.geom.rad(rest.rot + sign * s); };
+      g.a0 = g.ang(ax.min); g.a1 = g.ang(ax.max); g.apos = g.ang(pos);
+      [['min', ax.min], ['max', ax.max]].forEach(function (m) {
+        var a = g.ang(m[1]);
+        g.handles.push({ kind: 'axis', part: m[0], x: g.origin.x + g.r * Math.cos(a), y: g.origin.y + g.r * Math.sin(a) });
+      });
+      return g;
+    }
+    var d = ax.dir, len = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) || 1;
+    var ux = d[0] / len, uy = d[1] / len;
+    g.vertical = Math.sqrt(ux * ux + uy * uy) < 0.01;
+    g.up = d[2] > 0;
+    if (g.vertical) return g;
+    g.p0 = scr(o[0] + ux * ax.min, o[1] + uy * ax.min);
+    g.p1 = scr(o[0] + ux * ax.max, o[1] + uy * ax.max);
+    g.pp = scr(o[0] + ux * pos, o[1] + uy * pos);
+    var e = scr(o[0] + ux, o[1] + uy), ex = e.x - g.origin.x, ey = e.y - g.origin.y, el = Math.sqrt(ex * ex + ey * ey) || 1;
+    g.u = { x: ex / el, y: ey / el };   // Richtung auf dem Bildschirm
+    g.handles.push({ kind: 'axis', part: 'min', x: g.p0.x, y: g.p0.y });
+    g.handles.push({ kind: 'axis', part: 'max', x: g.p1.x, y: g.p1.y });
+    g.handles.push({ kind: 'axis', part: 'dir', x: g.p1.x + g.u.x * this.AXIS_DIR_PX, y: g.p1.y + g.u.y * this.AXIS_DIR_PX });
+    return g;
+  },
+
+  AXIS_COLOR: '#2F6FB0',
+
+  drawAxis: function (b, withHandles) {
+    var g = this.axisGeom(b);
+    if (!g) return;
+    var ctx = this.ctx, c = this.AXIS_COLOR, o = g.origin;
+    ctx.save();
+    ctx.strokeStyle = c;
+    ctx.fillStyle = c;
+    ctx.lineWidth = 1.5;
+    if (g.type === 'rotary') {
+      // Bogen von min nach max (in Richtung wachsender Stellung), Zeiger auf der Stellung
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, g.r, g.a0, g.a1, g.sign < 0);
+      ctx.stroke();
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y);
+      ctx.lineTo(o.x + g.r * Math.cos(g.apos), o.y + g.r * Math.sin(g.apos));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Pfeilspitze am Ende max: zeigt, in welche Richtung die Stellung wächst
+      var t = g.a1 + g.sign * Math.PI / 2, ex = o.x + g.r * Math.cos(g.a1), ey = o.y + g.r * Math.sin(g.a1);
+      this.arrowHead(ex, ey, Math.cos(t), Math.sin(t), 7);
+    } else if (g.vertical) {
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, 9, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.beginPath();
+      if (g.up) ctx.arc(o.x, o.y, 2.5, 0, 2 * Math.PI);
+      else { ctx.moveTo(o.x - 5, o.y - 5); ctx.lineTo(o.x + 5, o.y + 5); ctx.moveTo(o.x + 5, o.y - 5); ctx.lineTo(o.x - 5, o.y + 5); }
+      if (g.up) ctx.fill(); else ctx.stroke();
+      var ax = b.axis, u = MF.axisUnit(ax).pos;
+      this.drawLabel((g.up ? 'z ↑ ' : 'z ↓ ') + this.fmt(ax.min) + ' … ' + this.fmt(ax.max) + ' ' + u, o.x + 14, o.y - 9);
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(g.p0.x, g.p0.y);
+      ctx.lineTo(g.p1.x, g.p1.y);
+      ctx.stroke();
+      // Querstriche an den Grenzen, Pfeil am Ende max
+      [g.p0, g.p1].forEach(function (p) {
+        ctx.beginPath();
+        ctx.moveTo(p.x - g.u.y * 6, p.y + g.u.x * 6);
+        ctx.lineTo(p.x + g.u.y * 6, p.y - g.u.x * 6);
+        ctx.stroke();
+      });
+      this.arrowHead(g.p1.x + g.u.x * 10, g.p1.y + g.u.y * 10, g.u.x, g.u.y, 7);
+      ctx.beginPath();
+      ctx.arc(g.pp.x, g.pp.y, 3, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+    if (withHandles) {
+      var hot = MF.editor && MF.editor.hotHandle;
+      g.handles.forEach(function (h) {
+        var on = hot && hot.kind === 'axis' && hot.part === h.part;
+        ctx.fillStyle = on ? '#1B2430' : c;
+        ctx.strokeStyle = '#F4F2EC';
+        ctx.beginPath();
+        if (h.part === 'origin') ctx.arc(h.x, h.y, 5, 0, 2 * Math.PI);
+        else if (h.part === 'dir') { ctx.moveTo(h.x, h.y - 5); ctx.lineTo(h.x + 5, h.y); ctx.lineTo(h.x, h.y + 5); ctx.lineTo(h.x - 5, h.y); ctx.closePath(); }
+        else ctx.rect(Math.round(h.x) - 4, Math.round(h.y) - 4, 8, 8);
+        ctx.fill();
+        ctx.stroke();
+      });
+    }
+    ctx.restore();
+  },
+
+  // Zahl mit deutschem Komma, höchstens drei Nachkommastellen
+  fmt: function (v) { return String(Math.round(v * 1000) / 1000).replace('.', ','); },
+
+  // Gefüllte Pfeilspitze bei (x, y), zeigt in Richtung (ux, uy)
+  arrowHead: function (x, y, ux, uy, size) {
+    var ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(x + ux * size, y + uy * size);
+    ctx.lineTo(x - ux * size * 0.6 - uy * size * 0.6, y - uy * size * 0.6 + ux * size * 0.6);
+    ctx.lineTo(x - ux * size * 0.6 + uy * size * 0.6, y - uy * size * 0.6 - ux * size * 0.6);
+    ctx.closePath();
+    ctx.fill();
   },
 
   // Orangefarbener Rahmen um den gewählten Körper (Grundriss); mit Griffen, wenn
@@ -489,9 +633,12 @@ MF.sim = {
     ctx.closePath();
     ctx.stroke();
     ctx.setLineDash([]);
-    if (!MF.editor || !MF.editor.handlesFor(b)) return;
+    var withHandles = !!MF.editor && MF.editor.handlesFor(b);
+    this.drawAxis(b, withHandles);
+    if (!withHandles) return;
     var hot = MF.editor.hotHandle;
     this.handles(b).forEach(function (h) {
+      if (h.kind === 'axis') return;   // schon mit der Achse gezeichnet
       var on = hot && hot.kind === h.kind && hot.sx === h.sx && hot.sy === h.sy && hot.i === h.i;
       ctx.fillStyle = on ? '#1B2430' : '#D9701A';
       ctx.strokeStyle = '#F4F2EC';
