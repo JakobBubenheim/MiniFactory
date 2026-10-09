@@ -366,3 +366,30 @@ test('validate: bündige Bänder sind in Ordnung, ein höheres Folgeband wird ge
   await werkzeug('update_body', { id: 'B2', fields: { z: 0.59 } });
   assert.deepEqual(naht(jsonAus(await werkzeug('validate'))), []);
 });
+
+test('Richtung über MCP in Grad, auch schräg; alte Namen gelten weiter', async function () {
+  await werkzeug('new_plant', { name: 'Schräg' });
+  await werkzeug('add_from_template', { template: 'conveyor', x: 1, y: 1, props: { direction: 37.5 } });
+  await werkzeug('add_from_template', { template: 'pusher', x: 1, y: 2, props: { direction: 'unten' } });
+  function koerper(ov, id) { return ov.bodies.find(function (b) { return b.id === id; }); }
+  let ov = jsonAus(await werkzeug('get_overview'));
+  assert.equal(koerper(ov, 'B1').props.direction, 37.5);
+  assert.equal(koerper(ov, 'B1').pose.rot, 37.5);
+  assert.equal(koerper(ov, 'B1').functions.surface.worldDir, 37.5);
+  assert.equal(koerper(ov, 'S1').props.direction, 90);
+  assert.equal(koerper(ov, 'S1').pose.rot, 0);
+
+  await werkzeug('update_body', { id: 'B1', fields: { props: { direction: 'links' } } });
+  await werkzeug('update_body', { id: 'S1', fields: { props: { direction: 120 } } });
+  ov = jsonAus(await werkzeug('get_overview'));
+  assert.equal(koerper(ov, 'B1').props.direction, 180);
+  assert.equal(koerper(ov, 'B1').functions.surface.worldDirName, 'links');
+  assert.equal(koerper(ov, 'S1').pose.rot, 30);
+
+  assert.match(await fehler('update_body', { id: 'B1', fields: { props: { direction: 'quer' } } }), /Zahl in Grad.*rechts, unten, links, oben/);
+  const vl = jsonAus(await werkzeug('list_templates'));
+  const p = vl.templates.find(function (t) { return t.key === 'conveyor'; }).props.find(function (x) { return x.key === 'direction'; });
+  assert.equal(p.type, 'direction');
+  assert.equal(p.unit, '°');
+  assert.deepEqual(p.names, { rechts: 0, unten: 90, links: 180, oben: 270 });
+});

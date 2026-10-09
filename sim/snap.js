@@ -70,6 +70,21 @@ MF.snap = {
     return MF.geom.round6(Math.round(deg / s) * s);
   },
 
+  // Winkel n Fangschritte weiter (Stepper und Pfeiltasten im Panel): zuerst auf die
+  // nächste Rasterlinie in Schrittrichtung (37,3° + 5° -> 40°), ohne Rasterfangen 1°-Schritte
+  angleStepped: function (deg, n, snap) {
+    var s = this.gridOn(snap, false) ? snap.angle || 5 : 1, k = deg / s;
+    k = n > 0 ? Math.floor(k + 1e-6) + n : Math.ceil(k - 1e-6) + n;
+    return MF.geom.normDeg(MF.geom.round6(k * s)) + 0;
+  },
+
+  // Drehen durch Ziehen (Werkzeug Drehen und Dreh-Griff): Drehung rot0 beim Anfassen,
+  // Maus beim Anfassen (from) und jetzt (to), gedreht um c. Gibt die gefangene Drehung zurück.
+  dragAngle: function (rot0, c, from, to, snap, off) {
+    var a0 = Math.atan2(from.y - c.y, from.x - c.x), a1 = Math.atan2(to.y - c.y, to.x - c.x);
+    return this.angle(rot0 + (a1 - a0) * 180 / Math.PI, snap, off);
+  },
+
   // Punkt b so legen, dass die Strecke von a einen gefangenen Winkel und eine
   // gefangene Länge hat (Polygon zeichnen mit Shift)
   polar: function (a, b, snap, off) {
