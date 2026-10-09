@@ -1,4 +1,6 @@
-// Physik (Rapier): Erzeuger, Transportfläche, Sensor, Schieber, Stau, Determinismus.
+// Physik (Rapier): Erzeuger, Transportfläche, Sensor, Schieber, Stau.
+// Die langen Läufe der Beispielanlage (mit/ohne R1, Determinismus) stehen in
+// beispielanlage.test.js – eigene Datei, damit node:test sie parallel rechnet.
 // Geprüft wird Verhalten (Zähler, Signale, Lagen in Metern), keine Interna der Engine.
 'use strict';
 
@@ -8,6 +10,17 @@ const { neueAnlage } = require('./helpers/anlage');
 const plaene = require('./helpers/plaene');
 
 const KISTE_Z = 0.7 + 0.15;   // Mittelpunkt einer 0,3-m-Kiste auf dem Band (Oberkante 0,7 m)
+
+// Laufen, bis der Stau voll ist: die Quelle hat sekunden lang keine Kiste mehr
+// erzeugt (kein Platz). Höchstens maxSekunden; gibt die Zeit zurück oder null.
+function bisStauVoll(a, maxSekunden, sekunden) {
+  let zuletzt = -1, seit = 0;
+  return a.laufenBis(function () {
+    const n = a.signal('Q1.Erzeugt');
+    if (n !== zuletzt) { zuletzt = n; seit = a.zeit(); }
+    return a.zeit() - seit >= (sekunden || 2);
+  }, maxSekunden);
+}
 
 test('Kiste fällt aus dem Erzeuger auf das Band, fährt mit Bandtempo und wird in der Senke gezählt', function () {
   const a = neueAnlage(plaene.strecke());
@@ -60,24 +73,6 @@ test('Lichtschranke mit Entprellung und Invertieren meldet die durchfahrende Kis
   assert.notEqual(frei, null, 'Strahl wird wieder frei');
 });
 
-test('Beispielanlage: mit R1 landen alle Kisten über den Schieber in SE2, ohne R1 in SE1', function () {
-  const mit = neueAnlage();
-  mit.laufen(60);
-  const ausgeschleust = mit.signal('SE2.Anzahl');
-  assert.ok(ausgeschleust >= 20, 'SE2: ' + ausgeschleust);
-  assert.equal(mit.signal('SE1.Anzahl'), 0);
-  // Keine Kiste liegt daneben: alles, was nicht in SE2 ist, liegt noch auf dem Band
-  mit.kisten3d().forEach(function (k) { assert.ok(k.z > 0.7, 'Kiste neben der Anlage: ' + JSON.stringify(k)); });
-  assert.equal(ausgeschleust + mit.kistenAnzahl(), mit.signal('Q1.Erzeugt'));
-
-  const ohne = neueAnlage();
-  ohne.regel('R1', { enabled: false });
-  ohne.laufen(60);
-  assert.ok(ohne.signal('SE1.Anzahl') >= 20, 'SE1: ' + ohne.signal('SE1.Anzahl'));
-  assert.equal(ohne.signal('SE2.Anzahl'), 0);
-  ohne.kisten3d().forEach(function (k) { assert.ok(k.z > 0.7, 'Kiste neben der Anlage: ' + JSON.stringify(k)); });
-});
-
 test('Schieber meldet seine Stellung (Ist) und fährt kinematisch: Kisten weichen aus, er nicht', function () {
   const a = neueAnlage(plaene.zweiSchranken([]));   // Hub 600 mm, 0,3 m/s
   assert.equal(a.signal('S1.Ist'), 0);
@@ -95,7 +90,7 @@ test('Stau am Schieber-Anschlag löst sich wieder, wenn er einfährt', function 
   s.inputs = { Ausfahren: 1 };
   d.elements.push(s);
   const a = neueAnlage(d);
-  a.laufen(15);
+  bisStauVoll(a, 15, 3);   // bisher fest 15 s; nach gut 7 s kommt keine Kiste mehr dazu (3 s Reserve)
   assert.equal(a.signal('SE1.Anzahl'), 0, 'Anschlag hält alles auf');
   const imStau = a.kistenAnzahl();
   assert.ok(imStau >= 8, 'Stau: ' + imStau + ' Kisten');
@@ -125,14 +120,4 @@ test('Band aus: die Kiste bleibt liegen, Band wieder an: sie fährt weiter', fun
   a.setzen('B1.Ein', 1);
   a.laufen(1);
   assert.ok(a.kisten()[0].x > steht[0].x + 0.4, 'fährt weiter');
-});
-
-test('Determinismus: zwei gleiche Läufe ergeben bitgenau dieselben Kistenlagen', function () {
-  const a = neueAnlage();
-  const b = neueAnlage();
-  a.laufen(30);
-  b.laufen(30);
-  assert.ok(a.kistenAnzahl() > 3);
-  assert.deepEqual(b.kisten3d(), a.kisten3d());
-  assert.deepEqual(b.kistenTempo(), a.kistenTempo());
 });

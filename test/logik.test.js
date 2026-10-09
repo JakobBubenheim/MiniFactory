@@ -14,16 +14,14 @@ const ZWEI_REGELN = [
 
 test('Mit Regel R1 landen die Kisten in SE2', function () {
   const a = neueAnlage();
-  a.laufen(20);
-  assert.ok(a.signal('SE2.Anzahl') >= 3, 'SE2: ' + a.signal('SE2.Anzahl'));
+  assert.notEqual(a.laufenBis(function () { return a.signal('SE2.Anzahl') >= 3; }, 20), null, 'SE2: ' + a.signal('SE2.Anzahl'));
   assert.equal(a.signal('SE1.Anzahl'), 0);
 });
 
 test('Abgeschaltete Regel wirkt nicht: Kisten laufen nach SE1', function () {
   const a = neueAnlage();
   a.regel('R1', { enabled: false });
-  a.laufen(20);
-  assert.ok(a.signal('SE1.Anzahl') >= 3, 'SE1: ' + a.signal('SE1.Anzahl'));
+  assert.notEqual(a.laufenBis(function () { return a.signal('SE1.Anzahl') >= 3; }, 20), null, 'SE1: ' + a.signal('SE1.Anzahl'));
   assert.equal(a.signal('SE2.Anzahl'), 0);
 });
 

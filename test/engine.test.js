@@ -12,6 +12,17 @@ function ungefaehr(ist, soll, toleranz, text) {
   assert.ok(Math.abs(ist - soll) <= toleranz + 1e-9, (text || '') + ' erwartet ' + soll + ' ± ' + toleranz + ', ist ' + ist);
 }
 
+// Laufen, bis der Stau voll ist: die Quelle hat sekunden lang keine Kiste mehr
+// erzeugt (kein Platz). Höchstens maxSekunden; gibt die Zeit zurück oder null.
+function bisStauVoll(a, maxSekunden, sekunden) {
+  let zuletzt = -1, seit = 0;
+  return a.laufenBis(function () {
+    const n = a.signal('Q1.Erzeugt');
+    if (n !== zuletzt) { zuletzt = n; seit = a.zeit(); }
+    return a.zeit() - seit >= (sekunden || 2);
+  }, maxSekunden);
+}
+
 test('Quelle erzeugt im eingestellten Takt', function () {
   const a = neueAnlage(plaene.strecke({ quelle: { interval: 2 } }));
   a.laufen(DT);
@@ -53,7 +64,7 @@ test('Kisten stauen sich am Bandende, statt sich zu überlappen', function () {
   anschlag.inputs = { Ausfahren: 1 };
   d.elements.push(anschlag);
   const a = neueAnlage(d);
-  a.laufen(30);
+  bisStauVoll(a, 30, 8);   // bisher fest 30 s; der Stau ist nach gut 8 s voll und steht ab etwa 13 s (Reserve)
   const kisten = a.kisten();
   const s = a.kistenGroesse();
   // Kontakte geben in Rapier um gut 1 mm nach (Kontaktsteifigkeit 60 Hz, Spike-Ergebnis 4.1)

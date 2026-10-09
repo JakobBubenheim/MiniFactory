@@ -58,8 +58,7 @@ test('Löschen rückgängig machen stellt auch den Bezug der Regel wieder her', 
   assert.ok(a.elemente().indexOf('LS1') >= 0);
   assert.equal(a.regel('R1').when, 'LS1.Belegt');
   // Die wiederhergestellte Anlage funktioniert
-  a.laufen(20);
-  assert.ok(a.signal('SE2.Anzahl') >= 3);
+  assert.notEqual(a.laufenBis(function () { return a.signal('SE2.Anzahl') >= 3; }, 20), null, 'SE2: ' + a.signal('SE2.Anzahl'));
 
   a.wiederholen();
   assert.equal(a.elemente().indexOf('LS1'), -1);

@@ -199,6 +199,8 @@ MF.FUNCTIONS = {
       ]
     },
     MODE_LABELS: { zweipunkt: 'Zweipunkt', position: 'Position', geschwindigkeit: 'Geschwindigkeit' },
+    // Wovon die Signale abhängen (Zwischenspeicher in MF.ioDef)
+    ioKey: function (axis) { return axis.mode + '|' + axis.valve; },
     // Ventil mit zwei Eingängen (valve = 'bi', nur zweipunkt): zusätzlich Einfahren
     io: function (axis) {
       var list = (this.MODES[axis.mode] || this.MODES.zweipunkt).map(function (s) {
@@ -239,9 +241,26 @@ MF.io = function (body) {
   return out;
 };
 
+// Ein Signal eines Körpers nach Namen (wie in MF.io), sonst null. Die Engine
+// fragt das in jedem Zyklus sehr oft; die Signale einer Funktion hängen nur von
+// ihrer Art ab (bei der Achse von Betriebsart und Ventil, ioKey), darum stehen
+// sie fertig in IO_CACHE. Das Ergebnis ist eingefroren – nur lesen.
+MF.IO_CACHE = {};
 MF.ioDef = function (body, name) {
-  var list = MF.io(body);
-  for (var i = 0; i < list.length; i++) if (list[i].name === name) return list[i];
+  for (var i = 0; i < MF.FN_KEYS.length; i++) {
+    var fn = MF.FN_KEYS[i], f = body[fn];
+    if (!f) continue;
+    var F = MF.FUNCTIONS[fn], key = fn + '|' + (F.ioKey ? F.ioKey(f) : '');
+    var map = MF.IO_CACHE[key];
+    if (!map) {
+      map = MF.IO_CACHE[key] = {};
+      F.io(f).forEach(function (s) {
+        s.fn = fn;
+        if (!Object.prototype.hasOwnProperty.call(map, s.name)) map[s.name] = Object.freeze(s);
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(map, name)) return map[name];
+  }
   return null;
 };
 

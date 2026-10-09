@@ -336,7 +336,8 @@ test('Weiche lenkt Kisten je nach Stellung auf Band A oder Band B', function () 
     const sa = a.anlegen('sink', 4.5, 2);
     const sb = a.anlegen('sink', 2.25, 4.5);
     a.setzen(w + '.Ausfahren', stellung);
-    a.laufen(20);
+    // bisher fest 20 s: fertig, sobald fünf Kisten in einer der Senken sind
+    a.laufenBis(function () { return a.signal(sa + '.Anzahl') + a.signal(sb + '.Anzahl') >= 5; }, 20);
     return { a: a.signal(sa + '.Anzahl'), b: a.signal(sb + '.Anzahl'), daneben: a.kisten3d().filter(function (k) { return k.z < 0.8; }).length };
   }
   const gerade = lauf(0), ab = lauf(1);
