@@ -110,6 +110,7 @@ MF.engine = {
     this.world.createCollider(this.colliderDesc(new R.Cuboid(500, 500, 0.5), MF.MATERIALS.floor), floor);
 
     MF.model.bodies.forEach(function (b) { b.rt = {}; });
+    this.endPulses();
     this.sync();
     // Regel-Ziele auf Startwert, SCL-Variablen und Zeitglieder auf Anfang
     MF.logic.reset();
@@ -346,6 +347,7 @@ MF.engine = {
     // 5. Erzeuger und Senken
     bodies.forEach(function (b) { if (b.spawner) self.stepSpawner(b, dt); });
     this.collectSinks();
+    this.endPulses();
   },
 
   // ---------- Sensor ----------
@@ -367,6 +369,8 @@ MF.engine = {
   // in m (linear) bzw. Grad (rotatorisch), nie schneller als vmax, immer in den
   // Grenzen min … max (liegt sie außerhalb, fährt sie mit vmax zurück).
   //   zweipunkt:       Ausfahren = 1: nach max. Ausfahren = 0: returnDelay warten, dann nach min.
+  //                    Zwei Eingänge (valve 'bi'): Ausfahren = 1 bzw. Einfahren = 1 schaltet das
+  //                    Ventil (rt.out) um, sonst bleibt es (beide 0 oder beide 1), kein returnDelay.
   //   position:        Freigabe = 1: auf Soll (in den Grenzen); ohne Freigabe steht sie.
   //   geschwindigkeit: Freigabe = 1: mit Soll (begrenzt auf ±vmax) bis an die Grenzen.
   stepAxis: function (b, h) {
@@ -381,6 +385,11 @@ MF.engine = {
       if (this.input(b, 'Freigabe')) target = this.input(b, 'Soll');
     } else if (ax.mode === 'geschwindigkeit') {
       if (this.input(b, 'Freigabe')) target = rt.pos + Math.max(-ax.vmax, Math.min(ax.vmax, this.input(b, 'Soll'))) * h;
+    } else if (ax.valve === 'bi') {
+      var out = this.input(b, 'Ausfahren'), back = this.input(b, 'Einfahren');
+      if (out && !back) rt.out = true;
+      else if (back && !out) rt.out = false;
+      target = rt.out ? ax.max : ax.min;
     } else if (this.input(b, 'Ausfahren')) {
       rt.wait = 0;
       target = ax.max;
@@ -633,6 +642,22 @@ MF.engine = {
       b[def.fn][def.prop] = v;
     } else if (def.dir === 'in') b.inputs[name] = v;
     else b.force[name] = v;
+  },
+
+  // Impuls auf einen BOOL-Eingang (Handbetrieb, Ventil mit zwei Eingängen): 1 für
+  // den nächsten Zyklus, danach wieder 0. Reset nimmt ihn zurück.
+  pulse: function (b, name) {
+    this.setSignal(b, name, 1);
+    this.pulses = (this.pulses || []).concat([{ id: b.id, name: name }]);
+  },
+
+  endPulses: function () {
+    var self = this;
+    (this.pulses || []).forEach(function (p) {
+      var b = MF.store.findBody(p.id);
+      if (b && b.inputs && self.ioDef(b, p.name)) b.inputs[p.name] = 0;
+    });
+    this.pulses = [];
   },
 
   // Forcen eines Ausgangs aufheben – er zeigt wieder den berechneten Wert

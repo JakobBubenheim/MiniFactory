@@ -18,6 +18,7 @@ function nahe(ist, soll, tol, text) {
 function aufbau() {
   const a = neueAnlage(LEER);
   a.anlegen('turntable', 2, 2);
+  a.achse('DT1', { mode: 'position', min: -180, max: 180 });   // wie die Vorlage bis zum Handbetrieb-Branch
   a.verschieben(['DT1'], 'plant', 'F1');
   const k = a.formAnlegen('rect', { w: 0.2, d: 0.2, h: 0.1 }, { x: 2.5, y: 2, z: 0.7 });
   a.koerperart(k, 'static');

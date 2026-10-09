@@ -254,7 +254,7 @@ window.MF = window.MF || {};
     },
 
     // Achse (Phase 4): linear oder rotatorisch (nur um die Hochachse), Betriebsart
-    // zweipunkt, position oder geschwindigkeit
+    // zweipunkt, position oder geschwindigkeit; Ventil (valve) fehlt in alten Dateien = mono
     checkAxis: function (ax, what, errors) {
       if (ax.type !== 'linear' && ax.type !== 'rotary') errors.push(what + ': Achstyp muss "linear" oder "rotary" sein.');
       if (!MF.FUNCTIONS.axis.MODES.hasOwnProperty(ax.mode)) errors.push(what + ': unbekannte Betriebsart "' + ax.mode + '".');
@@ -273,6 +273,7 @@ window.MF = window.MF || {};
         errors.push(what + ': Drehachsen gibt es nur um die Hochachse (dir = [0, 0, ±1]).');
       }
       if (isNum(ax.returnDelay) && ax.returnDelay < 0) errors.push(what + ': Achse "returnDelay" darf nicht negativ sein.');
+      if (ax.valve !== undefined && MF.AXIS.VALVES.indexOf(ax.valve) < 0) errors.push(what + ': Achse "valve" muss "mono" oder "bi" sein.');
     },
 
     // ---------- Ältere Versionen ----------

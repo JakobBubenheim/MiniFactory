@@ -290,6 +290,8 @@ test('Achsen über MCP: Drehtisch per SCL auf 90°, Betriebsart umstellen passt 
   const mode = achse.fields.find(function (f) { return f.key === 'mode'; });
   assert.ok(mode.options.indexOf('position') >= 0 && mode.options.indexOf('geschwindigkeit') >= 0, JSON.stringify(mode));
 
+  // Neue Drehtische kommen in zweipunkt 0 … 90°; für einen Sollwinkel auf position stellen
+  await werkzeug('set_function', { id: dt, function: 'axis', fields: { mode: 'position' } });
   await werkzeug('add_scl', { code: dt + '.Soll := 90.0;\n' + dt + '.Freigabe := TRUE;' });
   await werkzeug('simulate', { seconds: 3 });
   const sig = JSON.stringify(jsonAus(await werkzeug('get_signals')));
@@ -307,4 +309,44 @@ test('Achsen über MCP: Drehtisch per SCL auf 90°, Betriebsart umstellen passt 
   assert.ok(namen.indexOf(dt + '.InPosition') < 0, 'InPosition gibt es bei Geschwindigkeit nicht');
   assert.ok(namen.indexOf(dt + '.Soll') >= 0);
   assert.match(await fehler('set_function', { id: dt, function: 'axis', fields: { mode: 'fliegen' } }), /position|zweipunkt/);
+});
+
+test('Handbetrieb-Standards über MCP: Ventil in list_templates, set_function schaltet zwei Eingänge, Drehtisch dreht mit Ausfahren', async function () {
+  await werkzeug('new_plant', { name: 'Ventil vom Agent' });
+  const liste = jsonAus(await werkzeug('list_templates'));
+  const achse = liste.functions.find(function (f) { return f.key === 'axis'; });
+  const ventil = achse.fields.find(function (f) { return f.key === 'valve'; });
+  assert.ok(ventil, 'Feld valve fehlt: ' + JSON.stringify(achse.fields.map(function (f) { return f.key; })));
+  assert.deepEqual(ventil.options, ['mono', 'bi']);
+  assert.match(ventil.hint, /Einfahren/);
+  assert.equal(achse.defaults.valve, 'mono');
+  const dtVorlage = liste.templates.find(function (t) { return t.key === 'turntable'; });
+  assert.ok(dtVorlage.signals.some(function (s) { return s.name === 'Ausfahren'; }), 'Drehtisch: Ausfahren');
+
+  const s = jsonAus(await werkzeug('add_from_template', { template: 'pusher', x: 1, y: 1 })).id;
+  await werkzeug('set_function', { id: s, function: 'axis', fields: { valve: 'bi' } });
+  const wert = async function (name) {
+    const sig = jsonAus(await werkzeug('get_signals'));
+    const x = (Array.isArray(sig) ? sig : sig.signals).find(function (y) { return y.name === name; });
+    assert.ok(x, name + ' fehlt');
+    return Number(x.value);
+  };
+  assert.equal(await wert(s + '.Einfahren'), 0);
+  // simulate setzt sonst vorher zurück (reset: false läuft weiter)
+  await werkzeug('simulate', { seconds: 0.1, set_signals: { [s + '.Ausfahren']: 1 } });
+  await werkzeug('set_signal', { signal: s + '.Ausfahren', value: 0 });
+  await werkzeug('simulate', { seconds: 2, reset: false });
+  assert.equal(await wert(s + '.Ausgefahren'), 1, 'bleibt draußen');
+  await werkzeug('set_signal', { signal: s + '.Einfahren', value: true });
+  await werkzeug('simulate', { seconds: 2, reset: false });
+  assert.equal(await wert(s + '.Eingefahren'), 1);
+  assert.match(await fehler('set_function', { id: s, function: 'axis', fields: { valve: 'drei' } }), /mono|bi/);
+
+  const dt = jsonAus(await werkzeug('add_from_template', { template: 'turntable', x: 3, y: 1 })).id;
+  await werkzeug('set_signal', { signal: dt + '.Ausfahren', value: 1 });
+  await werkzeug('simulate', { seconds: 1.5 });
+  assert.equal(await wert(dt + '.Ausgefahren'), 1);
+  assert.ok(Math.abs(await wert(dt + '.Ist') - 90) < 0.01);
+  const v = jsonAus(await werkzeug('validate'));
+  assert.deepEqual(v.errors || v.fehler || [], [], JSON.stringify(v));
 });

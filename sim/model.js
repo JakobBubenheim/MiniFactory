@@ -119,7 +119,7 @@ MF.FUNCTIONS = {
     // Abschnitt 2). origin und dir sind lokal zum Körper. Linear verschiebt den
     // Körper um Stellung · dir; rotatorisch dreht er sich um origin (dir = [0, 0, ±1]).
     make: function () {
-      return { type: 'linear', origin: [0, 0, 0], dir: [0, 1, 0], min: 0, max: 0.4, vmax: 0.3, mode: 'zweipunkt', returnDelay: 0.5 };
+      return { type: 'linear', origin: [0, 0, 0], dir: [0, 1, 0], min: 0, max: 0.4, vmax: 0.3, mode: 'zweipunkt', valve: 'mono', returnDelay: 0.5 };
     },
     // Felder im Eigenschaften-Panel. Werte, die von der Achse abhängen (Einheit,
     // Schritt, Grenzen), sind Funktionen der Achse; when blendet Felder aus.
@@ -137,6 +137,14 @@ MF.FUNCTIONS = {
         hint: 'Zweipunkt: Ausfahren = 1 fährt nach max, sonst nach min · Position: fährt auf Soll, solange Freigabe = 1 · ' +
           'Geschwindigkeit: fährt mit Soll (m/s bzw. °/s), solange Freigabe = 1. Die Signale passen sich an',
         get: function (f) { return f.mode; }, set: function (f, v) { if (MF.FUNCTIONS.axis.MODES[v]) f.mode = v; } },
+      { key: 'valve', label: 'Ventil', type: 'select', core: true,
+        options: [{ value: 'mono', label: 'ein Eingang' }, { value: 'bi', label: 'zwei Eingänge' }],
+        when: function (f) { return f.mode === 'zweipunkt'; },
+        hint: 'Ein Eingang: Ausfahren = 1 fährt aus, 0 fährt nach dem Rückfahrverzug ein. ' +
+          'Zwei Eingänge (wie ein Ventil mit zwei Spulen): Ausfahren = 1 fährt aus, Einfahren = 1 fährt ein, ' +
+          'sind beide 0 (oder beide 1), bleibt die Achse, wie sie zuletzt geschaltet wurde',
+        get: function (f) { return f.valve === 'bi' ? 'bi' : 'mono'; },
+        set: function (f, v) { if (MF.AXIS.VALVES.indexOf(v) >= 0) f.valve = v; } },
       { key: 'axisDir', label: 'Richtung', type: 'select', options: ['rechts', 'unten', 'links', 'oben', 'hoch', 'runter'],
         when: function (f) { return f.type !== 'rotary'; },
         hint: 'Fahrrichtung lokal zum Körper (dreht mit dem Körper); hoch/runter = senkrecht (z)',
@@ -162,8 +170,8 @@ MF.FUNCTIONS = {
         min: 0.01, max: function (f) { return f.type === 'rotary' ? 1080 : 5; },
         hint: 'Höchstgeschwindigkeit (gilt in jeder Betriebsart)', field: 'vmax' },
       { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60,
-        when: function (f) { return f.mode === 'zweipunkt'; },
-        hint: 'Wartezeit vor dem Einfahren (Betriebsart zweipunkt)', field: 'returnDelay' },
+        when: function (f) { return f.mode === 'zweipunkt' && f.valve !== 'bi'; },
+        hint: 'Wartezeit vor dem Einfahren, wenn Ausfahren auf 0 geht (zweipunkt, ein Eingang)', field: 'returnDelay' },
       { key: 'pos', label: 'Stellung', type: 'number', readonly: true, live: true, body: true,
         unit: function (b) { return MF.axisUnit(b.axis).pos; },
         hint: 'Aktuelle Stellung der Achse (Signal Ist)',
@@ -191,12 +199,15 @@ MF.FUNCTIONS = {
       ]
     },
     MODE_LABELS: { zweipunkt: 'Zweipunkt', position: 'Position', geschwindigkeit: 'Geschwindigkeit' },
+    // Ventil mit zwei Eingängen (valve = 'bi', nur zweipunkt): zusätzlich Einfahren
     io: function (axis) {
-      return (this.MODES[axis.mode] || this.MODES.zweipunkt).map(function (s) {
+      var list = (this.MODES[axis.mode] || this.MODES.zweipunkt).map(function (s) {
         var c = {};
         for (var k in s) c[k] = s[k];
         return c;
       });
+      if (axis.mode === 'zweipunkt' && axis.valve === 'bi') list.splice(1, 0, { name: 'Einfahren', dir: 'in', type: 'BOOL' });
+      return list;
     }
   },
   sink: {
@@ -277,6 +288,7 @@ MF.setField = function (body, fn, key, v) {
 
 MF.AXIS = {
   TOL: { linear: 0.001, rotary: 0.1 },   // InPosition: |Ist − Soll| höchstens so groß (1 mm bzw. 0,1°)
+  VALVES: ['mono', 'bi'],                // zweipunkt: ein Eingang (Standard, fehlt in alten Dateien) oder zwei
   DEFAULTS: {
     linear: { dir: [0, 1, 0], min: 0, max: 0.4, vmax: 0.3 },
     rotary: { dir: [0, 0, 1], min: 0, max: 90, vmax: 45 }
@@ -417,6 +429,7 @@ MF.axisError = function (ax) {
   if (ax.max < ax.min) return 'Grenze max ist kleiner als min.';
   if (ax.vmax <= 0) return 'Tempo (vmax) muss größer als 0 sein.';
   if (ax.returnDelay < 0) return 'Rückfahrverzug darf nicht negativ sein.';
+  if (ax.valve !== undefined && MF.AXIS.VALVES.indexOf(ax.valve) < 0) return 'Ventil muss "mono" oder "bi" sein.';
   var vec = function (v) { return Array.isArray(v) && v.length === 3 && v.every(num); };
   if (!vec(ax.origin) || !vec(ax.dir)) return 'Ursprung und Richtung müssen [x, y, z] sein.';
   var d = ax.dir;
@@ -427,7 +440,7 @@ MF.axisError = function (ax) {
   return '';
 };
 
-// Achse ändern: changes mit type, mode, origin, dir, min, max, vmax, returnDelay.
+// Achse ändern: changes mit type, mode, valve, origin, dir, min, max, vmax, returnDelay.
 // Geprüft wird vorher; bei einem Fehler bleibt alles, wie es war. Signale werden
 // an eine neue Betriebsart angeglichen. Gibt einen Fehlertext zurück oder ''.
 MF.setAxis = function (body, changes) {
@@ -439,7 +452,7 @@ MF.setAxis = function (body, changes) {
   }
   for (var k in changes) {
     if (k === 'type') continue;
-    if (['mode', 'origin', 'dir', 'min', 'max', 'vmax', 'returnDelay'].indexOf(k) < 0) return 'Die Achse hat kein Feld "' + k + '".';
+    if (['mode', 'valve', 'origin', 'dir', 'min', 'max', 'vmax', 'returnDelay'].indexOf(k) < 0) return 'Die Achse hat kein Feld "' + k + '".';
     ax[k] = changes[k];
   }
   ['min', 'max'].forEach(function (k) { if (typeof ax[k] === 'number') ax[k] = MF.geom.round6(ax[k]); });
@@ -449,6 +462,72 @@ MF.setAxis = function (body, changes) {
   body.axis = ax;
   MF.store.dropSignals(body.id, MF.syncIo(body, before));
   return '';
+};
+
+// ---------- Handbetrieb (Eigenschaften-Panel, Abschnitt "Handbetrieb") ----------
+//
+// Die Knöpfe schreiben dieselben Eingänge wie der I/O-Tab (MF.engine.setSignal),
+// kein Schritt im Verlauf. Sie wirken in jedem Zustand der Simulation; bewegen
+// tut sich die Achse erst, wenn sie läuft. Befehle je Betriebsart:
+//   zweipunkt        'out' / 'in'. Ein Eingang: Ausfahren = 1 bzw. 0, Einfahren per
+//                    Knopf sofort (die Wartezeit des Rückfahrverzugs gilt als abgelaufen).
+//                    Zwei Eingänge: Impuls auf Ausfahren bzw. Einfahren (ein Zyklus lang),
+//                    der andere Eingang wird 0.
+//   position         'goto', Ziel in m bzw. Grad: Soll (in die Grenzen geklemmt), Freigabe = 1
+//   geschwindigkeit  'jog', −1 / 0 / 1: Soll = ±vmax mit Freigabe = 1, 0 hält an (Freigabe = 0)
+// Gibt einen Fehlertext zurück oder ''.
+MF.axisManual = function (body, cmd, value) {
+  var ax = body.axis, E = MF.engine;
+  if (!MF.hasAxis(body)) return body.name + ' hat keine Achse, die ihn bewegt.';
+  if (!body.rt) body.rt = {};
+  if (ax.mode === 'zweipunkt') {
+    if (cmd !== 'out' && cmd !== 'in') return 'Zweipunkt kennt nur Ausfahren und Einfahren.';
+    if (ax.valve === 'bi') {
+      E.setSignal(body, cmd === 'out' ? 'Einfahren' : 'Ausfahren', 0);
+      E.pulse(body, cmd === 'out' ? 'Ausfahren' : 'Einfahren');
+    } else {
+      E.setSignal(body, 'Ausfahren', cmd === 'out' ? 1 : 0);
+      if (cmd === 'in') body.rt.wait = ax.returnDelay;
+    }
+  } else if (ax.mode === 'position') {
+    if (cmd !== 'goto' || typeof value !== 'number' || !isFinite(value)) return 'Position braucht ein Ziel (Zahl).';
+    E.setSignal(body, 'Soll', Math.max(ax.min, Math.min(ax.max, value)));
+    E.setSignal(body, 'Freigabe', 1);
+  } else {
+    if (cmd !== 'jog' || [-1, 0, 1].indexOf(value) < 0) return 'Geschwindigkeit braucht −1, 0 oder 1.';
+    E.setSignal(body, 'Soll', value * ax.vmax);
+    E.setSignal(body, 'Freigabe', value ? 1 : 0);
+  }
+  return '';
+};
+
+// Beschriftung der Knöpfe für zweipunkt: Drehachsen drehen, senkrechte heben
+MF.axisManualLabels = function (ax) {
+  if (ax.type === 'rotary') return { out: 'Drehen', in: 'Zurück' };
+  var n = MF.axisDirName(ax.dir);
+  if (n === 'hoch') return { out: 'Heben', in: 'Senken' };
+  if (n === 'runter') return { out: 'Senken', in: 'Heben' };
+  return { out: 'Ausfahren', in: 'Einfahren' };
+};
+
+// Welche Signale man in Regeln bzw. SCL für die Achse nimmt (ein Satz je Zeile)
+MF.axisManualHint = function (body) {
+  var ax = body.axis, id = body.id;
+  var num = function (v) { var t = String(Math.round(v * 1000) / 1000); return t.indexOf('.') < 0 ? t + '.0' : t; };
+  if (ax.mode === 'zweipunkt' && ax.valve === 'bi') {
+    return ['In Regeln: DANN ' + id + '.Ausfahren bzw. DANN ' + id + '.Einfahren (ein kurzer Impuls reicht).',
+      'SCL: ' + id + '.Ausfahren := TRUE; … ' + id + '.Einfahren := TRUE; – Endlagen: ' + id + '.Ausgefahren, ' + id + '.Eingefahren'];
+  }
+  if (ax.mode === 'zweipunkt') {
+    return ['In Regeln: DANN ' + id + '.Ausfahren (1 = ' + num(ax.max) + ' ' + MF.axisUnit(ax).pos + ', 0 = zurück).',
+      'SCL: ' + id + '.Ausfahren := TRUE; – Endlagen: ' + id + '.Ausgefahren, ' + id + '.Eingefahren'];
+  }
+  if (ax.mode === 'position') {
+    var ziel = ax.type === 'rotary' ? Math.max(ax.min, Math.min(ax.max, 90)) : ax.max;
+    return ['SCL: ' + id + '.Soll := ' + num(ziel) + '; ' + id + '.Freigabe := TRUE; – angekommen: ' + id + '.InPosition'];
+  }
+  return ['SCL: ' + id + '.Soll := ' + num(ax.vmax / 2) + '; ' + id + '.Freigabe := TRUE; (Soll in ' + MF.axisUnit(ax).speed +
+    ', negativ = rückwärts) – Stellung: ' + id + '.Ist'];
 };
 
 // Eingänge auf ihre Startwerte, keine geforcten Ausgänge.
@@ -579,7 +658,7 @@ MF.templates = {
         pose: { z: MF.BELT_TOP + 0.02 },
         // Gleitbelag: sonst zieht der einfahrende Stößel eine gestaute Kiste mit zur Seite
         material: MF.MATERIALS.slide,
-        axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 1, 0], min: 0, max: 0.4, vmax: 0.3, mode: 'zweipunkt', returnDelay: 0.5 }
+        axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 1, 0], min: 0, max: 0.4, vmax: 0.3, mode: 'zweipunkt', valve: 'mono', returnDelay: 0.5 }
       };
     },
     props: [
@@ -587,7 +666,8 @@ MF.templates = {
         get: function (b) { return Math.round((b.axis.max - b.axis.min) * 1e6) / 1e3; },
         set: function (b, v) { b.axis.max = Math.round((b.axis.min + v / 1000) * 1e6) / 1e6; } },
       { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0.1, max: 5, hint: 'Ausfahrgeschwindigkeit', fn: 'axis', field: 'vmax' },
-      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren', fn: 'axis', field: 'returnDelay' },
+      { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren', fn: 'axis', field: 'returnDelay',
+        when: function (b) { return b.axis.mode === 'zweipunkt' && b.axis.valve !== 'bi'; } },
       { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'], fn: 'axis',
         hint: 'Schubrichtung; der Schieber dreht sich mit',
         get: function (b) { return MF.dirName(b.pose.rot + MF.vecDeg(b.axis.dir)); },
@@ -618,8 +698,9 @@ MF.templates = {
   // abnehmendes Band dahinter wieder 2 mm tiefer legen.
   turntable: {
     label: 'Drehtisch', icon: 'i-turntable', prefix: 'DT', color: '#1B2430', group: 'Tische',
-    hint: 'Runder Tisch mit Band, dreht um die Hochachse auf einen Winkel: Soll (Grad) und Freigabe setzen, ' +
-      'InPosition meldet das Ziel. Liegt 2 mm unter der Bandoberkante',
+    hint: 'Runder Tisch mit Band, dreht um die Hochachse: Ausfahren = 1 dreht auf 90°, 0 zurück auf 0°, ' +
+      'Ausgefahren/Eingefahren melden die Endlagen. Für beliebige Winkel Betriebsart Position (Soll und Freigabe). ' +
+      'Liegt 2 mm unter der Bandoberkante',
     make: function () {
       return {
         kind: 'kinematic',
@@ -627,7 +708,7 @@ MF.templates = {
         pose: { z: MF.BELT_TOP - 0.1 - 0.002 },
         material: MF.MATERIALS.belt,
         surface: { speed: 0.5, dir: 0, running: true },
-        axis: { type: 'rotary', origin: [0, 0, 0], dir: [0, 0, 1], min: -180, max: 180, vmax: 90, mode: 'position', returnDelay: 0 }
+        axis: { type: 'rotary', origin: [0, 0, 0], dir: [0, 0, 1], min: 0, max: 90, vmax: 90, mode: 'zweipunkt', valve: 'mono', returnDelay: 0 }
       };
     },
     props: []
@@ -643,7 +724,7 @@ MF.templates = {
         pose: { z: MF.BELT_TOP - 0.1 - 0.002 },
         material: MF.MATERIALS.belt,
         surface: { speed: 0.5, dir: 0, running: true },
-        axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 0, 1], min: 0, max: 0.3, vmax: 0.2, mode: 'zweipunkt', returnDelay: 0 }
+        axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 0, 1], min: 0, max: 0.3, vmax: 0.2, mode: 'zweipunkt', valve: 'mono', returnDelay: 0 }
       };
     },
     props: []
@@ -660,7 +741,7 @@ MF.templates = {
         // Gleitbelag: mit Stahl zieht der einfahrende Stopper die vorderste Kiste
         // eines Staus mit nach unten, sie hakt an seiner Kante ein
         material: MF.MATERIALS.slide,
-        axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 0, 1], min: 0, max: 0.14, vmax: 0.5, mode: 'zweipunkt', returnDelay: 0 }
+        axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 0, 1], min: 0, max: 0.14, vmax: 0.5, mode: 'zweipunkt', valve: 'mono', returnDelay: 0 }
       };
     },
     props: []
@@ -676,7 +757,7 @@ MF.templates = {
         pose: { z: MF.BELT_TOP + 0.02 },
         // Gleitbelag: Kisten rutschen am Arm entlang statt hängenzubleiben
         material: MF.MATERIALS.slide,
-        axis: { type: 'rotary', origin: [-0.4, 0, 0], dir: [0, 0, 1], min: 0, max: 45, vmax: 90, mode: 'zweipunkt', returnDelay: 0 }
+        axis: { type: 'rotary', origin: [-0.4, 0, 0], dir: [0, 0, 1], min: 0, max: 45, vmax: 90, mode: 'zweipunkt', valve: 'mono', returnDelay: 0 }
       };
     },
     props: []
@@ -704,9 +785,10 @@ MF.bodyIcon = function (body) {
 // Eigenschaften eines Körpers (aus seiner Vorlage); ohne Vorlage keine.
 // Jede Eigenschaft gehört zu einer Funktion (fn); fehlt die Funktion inzwischen
 // (frei geändert, z. B. Transportfläche entfernt), fällt die Eigenschaft weg.
+// when(body) blendet sie aus (z. B. Rückfahrverzug bei zwei Eingängen).
 MF.propsOf = function (body) {
   var t = MF.templates[body.template];
-  return t ? t.props.filter(function (p) { return !p.fn || body[p.fn]; }) : [];
+  return t ? t.props.filter(function (p) { return (!p.fn || body[p.fn]) && (!p.when || p.when(body)); }) : [];
 };
 
 MF.propDef = function (body, key) {
@@ -967,7 +1049,7 @@ MF.EXAMPLE_BODIES = [
     pose: { x: 4.75, y: 1.75, z: 0.72, rot: 0 },
     // 1 m/s statt früher 0,3 m/s: Mit 0,3 m/s braucht ein Schiebetakt 4,5 s, es kommt aber
     // alle 2 s eine Kiste – in echter Physik staut sich dann eine Schlange am Stößel.
-    axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 1, 0], min: 0, max: 0.6, vmax: 1, mode: 'zweipunkt', returnDelay: 0.5 } },
+    axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 1, 0], min: 0, max: 0.6, vmax: 1, mode: 'zweipunkt', valve: 'mono', returnDelay: 0.5 } },
   { id: 'SE1', name: 'Senke 1', parent: 'F1', template: 'sink', kind: 'ghost',
     shape: { type: 'rect', w: 0.5, d: 0.5, h: 0.6 }, pose: { x: 6.25, y: 2.25, z: 0, rot: 0 }, sink: {} },
   { id: 'SE2', name: 'Senke 2', parent: 'F2', template: 'sink', kind: 'ghost',
