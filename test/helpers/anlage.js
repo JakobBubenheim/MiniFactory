@@ -21,6 +21,10 @@
 // Grenzen in m bzw. Grad), feld() ein Feld einer Funktion wie im Panel,
 // koppeln() hängt einen Körper an einen anderen (wie Ziehen im Baum),
 // lage() liefert die Lage in der Welt mit Achse und Kopplung.
+//
+// Objektfang: fangPunkt() fängt einen Punkt wie beim Zeichnen bzw. an einem Griff,
+// ziehen() verschiebt einen Körper wie das Werkzeug Verschieben (beides über MF.snap,
+// dieselbe Rechnung wie im Editor), fangenEinstellen() legt die Schalter um.
 'use strict';
 
 const { before } = require('node:test');
@@ -63,6 +67,12 @@ function neueAnlage(datei) {
     MF.history.canMerge = false;
   }
   function dtS() { return MF.engine.dt(); }
+  // Fangziele wie im Editor: alle sichtbaren Körper außer skip und seinen Kindern;
+  // Reichweite in Pixeln beim Zoom (Standard 100 %)
+  function fangKontext(skip, zoom) {
+    return MF.snap.context({ snap: MF.model.settings.snap, bodies: MF.model.bodies, skip: skip,
+      scale: MF.sim.SCALE * (zoom || 1), poseOf: function (b) { return MF.sim.drawPose(b); } });
+  }
 
   // Funktionen mit deutschem Namen wie in der Oberfläche (oder dem Feldnamen)
   const FUNKTIONEN = { 'Transportfläche': 'surface', 'Achse': 'axis', 'Sensor': 'sensor', 'Erzeuger': 'spawner', 'Senke': 'sink' };
@@ -397,16 +407,47 @@ function neueAnlage(datei) {
       const p = MF.sim.drawPose(el(id));
       return kopie({ x: p.x, y: p.y, z: p.z, rot: MF.geom.normDeg(p.rot) });
     },
-    /** Punkt fangen wie beim Zeichnen; ohneFangen = Alt gedrückt */
+    /** Punkt fangen wie beim Zeichnen (Raster, ohne Körper in der Nähe); ohneFangen = Alt gedrückt */
     fangen(x, y, ohneFangen) {
-      return kopie(MF.geom.snapPoint(x, y, MF.model.settings.snap, !!ohneFangen));
+      const q = MF.snap.point(fangKontext(null), { x: x, y: y }, !!ohneFangen);
+      return kopie({ x: q.x, y: q.y });
+    },
+    /**
+     * Punkt fangen wie beim Zeichnen bzw. an einem Griff, mit Objektfang:
+     * { x, y, art, text } – art 'corner' | 'mid' | 'center' | 'quad' | 'edge' | 'align' oder null (Raster).
+     * opt: { ohneFangen (Alt), griffVon: ID (dieser Körper und seine Kinder sind keine Ziele), zoom (Standard 1) }
+     */
+    fangPunkt(x, y, opt) {
+      opt = opt || {};
+      const q = MF.snap.point(fangKontext(opt.griffVon || null, opt.zoom), { x: x, y: y }, !!opt.ohneFangen);
+      return kopie({ x: q.x, y: q.y, art: q.hit ? q.hit.kind : null, text: q.hit ? q.hit.text : null });
+    },
+    /**
+     * Körper wie mit dem Werkzeug Verschieben ziehen: seine Lage (Welt) soll ohne Fangen bei
+     * (x, y) liegen, Fangen und Objektfang legen sie fest (Höhe bei Bandenden). Ein Schritt im
+     * Verlauf. Gibt den Text des Objektfangs zurück (null = nur Raster).
+     * opt: { ohneFangen (Alt), zoom (Standard 1) }
+     */
+    ziehen(id, x, y, opt) {
+      opt = opt || {};
+      const e = el(id), draw = MF.sim.drawPose(e), pose = { x: e.pose.x, y: e.pose.y, z: e.pose.z, rot: e.pose.rot };
+      const frame = { draw: draw, pose: pose };
+      const raw = { world: { x: x, y: y }, model: MF.snap.toModel(frame, { x: x, y: y }) };
+      const r = MF.snap.moveBody(fangKontext(id, opt.zoom), e, frame, raw, !!opt.ohneFangen, MF.snap.FREE_MOVE);
+      e.pose.x = r.x;
+      e.pose.y = r.y;
+      if (r.z !== undefined) e.pose.z = r.z;
+      geaendert();
+      return r.hit ? r.hit.text : null;
     },
     /** Winkel fangen wie beim Drehen */
-    fangWinkel(grad, ohneFangen) { return MF.geom.snapAngle(grad, MF.model.settings.snap, !!ohneFangen); },
-    /** Fangen einstellen, z. B. { on: false } oder { pos: 0.1, angle: 15 } */
+    fangWinkel(grad, ohneFangen) { return MF.snap.angle(grad, MF.model.settings.snap, !!ohneFangen); },
+    /** Fangen einstellen, z. B. { on: false }, { obj: false } oder { pos: 0.1, angle: 15 } – wie die Schalter, kein Schritt im Verlauf */
     fangenEinstellen(felder) {
       Object.keys(felder).forEach(function (k) { MF.model.settings.snap[k] = felder[k]; });
     },
+    /** Einstellungen des Fangens { on, obj, pos, angle } */
+    fangenEinstellungen() { return kopie(MF.model.settings.snap); },
 
     // ---------- Regeln und SCL ----------
 
