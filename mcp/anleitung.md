@@ -25,13 +25,16 @@ Meter, Grad, Sekunden. Draufsicht wie in der App: **x nach rechts, y nach unten*
 | Körperart | Verhalten | Beispiele |
 |---|---|---|
 | `ghost` | keine Kollision, nur Fläche/Raum | Lichtschranke, Quelle, Senke |
-| `static` | fest, Kisten stoßen dagegen | Band, Wand, Tisch, Rutsche |
+| `static` | fest, Teile stoßen dagegen | Band, Wand, Tisch, Rutsche |
 | `kinematic` | bewegt sich nur über eine Achse | Schieber, Drehtisch, Hubtisch, Stopper, Weiche |
-| `dynamic` | fällt und rutscht (Physik) | lose Teile |
+| `dynamic` | fällt und rutscht (Physik) | lose Teile, Produkt eines Erzeugers |
 
 Funktionen (optional, `set_function`): `surface` Transportfläche (static/kinematic: `speed` m/s, `dir` Grad lokal),
 `axis` Achse (kinematic), `sensor` (ghost: `invert`, `debounce` ms), `spawner` Erzeuger (ghost: `interval` s,
-`maxCount`, `enabled`), `sink` Senke (ghost: entfernt Kisten, deren **Mittelpunkt** im Raum der Senke liegt, und zählt sie).
+`maxCount`, `enabled`), `sink` Senke (ghost: entfernt Teile, deren **Mittelpunkt** im Raum der Senke liegt, und zählt sie).
+
+**Teile und Produkt:** Ein Erzeuger erzeugt **Teile** nach seinem **Produkt**: ein eigener Körper (ID `P1`, `P2` …) unter der
+Quelle (`productOf` in `get_overview`). Neue Quellen haben die Standard-Kiste (0,3 m Würfel, 5,4 kg). Siehe Abschnitt 3a.
 
 ## 3. Vorlagen (Standardwerte, Details mit `list_templates`)
 
@@ -49,7 +52,21 @@ Funktionen (optional, `set_function`): `surface` Transportfläche (static/kinema
 
 Eigenschaften setzt du mit `props`, z. B. Band `{"speed": 0.5, "direction": "unten"}`, Quelle `{"interval": 2}`,
 Schieber `{"stroke": 600, "speed": 1, "direction": "unten"}` (Hub in **mm**). `direction` dreht den ganzen Körper.
-Kisten: 0,3 m Würfel, 5,4 kg. Weitere Vorlagen und alle Standardwerte stehen in `list_templates`.
+Standard-Teil: Kiste 0,3 m Würfel, 5,4 kg (Produkt der Quelle, änderbar). Weitere Vorlagen und alle Standardwerte stehen in `list_templates`.
+
+### 3a. Produkt eines Erzeugers ändern (andere Teile als Kisten)
+
+Das Produkt ist ein normaler Körper mit Form, Höhe, Werkstoff und Farbe – **ändern mit `update_body`** an seiner ID:
+
+- Dosen (Zylinder): `{"id": "P1", "fields": {"type": "circle", "r": 0.08, "h": 0.2, "color": "#9AA3AE"}}`
+- Flache Platte: `{"id": "P1", "fields": {"w": 0.4, "d": 0.25, "h": 0.05}}`
+- L-Profil (konkav geht): `{"id": "P1", "fields": {"type": "polygon", "points": [[-0.15,-0.15],[0.15,-0.15],[0.15,-0.05],[-0.05,-0.05],[-0.05,0.15],[-0.15,0.15]]}}`
+- Masse über die Dichte: `{"material": {"density": 500}}` (Masse = Grundfläche × h × Dichte, steht als `mass` in `get_overview`).
+- `rot` = Startdrehung der Teile, `x`/`y` = Versatz zur Quelle (Standard 0, also mittig in der Quelle); z bleibt 0.
+
+Das Produkt simuliert nicht mit, ist immer `dynamic`, hat keine Funktionen, lässt sich nicht löschen oder verschieben und geht
+mit seiner Quelle (löschen, duplizieren). Die Quelle legt ein Teil nur auf, wenn an dieser Stelle Platz für **seine Form** ist.
+Teile sollten kleiner sein als die Bandbreite; runde Teile rollen nicht weg (sie stehen auf der Grundfläche).
 
 **Achsen** (`set_function` mit `function: "axis"`): Alle Vorlagen mit Achse starten in Betriebsart `zweipunkt`
 (Ausgänge `Ausgefahren`, `Eingefahren`, `Ist`). Ventil `valve`:
@@ -65,8 +82,8 @@ Grenzen `min`/`max` gelten immer, z. B. Drehtisch `{"mode": "position", "min": -
 
 1. **Band**: Oberkante 0,7 m. Länge über `shape: {"w": 4}`. Laufrichtung über `rot` oder `props.direction`.
 2. **Quelle** über den **Anfang** des Bands legen, ganz auf dem Band (z bleibt 0,72 = 2 cm über der Oberkante).
-3. **Senke** direkt **hinter das Bandende** (Kante an Kante), Höhe 0–0,6 m: die Kiste fällt hinein. Am Fuß einer Rutsche genauso.
-4. **Bänder hintereinander bündig**: alle Bänder und Tische mit Oberkante 0,7 m (`z: 0.6`), Stirnkante an Stirnkante. Die Bandenden sind in der Physik gerundet wie eine Umlenkrolle (r 5 cm), Kisten laufen darüber. Ein Folgeband **höher** als das liefernde hakt – `validate` meldet das.
+3. **Senke** direkt **hinter das Bandende** (Kante an Kante), Höhe 0–0,6 m: das Teil fällt hinein. Am Fuß einer Rutsche genauso.
+4. **Bänder hintereinander bündig**: alle Bänder und Tische mit Oberkante 0,7 m (`z: 0.6`), Stirnkante an Stirnkante. Die Bandenden sind in der Physik gerundet wie eine Umlenkrolle (r 5 cm), Teile laufen darüber. Ein Folgeband **höher** als das liefernde hakt – `validate` meldet das.
 5. **Ecke (90°)**: das zuliefernde Band endet in der **Mitte** des abnehmenden, beide bündig.
    Endet es erst am Rand, fallen die Kisten herunter. Rutschen Kisten mit Schwung über die Außenkante: eine glatte
    **Führungswand** außen neben das abnehmende Band (`draw_shape`, static, 0,1 m breit, 1 m hoch, Reibung 0,05) und das
@@ -78,7 +95,7 @@ Grenzen `min`/`max` gelten immer, z. B. Drehtisch `{"mode": "position", "min": -
    laufen (allgemein: Bandrichtung = Schubrichtung − 90°). Für die andere Seite die ganze Anordnung drehen.
 8. **Rutsche**: `draw_shape` Rechteck, `kind: "static"`, `h` am Anfang (z. B. 0,68 = 2 cm unter dem Band), `h2` am Ende
    (z. B. 0,1), Reibung 0,1 (`material: {"friction": 0.1}`). Bergab zeigt lokal +x, wenn `h2 < h`. Keine Transportfläche darauf.
-9. Abstände: Kisten brauchen Platz; Quelle `interval` ≥ 1,5 s bei 0,5 m/s.
+9. Abstände: Teile brauchen Platz; Quelle `interval` ≥ 1,5 s bei 0,5 m/s (Kiste 0,3 m).
 
 ## 5. Logik
 
@@ -106,18 +123,18 @@ fällt auf seinen Startwert zurück. Ein SCL-Fehler kommt mit Zeile und Spalte z
 
 - `render_topview`: Bild mit IDs, Laufrichtungen (oranger Pfeil), Gefälle, Raster in Metern. Mit der Skizze vergleichen.
 - `validate`: Dateifehler und Hinweise zu den Bauregeln (was hinter jedem Bandende liegt, Quelle über einer Fläche …).
-- `simulate {"seconds": 30}`: Kisten erzeugt/aufgenommen je Senke, **auf dem Boden** (heruntergefallen), **Stau**,
+- `simulate {"seconds": 30}`: Teile erzeugt/aufgenommen je Senke (unter `boxes`, mit `products` = welches Produkt jede Quelle macht), **auf dem Boden** (heruntergefallen), **Stau**,
   Flanken je Signal (z. B. wie oft LS1 belegt war), SCL-Laufzeitfehler. Mit `trace` siehst du Signalwechsel mit Zeit,
   mit `set_signals` testest du Eingänge (z. B. `{"B1.Ein": 0}`).
-- Erwartung grob: bei `interval` 2 s kommen in 30 s etwa 12–13 Kisten an (die ersten brauchen Laufzeit).
+- Erwartung grob: bei `interval` 2 s kommen in 30 s etwa 12–13 Teile an (die ersten brauchen Laufzeit).
 
 ## 7. Empfohlener Ablauf
 
 1. Beschreibung/Skizze verstehen, Maße schätzen (Band 0,5 m breit, Kiste 0,3 m), Plan mit Koordinaten machen.
-2. `new_plant` → Körper mit `add_from_template` / `draw_shape` → Regeln/SCL.
+2. `new_plant` → Körper mit `add_from_template` / `draw_shape` → Produkte der Quellen anpassen (`update_body` am Produkt) → Regeln/SCL.
 3. `render_topview` und `get_overview`: stimmt die Lage? Laufrichtungen?
-4. `validate`, dann `simulate` (30–60 s). Fallen Kisten herunter oder staut es sich: nachbessern (`update_body`) und erneut simulieren.
+4. `validate`, dann `simulate` (30–60 s). Fallen Teile herunter oder staut es sich: nachbessern (`update_body`) und erneut simulieren.
 5. `save_plant` und dem Nutzer sagen, welche Datei er öffnen soll (Pfad steht in der Antwort).
 
-Beispiele zum Abschauen: Ressourcen `mini-fabrik://beispiele/strecke`, `…/ausschleusen`, `…/rutsche`
+Beispiele zum Abschauen: Ressourcen `mini-fabrik://beispiele/strecke`, `…/ausschleusen`, `…/rutsche`, `…/dosen`
 (laden mit `load_plant {"example": "strecke"}`).

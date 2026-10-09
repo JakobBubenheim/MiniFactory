@@ -1,5 +1,5 @@
 // Sim: Zeichenfläche (Draufsicht). Zeichnet Körper aus ihrem Grundriss (Rechteck,
-// Kreis, Polygon) mit Lage und Drehung, dazu die Kisten aus der Physik, und findet
+// Kreis, Polygon) mit Lage und Drehung, dazu die Teile aus der Physik, und findet
 // Körper unter der Maus. Alle Längen in Metern; das Raster ist nur Zeichenhilfe.
 // Dazu die Griffe des gewählten Körpers (drehen, Größe, Polygonpunkte) und die
 // Vorschau beim Zeichnen neuer Formen mit Maßen (Werkzeuge in ui/editor.js).
@@ -132,10 +132,14 @@ MF.sim = {
     ctx.translate(this.offsetX, this.offsetY);
     ctx.scale(c, c);
     var self = this;
-    // Tiefer liegende Körper zuerst, Kisten darüber, Sensorstrahlen zuletzt
+    // Tiefer liegende Körper zuerst, Teile darüber, Sensorstrahlen zuletzt.
+    // Ein Produkt liegt über seinem Erzeuger (seine Lage ist relativ zu ihm).
     var order = MF.model.bodies.filter(function (b) { return b.look.visible; });
-    order = order.map(function (b, i) { return { b: b, i: i }; }).sort(function (a, b) {
-      return a.b.pose.z - b.b.pose.z || a.i - b.i;
+    order = order.map(function (b, i) {
+      var src = MF.sourceOf(b);
+      return { b: b, i: i, z: src ? src.pose.z + b.pose.z + 1e-3 : b.pose.z };
+    }).sort(function (a, b) {
+      return a.z - b.z || a.i - b.i;
     });
     order.forEach(function (o) { self.drawBody(o.b, self.drawPose(o.b)); });
     this.drawBoxes();
@@ -213,7 +217,17 @@ MF.sim = {
     ctx.lineWidth = lw;
 
     this.outlinePath(sh);
-    if (b.kind === 'ghost') {
+    if (MF.isProduct(b)) {
+      // Produkt: Vorlage der Teile, halbtransparent mit gestricheltem Rand
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = b.look.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.setLineDash([4 * lw, 3 * lw]);
+      ctx.strokeStyle = '#1B2430';
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (b.kind === 'ghost') {
       ctx.globalAlpha = b.spawner ? 0.55 : 0.12;
       ctx.fillStyle = b.sink ? '#1B2430' : b.look.color;
       if (b.spawner || b.sink) ctx.fill();
@@ -381,8 +395,9 @@ MF.sim = {
     return Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
   },
 
-  // Kisten: zwischen den letzten beiden Physik-Schritten interpoliert, gedreht um z.
-  // Höher liegende Kisten werfen einen Schatten und sind etwas heller.
+  // Teile: zwischen den letzten beiden Physik-Schritten interpoliert, gedreht um z,
+  // im Grundriss ihres Produkts (Lage = Mittelpunkt). Höher liegende Teile werfen
+  // einen Schatten und sind etwas heller. Kisten (Rechteck) haben ein Klebeband.
   drawBoxes: function () {
     var ctx = this.ctx, self = this;
     var a = MF.engine.alpha();
@@ -394,7 +409,7 @@ MF.sim = {
       return { bx: bx, x: p.x + (c.x - p.x) * a, y: p.y + (c.y - p.y) * a, z: p.z + (c.z - p.z) * a, yaw: y0 + dy * a };
     }).sort(function (u, v) { return u.z - v.z; });
     list.forEach(function (k) {
-      var w = k.bx.size[0], d = k.bx.size[1];
+      var sh = k.bx.shape, d = k.bx.size[1];
       var lift = Math.max(0, k.z - k.bx.size[2] / 2);
       ctx.save();
       // Schatten auf dem Boden, je höher, desto weiter versetzt
@@ -403,23 +418,27 @@ MF.sim = {
         ctx.translate(k.x + lift * 0.08, k.y + lift * 0.12);
         ctx.rotate(k.yaw);
         ctx.fillStyle = 'rgba(27, 36, 48, 0.18)';
-        ctx.fillRect(-w / 2, -d / 2, w, d);
+        self.outlinePath(sh);
+        ctx.fill();
         ctx.restore();
       }
       ctx.translate(k.x, k.y);
       ctx.rotate(k.yaw);
+      self.outlinePath(sh);
       ctx.fillStyle = k.bx.color;
-      ctx.fillRect(-w / 2, -d / 2, w, d);
+      ctx.fill();
       if (lift > 0.005) {
         ctx.fillStyle = 'rgba(255, 255, 255, ' + Math.min(0.3, lift * 0.3).toFixed(3) + ')';
-        ctx.fillRect(-w / 2, -d / 2, w, d);
+        ctx.fill();
       }
       ctx.lineWidth = lw;
       ctx.strokeStyle = '#1B2430';
-      ctx.strokeRect(-w / 2, -d / 2, w, d);
-      // Klebeband
-      ctx.fillStyle = 'rgba(27, 36, 48, 0.25)';
-      ctx.fillRect(-0.02, -d / 2, 0.04, d);
+      ctx.stroke();
+      if (sh.type === 'rect') {
+        // Klebeband
+        ctx.fillStyle = 'rgba(27, 36, 48, 0.25)';
+        ctx.fillRect(-0.02, -d / 2, 0.04, d);
+      }
       ctx.restore();
     });
   },
@@ -432,7 +451,7 @@ MF.sim = {
     ctx.font = '600 10px ui-monospace, Menlo, monospace';
     ctx.textBaseline = 'middle';
     MF.model.bodies.forEach(function (b) {
-      if (!b.look.visible) return;
+      if (!b.look.visible || MF.isProduct(b)) return;   // Produkt liegt in der Quelle, ihr Schild reicht
       var r = MF.geom.bounds(b.shape, self.drawPose(b));
       if (b.surface && r.x1 - r.x0 < 1 && r.y1 - r.y0 < 1) return;
       var below = b.sensor ? 0.125 * c : 0;   // Empfänger ragt heraus

@@ -7,6 +7,7 @@
     "gravity": -9.81,
     "snap": {
       "on": true,
+      "obj": true,
       "pos": 0.05,
       "angle": 5
     }
@@ -84,22 +85,7 @@
         "interval": 2,
         "maxCount": 0,
         "enabled": true,
-        "template": {
-          "shape": {
-            "type": "rect",
-            "w": 0.3,
-            "d": 0.3,
-            "h": 0.3
-          },
-          "material": {
-            "friction": 0.6,
-            "restitution": 0,
-            "density": 200
-          },
-          "look": {
-            "color": "#C79A5B"
-          }
-        }
+        "product": "P1"
       },
       "sink": null,
       "inputs": {
@@ -107,6 +93,41 @@
       },
       "look": {
         "color": "#D9701A",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "P1",
+      "name": "Produkt Q1",
+      "parent": "Q1",
+      "template": null,
+      "kind": "dynamic",
+      "shape": {
+        "type": "rect",
+        "w": 0.3,
+        "d": 0.3,
+        "h": 0.3
+      },
+      "pose": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0.6,
+        "restitution": 0,
+        "density": 200
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": null,
+      "spawner": null,
+      "sink": null,
+      "inputs": {},
+      "look": {
+        "color": "#C79A5B",
         "visible": true,
         "locked": false
       }
@@ -213,6 +234,7 @@
         "max": 0.6,
         "vmax": 1,
         "mode": "zweipunkt",
+        "valve": "mono",
         "returnDelay": 0.5
       },
       "sensor": null,

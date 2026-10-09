@@ -1,6 +1,6 @@
 # Konzept: Umbau auf 3D-Physik („2,5D“)
 
-Stand: 09.10.2026 (Phase 4 eingetragen – der Umbau ist fertig, siehe Abschnitt 5; danach Objektfang, Abschnitt 3, sowie Handbetrieb und Ventil in 3b). Dieses Dokument ist der gemeinsame Plan für alle Branches des Umbaus.
+Stand: 09.10.2026 (Phase 4 eingetragen – der Umbau ist fertig, siehe Abschnitt 5; danach Objektfang, Abschnitt 3, Handbetrieb und Ventil in 3b, Produkt eines Erzeugers in 3c). Dieses Dokument ist der gemeinsame Plan für alle Branches des Umbaus.
 Wer an einer Phase arbeitet, liest es zuerst und hält sich an die Entscheidungen hier.
 Ändert sich eine Entscheidung, wird zuerst dieses Dokument angepasst.
 
@@ -49,8 +49,8 @@ Neu eingefügte Formen sind zuerst `ghost`.
 | **Transportfläche** | static, kinematic | Oberseite bewegt sich mit `speed` (m/s) in Richtung `dir` (Grad, lokal) und nimmt aufliegende dynamische Körper mit | EIN `Ein` (BOOL), EIN `Tempo` (REAL, gekoppelt an `speed`), AUS `Läuft` |
 | **Achse** | kinematic | linear oder rotatorisch, mit Grenzen, Höchstgeschwindigkeit und Betriebsart | siehe unten |
 | **Sensor** | ghost | meldet, ob ein dynamischer Körper die Form schneidet | AUS `Belegt`, Eigenschaften `invert`, `debounce` |
-| **Erzeuger** | ghost | erzeugt im Takt dynamische Körper nach einer Vorlage | EIN `Freigabe`, AUS `Erzeugt` |
-| **Senke** | ghost | entfernt dynamische Körper, deren Mittelpunkt in der Form liegt, und zählt sie | EIN `Reset`, AUS `Anzahl` |
+| **Erzeuger** | ghost | erzeugt im Takt **Teile** (dynamische Körper) in der Form seines **Produkts** (Körper unter dem Erzeuger, Abschnitt 3c) | EIN `Freigabe`, AUS `Erzeugt` |
+| **Senke** | ghost | entfernt Teile, deren Mittelpunkt in der Form liegt, und zählt sie | EIN `Reset`, AUS `Anzahl` |
 
 **Achse – Betriebsarten**
 
@@ -120,8 +120,10 @@ Version 3 ist der Umbau. `MF.file.migrate()` rechnet 1 → 2 → 3 schrittweise 
 - `axis`: `{ "type": "linear"|"rotary", "origin": [x,y,z], "dir": [x,y,z], "min", "max", "vmax", "mode", "returnDelay" }`, lokal zum Körper.
   `mode`: `zweipunkt` | `position` | `geschwindigkeit`. Rotatorisch nur mit `dir = [0, 0, ±1]` (Phase 4).
 - `parent` (Phase 4): Ordner-ID, `null` oder **Körper-ID** (Kopplung, nur bei Körpern).
-- `spawner`: `{ "interval", "maxCount", "enabled", "template": { shape, material, look } }`.
-- Laufzeitdaten (Rapier-Handles, erzeugte Kisten, Zähler, `force`) werden **nie** gespeichert.
+- `spawner`: `{ "interval", "maxCount", "enabled", "product": "P1" }` – `product` ist die ID des Produkt-Körpers
+  (Abschnitt 3c). Bis 09.10.2026 stand hier `"template": { shape, material, look }` (Kistenvorlage); das Laden macht daraus
+  den Produkt-Körper.
+- Laufzeitdaten (Rapier-Handles, erzeugte Teile, Zähler, `force`) werden **nie** gespeichert.
 
 **Migration 2 → 3** (Katalog-Elemente werden zu Körpern mit `template`):
 
@@ -197,6 +199,25 @@ Festgelegt in Phase 4 (Achsen, Kopplung, neue Vorlagen; `sim/model.js`, `sim/eng
 | Handbetrieb | Abschnitt „Handbetrieb“ im Eigenschaften-Panel für jeden Körper mit Achse, je Betriebsart (nicht je Vorlage). `MF.axisManual(body, cmd, value)` – dieselbe Funktion für Knöpfe und Tests – schreibt dieselben Eingänge wie der I/O-Tab (`MF.engine.setSignal`), **kein Schritt im Verlauf**. `zweipunkt`: `out`/`in` (Beschriftung `MF.axisManualLabels`: Ausfahren/Einfahren, rotatorisch Drehen/Zurück, senkrecht Heben/Senken); bei `mono` `Ausfahren` = 1 bzw. 0, Einfahren per Knopf **ohne Rückfahrverzug** (die Wartezeit gilt als abgelaufen, `rt.wait`), danach gilt `returnDelay` wieder fürs Signal; bei `bi` ein **Impuls** (`MF.engine.pulse`: 1 für den nächsten Zyklus, danach 0; Reset nimmt ihn zurück) und der Gegen-Eingang wird 0. `position`: `goto` Ziel → `Soll` (in die Grenzen geklemmt) und `Freigabe` = 1; Zielfeld und Schnellknöpfe (linear min/max, rotatorisch 0°/90°/180°/−90° in den Grenzen). `geschwindigkeit`: `jog` −1/0/1 → `Soll` = ±`vmax` mit `Freigabe` = 1, 0 hält an (`Freigabe` = 0) |
 | Handbetrieb anzeigen | Stellung als Balken (min … max) und Zahl, Zustand (fährt/steht, ausgefahren/eingefahren bzw. InPosition), Satz mit den Signalen für Regeln und SCL (`MF.axisManualHint`). Läuft die Simulation nicht, wirken die Knöpfe trotzdem (die Eingänge merken sich den Befehl), der Hinweis lautet „Simulation starten, damit sich etwas bewegt“. Schreibt eine aktive Regel einen der Eingänge, sind die Knöpfe gesperrt und der Hinweis nennt die Regel |
 | Standards der Vorlagen | **Drehtisch** neu `zweipunkt` 0 … 90°, Ventil `mono`, `returnDelay` 0: `Ausfahren` = 1 dreht auf 90°, 0 zurück auf 0°. Bestehende Dateien behalten ihre Betriebsart. Hubtisch, Stopper, Weiche: `zweipunkt`, `mono`, `returnDelay` 0 (unverändert). Schieber: `mono` mit `returnDelay` 0,5 s (unverändert – mit einer Regel `LS1.Belegt → S1.Ausfahren` braucht er die Wartezeit, sonst fährt er zurück, bevor die Kiste vom Band ist) |
+
+### 3c. Festlegungen Produkt eines Erzeugers (`feature/produkt-vorlage`)
+
+Wunsch: In der Quelle andere Geometrien als Kisten erzeugen; im Baum liegt unter der Quelle ein Element, der
+Volumenkörper der zu erzeugenden Produkte.
+
+| Thema | Festlegung |
+|---|---|
+| Datenmodell | Das Produkt ist ein **normaler Körper** in `bodies` (Form, Höhe, Werkstoff, Farbe), damit Griffe, „Form & Lage“, Werkstoff, Darstellung, Speichern, Verlauf und MCP ohne Sonderweg gelten. Die Zuordnung steht **an beiden Enden**: `spawner.product` = ID des Produkts, `product.parent` = ID des Erzeugers. Ein Körper ist genau dann Produkt, wenn sein Elternkörper ihn so nennt (`MF.isProduct`, `MF.productOf`, `MF.sourceOf`). **Kein neues Feld am Körper** (`role` o. ä.): die Felder eines Körpers bleiben `BODY_KEYS`, das Dateiformat bleibt Version 3 (wie bei der Kopplung) |
+| Warum nicht Kopplung | `parent` = Körper heißt sonst Kopplung (mitbewegen, nichts Dynamisches, höchstens zwei Ebenen). Das Produkt nutzt nur die **Rechnung** der Kopplung – seine `pose` gilt relativ zum Erzeuger (`MF.poseInWorld`), so liegt es auch an einer Quelle auf dem Drehtisch richtig –, ist aber keine: `MF.childBodies` zählt es nicht (die Quelle lässt sich weiter koppeln, auch wenn sie dann mit Produkt drei Ebenen hat), `checkCoupling` prüft es nicht, an ein Produkt lässt sich nichts koppeln |
+| Eigenschaften | Körperart immer `dynamic` (die Teile sind dynamisch; Dichte wirkt), keine Funktionen, keine Neigung. Name „Produkt Q1“, IDs `P1`, `P2` … (eigene Reihe). Standard: Kiste 0,3 m, 200 kg/m³, `#C79A5B` (`MF.defaultProduct`), Lage `{0, 0, 0, 0}` |
+| Simuliert nicht | Die Engine baut für Produkte keinen Rapier-Körper (`sync` überspringt sie); `dynamicPose` liefert ohne Physik-Lage `MF.poseInWorld` – das Produkt liegt immer an seiner Quelle. Draufsicht halbtransparent mit gestricheltem Rand über der Quelle, ohne eigenes Schild; 3D halbtransparent mit dunklen Kanten |
+| Erzeugen | Teil = Produkt an `composePose(Quelle in der Welt, product.pose)`: Unterseite auf dieser Höhe, Drehung der Quelle + Drehung des Produkts als Startdrehung, Versatz `x`/`y` verschiebt den Ablageort. Form beliebig (`shapeParts`, konkave Polygone zerlegt), Masse aus Werkstoff. „Platz frei“ mit der **echten Form**, rundum 5 mm größer (`probeParts`: Rechteck `Cuboid` wie bisher, Kreis `RoundCylinder`, Polygon je Teil `RoundConvexPolyhedron`) |
+| Mittelpunkt der Teile | Der Rapier-Körper eines Teils liegt im **Flächenschwerpunkt** des Grundrisses auf halber Höhe (`MF.geom.centered`): Senke, Sensor-Anzeige, Draufsicht und 3D rechnen mit der Lage als Mittelpunkt, auch beim L. Rechteck und Kreis unverändert |
+| Teile statt Kisten | Engine-Liste bleibt `MF.engine.boxes` (Name aus Gewohnheit), jedes Teil kennt `shape` (um den Schwerpunkt), `size` (Hüllquader), `color`, `product`, `source`. Draufsicht zeichnet den Grundriss (Kiste mit Klebeband), 3D ein Prisma; Geometrie je Form geteilt und freigegeben wie bisher. In der Oberfläche heißen sie „Teile“, Signale und Funktionsnamen bleiben |
+| Bedienen | Baum: Produkt direkt unter der Quelle, nicht ziehbar; Kontextmenü nur Umbenennen und „Quelle auswählen“. Löschen allein abgelehnt (Meldung), Quelle löschen/duplizieren nimmt es mit, die Kopie bekommt ein eigenes Produkt gleicher Form. Erzeuger als Funktion anlegen legt ein Produkt an, Funktion entfernen oder Körperart wechseln entfernt es. Panel: beim Erzeuger „Produkt“ (Form, Masse) und Knopf „Produkt bearbeiten“; beim Produkt Name, „Grundform“ (Rechteck/Kreis/Polygon, `MF.setForm` mit `type` über `MF.convertShape`), Masse je Teil, „Form & Lage“, Werkstoff, Darstellung |
+| Migration | Dateien bis 09.10.2026 (Version 1–3) haben `spawner.template` statt Produkt. `MF.file.build` legt nach `migrate()` mit `MF.ensureProducts` je Erzeuger ohne Produkt den Körper an – aus der Kistenvorlage, sonst die Standard-Kiste – direkt hinter dem Erzeuger, und entfernt `template`. Geprüft: Beispielanlage, alte Version-1-Strecke und die alten MCP-Beispiele laufen **bitgenau** wie vorher (Lagen, Drehungen, Massen, Zähler nach 40 s). `migrate()` selbst ändert sich nicht |
+| Prüfen | `validate()`: `spawner.product` nennt einen vorhandenen Körper, der unter dem Erzeuger hängt; ein Produkt ist `dynamic` ohne Funktionen; an ein Produkt koppelt nichts. Fehlt `product` (alte Datei), ist das gültig |
+| MCP | `update_body` am Produkt ändert die Teile (auch `type` für den Formtyp); `delete`, `move_to_folder`, `kind` am Produkt und `spawner.product` werden mit Hinweis abgelehnt. `get_overview` nennt `productOf`, `mass`, Weltlage; `simulate` liefert unter `boxes.products` je Quelle das Produkt; `render_topview` zeichnet Teile im Grundriss; Beispiel `dosen` |
 
 Festgelegt beim Objektfang (Branch `feature/objektfang`; `sim/snap.js`, `ui/editor.js`, `sim/sim.js`):
 
@@ -321,7 +342,7 @@ Phasen 3 und 5 können parallel laufen.
 - **Neu gebaut wird ein Mesh nur, wenn sich sein Aufbau ändert** (`bodyKey`: Art, Form, Farbe,
   Sichtbarkeit, Laufrichtung, Funktionen). Lage, Achsstellung (interpoliert über `MF.sim.drawPose`),
   Bandstreifen und Sensorfarbe liest jedes Bild. Angebunden an `MF.store.on` wie die Draufsicht.
-- **Kisten:** Lage linear, Drehung `slerp`; Meshes aus einem Vorrat, Geometrie je Form und Werkstoff je
+- **Kisten (seit 3c: Teile in der Form ihres Produkts):** Lage linear, Drehung `slerp`; Meshes aus einem Vorrat, Geometrie je Form und Werkstoff je
   Farbe geteilt und freigegeben, wenn keine Kiste sie mehr nutzt (geprüft: 12 000 Kisten, Speicher konstant).
 - **Kamera:** Orbit (drehen, rechts schieben, Rad zoomen), nicht unter den Boden. `view.camera3d =
   { pos: [x, y, z], target: [x, y, z] }` in **Mini-Fabrik-Koordinaten** (nicht gespiegelt), auf mm

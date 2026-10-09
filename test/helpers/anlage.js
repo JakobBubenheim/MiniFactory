@@ -27,6 +27,11 @@
 // dieselbe Rechnung wie im Editor), fangenEinstellen() legt die Schalter um.
 // Handbetrieb: handbetrieb() ruft dieselbe Funktion wie die Knöpfe im Panel
 // (MF.axisManual), handbetriebHinweis() liefert den Satz zu Regeln und SCL.
+//
+// Produkt (Quelle mit frei gestaltbarem Produkt): Erzeuger machen "Teile" in der Form
+// ihres Produkt-Körpers. produkt() nennt ihn, teile() beschreibt die erzeugten Teile
+// (Form, Masse, Produkt); kisten() & Co. gelten weiter für alle Teile. form() kann mit
+// typ den Formtyp wechseln. elemente() zählt Produkte nicht mit (sie sind Vorlagen).
 'use strict';
 
 const { before } = require('node:test');
@@ -190,7 +195,7 @@ function neueAnlage(datei) {
     freigeben(name) { const s = sig(name); MF.engine.releaseForce(s.el, s.name); },
     istGeforct(name) { const s = sig(name); return MF.engine.isForced(s.el, s.name); },
 
-    // ---------- Kisten ----------
+    // ---------- Teile (früher nur Kisten) ----------
 
     kistenAnzahl() { return MF.engine.boxes.length; },
     /** Mittelpunkte der Kisten in Metern, [{ x, y }] (in der Reihenfolge des Erzeugens) */
@@ -211,10 +216,35 @@ function neueAnlage(datei) {
     },
     /** Kantenlänge einer Kiste in Metern */
     kistenGroesse() { return MF.BOX_SIZE; },
+    /**
+     * Erzeugte Teile: [{ x, y, z, rot, form ('rect'|'circle'|'polygon'), h, masse (kg, aus der Physik),
+     * produkt, quelle }] in der Reihenfolge des Erzeugens
+     */
+    teile() {
+      return kopie(MF.engine.boxes.map(function (b) {
+        return { x: b.cur.x, y: b.cur.y, z: b.cur.z, rot: MF.geom.normDeg(MF.sim.yawOf(b.cur.q) * 180 / Math.PI),
+          form: b.shape.type, h: b.shape.h, masse: b.rb.mass(), produkt: b.product, quelle: b.source };
+      }));
+    },
 
     // ---------- Körper (früher "Elemente") ----------
 
-    elemente() { return kopie(MF.model.bodies.map(function (e) { return e.id; })); },
+    elemente() {
+      return kopie(MF.model.bodies.filter(function (e) { return !MF.isProduct(e); }).map(function (e) { return e.id; }));
+    },
+    /** Produkt-Körper eines Erzeugers (ID) oder null */
+    produkt(id) { const p = MF.productOf(el(id)); return p ? p.id : null; },
+    /** Ist id das Produkt eines Erzeugers? */
+    istProdukt(id) { return MF.isProduct(el(id)); },
+    /** Masse eines Teils dieses Produkts in kg (wie im Panel) */
+    produktMasse(id) { return MF.productMass(el(id)); },
+    /** Körper duplizieren wie Strg+D; gibt die ID der Kopie zurück oder null, wenn abgelehnt */
+    duplizieren(id) {
+      el(id);
+      const b = MF.store.duplicateBody(id);
+      MF.history.canMerge = false;
+      return b ? b.id : null;
+    },
     /** Eigenschaft der Vorlage lesen (wert weglassen) oder wie im Eigenschaften-Panel setzen */
     eigenschaft(id, key, wert) {
       const e = el(id);
@@ -231,10 +261,12 @@ function neueAnlage(datei) {
       MF.history.canMerge = false;
       return e.id;
     },
+    /** Körper löschen; false, wenn abgelehnt (z. B. Produkt einer Quelle, Grund in meldungen()) */
     loeschen(id) {
       el(id);
-      MF.store.deleteBody(id);
+      const ok = MF.store.deleteBody(id);
       MF.history.canMerge = false;
+      return ok;
     },
     umbenennen(id, name) { el(id).name = name; geaendert(); },
     name(id) { return el(id).name; },
@@ -260,13 +292,15 @@ function neueAnlage(datei) {
     },
     /**
      * Form und Lage lesen (felder weglassen) oder ändern, z. B. { w: 2, h: 0.5, h2: 0.1, z: 0.3, rot: 90 }.
-     * h2: null entfernt die Neigung. Gibt true zurück oder false, wenn abgelehnt (Meldung in meldungen()).
+     * h2: null entfernt die Neigung; typ wechselt den Formtyp ('rect', 'circle', 'polygon').
+     * Gibt true zurück oder false, wenn abgelehnt (Meldung in meldungen()).
      */
     form(id, felder) {
       const e = el(id);
       if (!felder) return formDaten(e);
       const aenderung = kopie(felder);
       if (aenderung.punkte) { aenderung.points = aenderung.punkte; delete aenderung.punkte; }
+      if (aenderung.typ) { aenderung.type = aenderung.typ; delete aenderung.typ; }
       const err = MF.setForm(e, aenderung);
       if (err) { MF.ui.message(err); return false; }
       geaendert();
@@ -278,6 +312,7 @@ function neueAnlage(datei) {
       if (art === undefined) return e.kind;
       if (MF.file.KINDS.indexOf(art) < 0) throw new Error('Körperart "' + art + '" gibt es nicht');
       const res = MF.setKind(e, art);
+      if (res.error) MF.ui.message(res.error);
       MF.store.dropSignals(e.id, res.signals);
       geaendert();
       return kopie(res.fns.map(fnName));

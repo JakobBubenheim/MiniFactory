@@ -29,8 +29,108 @@ MF.MATERIALS = {
 MF.BODY = { prefix: 'K', label: 'Körper', color: '#3A7CA5', H: 0.1 };
 
 MF.BELT_TOP = 0.7;      // Oberkante der Förderbänder (m)
-MF.BOX_SIZE = 0.3;      // Kantenlänge der Kisten aus Erzeugern (m)
+MF.BOX_SIZE = 0.3;      // Kantenlänge der Standard-Kiste (Produkt neuer Quellen, m)
 MF.BOX_COLOR = '#C79A5B';
+
+// ---------- Produkt eines Erzeugers ----------
+//
+// Jeder Erzeuger hat genau einen Produkt-Körper: die Vorlage der Teile, die er
+// erzeugt (Idee/Konzept-3D.md, Abschnitt 3, "Produkt"). Er ist ein normaler Körper
+// (Form, Höhe, Werkstoff, Farbe; Körperart immer dynamic, keine Funktionen) und
+// hängt im Baum unter dem Erzeuger:
+//   source.spawner.product = ID des Produkts, product.parent = ID des Erzeugers.
+// Seine Lage ist relativ zum Erzeuger – dort erscheinen die Teile, seine Drehung um z
+// ist ihre Startdrehung. Er simuliert nicht mit (keine Kollision, keine Schwerkraft),
+// ist keine Kopplung und lässt sich nicht einzeln löschen oder umhängen.
+MF.PRODUCT = { prefix: 'P', label: 'Produkt' };
+
+// Standard-Produkt: Kiste 0,3 m, 200 kg/m³ (5,4 kg) – so sahen die Kisten bisher aus
+MF.defaultProduct = function () {
+  return {
+    shape: { type: 'rect', w: MF.BOX_SIZE, d: MF.BOX_SIZE, h: MF.BOX_SIZE },
+    material: { friction: MF.MATERIALS.box.friction, restitution: MF.MATERIALS.box.restitution, density: MF.MATERIALS.box.density },
+    look: { color: MF.BOX_COLOR }
+  };
+};
+
+// Ist b das Produkt eines Erzeugers?
+MF.isProduct = function (b) {
+  var p = MF.parentBody(b);
+  return !!(p && p.spawner && p.spawner.product === b.id);
+};
+
+// Produkt-Körper eines Erzeugers oder null
+MF.productOf = function (src) {
+  if (!src || !src.spawner || !src.spawner.product) return null;
+  var p = MF.store.findBody(src.spawner.product);
+  return p && p.parent === src.id ? p : null;
+};
+
+// Erzeuger, zu dem ein Produkt gehört, oder null
+MF.sourceOf = function (b) {
+  return MF.isProduct(b) ? MF.parentBody(b) : null;
+};
+
+// Fehlende Produkte anlegen – für jeden Erzeuger in bodies (Modell oder Datei-
+// inhalt) ohne gültiges Produkt. Aus der früheren Kistenvorlage spawner.template
+// (Dateien bis 09.10.2026), sonst die Standard-Kiste; template entfällt danach.
+// Das Produkt steht in der Liste direkt hinter seinem Erzeuger.
+// Gibt die neu angelegten Produkte zurück.
+MF.ensureProducts = function (bodies) {
+  var ids = {}, made = [];
+  bodies.forEach(function (b) { if (b && b.id) ids[b.id] = b; });
+  function nextId() {
+    var max = 0;
+    Object.keys(ids).forEach(function (id) {
+      var m = /^P(\d+)$/.exec(id);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return MF.PRODUCT.prefix + (max + 1);
+  }
+  bodies.slice().forEach(function (b) {
+    var sp = b && b.spawner;
+    if (!sp || typeof sp !== 'object') return;
+    var tpl = sp.template;
+    delete sp.template;
+    var cur = typeof sp.product === 'string' ? ids[sp.product] : null;
+    if (cur && cur.parent === b.id) return;
+    var spec = MF.defaultProduct();
+    if (tpl && typeof tpl === 'object') {
+      if (tpl.shape && typeof tpl.shape === 'object') spec.shape = JSON.parse(JSON.stringify(tpl.shape));
+      if (tpl.material && typeof tpl.material === 'object') spec.material = JSON.parse(JSON.stringify(tpl.material));
+      if (tpl.look && typeof tpl.look.color === 'string') spec.look.color = tpl.look.color;
+    }
+    var p = MF.productBody(b, spec, nextId());
+    ids[p.id] = p;
+    sp.product = p.id;
+    bodies.splice(bodies.indexOf(b) + 1, 0, p);
+    made.push(p);
+  });
+  return made;
+};
+
+// Masse eines Teils in kg: Grundfläche × Höhe × Dichte
+MF.productMass = function (p) {
+  var d = p.material && p.material.density >= 0 ? p.material.density : MF.MATERIALS.box.density;
+  return MF.geom.area(p.shape) * p.shape.h * d;
+};
+
+// Produkt-Körper für den Erzeuger src nach spec { shape, material, look }
+MF.productBody = function (src, spec, id) {
+  var p = {
+    id: id, name: MF.PRODUCT.label + ' ' + src.id, parent: src.id, template: null,
+    kind: 'dynamic',
+    shape: JSON.parse(JSON.stringify(spec.shape)),
+    pose: { x: 0, y: 0, z: 0, rot: 0 },
+    material: JSON.parse(JSON.stringify(spec.material))
+  };
+  MF.FN_KEYS.forEach(function (k) { p[k] = null; });
+  p.inputs = {};
+  p.look = { color: spec.look.color, visible: true, locked: false };
+  p.rt = {};
+  p.force = {};
+  return p;
+};
 
 // Laufrichtungen in der Draufsicht (y nach unten): Grad im Uhrzeigersinn, 0° = rechts
 MF.DIRS = { rechts: 0, unten: 90, links: 180, oben: 270 };
@@ -52,29 +152,16 @@ MF.FN_KEYS = ['spawner', 'surface', 'sensor', 'axis', 'sink'];   // Reihenfolge 
 MF.FUNCTIONS = {
   spawner: {
     label: 'Erzeuger', kinds: ['ghost'],
+    // product: ID des Produkt-Körpers, der im Baum unter dem Erzeuger hängt – die
+    // Vorlage der erzeugten Teile (Form, Höhe, Werkstoff, Farbe). Angelegt wird er
+    // vom Store (MF.store.addProduct), sobald der Erzeuger in der Anlage ist.
     make: function () {
-      return {
-        interval: 2, maxCount: 0, enabled: true,
-        template: {
-          shape: { type: 'rect', w: MF.BOX_SIZE, d: MF.BOX_SIZE, h: MF.BOX_SIZE },
-          material: MF.MATERIALS.box,
-          look: { color: MF.BOX_COLOR }
-        }
-      };
+      return { interval: 2, maxCount: 0, enabled: true, product: null };
     },
     fields: [
-      { key: 'enabled', label: 'Aktiv', type: 'bool', hint: 'Erzeugt der Erzeuger Kisten?', field: 'enabled' },
-      { key: 'interval', label: 'Takt', type: 'number', unit: 's', step: 0.1, min: 0.1, max: 60, hint: 'Abstand zwischen zwei Kisten', field: 'interval' },
-      { key: 'maxCount', label: 'Max. Anzahl', type: 'number', step: 1, min: 0, hint: '0 = unbegrenzt', field: 'maxCount' },
-      { key: 'boxW', label: 'Kiste Breite', type: 'number', unit: 'm', step: 0.05, min: 0.05, max: 2, hint: 'Kistenvorlage: Ausdehnung in x',
-        get: function (f) { return f.template.shape.w; }, set: function (f, v) { f.template.shape.w = v; } },
-      { key: 'boxD', label: 'Kiste Tiefe', type: 'number', unit: 'm', step: 0.05, min: 0.05, max: 2, hint: 'Kistenvorlage: Ausdehnung in y',
-        get: function (f) { return f.template.shape.d; }, set: function (f, v) { f.template.shape.d = v; } },
-      { key: 'boxH', label: 'Kiste Höhe', type: 'number', unit: 'm', step: 0.05, min: 0.05, max: 2, hint: 'Kistenvorlage: Höhe',
-        get: function (f) { return f.template.shape.h; }, set: function (f, v) { f.template.shape.h = v; } },
-      { key: 'boxColor', label: 'Kiste Farbe', type: 'color',
-        get: function (f) { return (f.template.look && f.template.look.color) || MF.BOX_COLOR; },
-        set: function (f, v) { if (!f.template.look) f.template.look = {}; f.template.look.color = v; } }
+      { key: 'enabled', label: 'Aktiv', type: 'bool', hint: 'Erzeugt der Erzeuger Teile?', field: 'enabled' },
+      { key: 'interval', label: 'Takt', type: 'number', unit: 's', step: 0.1, min: 0.1, max: 60, hint: 'Abstand zwischen zwei Teilen', field: 'interval' },
+      { key: 'maxCount', label: 'Max. Anzahl', type: 'number', step: 1, min: 0, hint: '0 = unbegrenzt', field: 'maxCount' }
     ],
     io: function () {
       return [
@@ -216,7 +303,7 @@ MF.FUNCTIONS = {
     label: 'Senke', kinds: ['ghost'],
     make: function () { return {}; },
     fields: [
-      { key: 'count', label: 'Zählerstand', type: 'number', readonly: true, live: true, hint: 'Aufgenommene Kisten',
+      { key: 'count', label: 'Zählerstand', type: 'number', readonly: true, live: true, hint: 'Aufgenommene Teile',
         body: true, get: function (b) { return (b.rt && b.rt.count) || 0; } }
     ],
     io: function () {
@@ -392,9 +479,10 @@ MF.parentBody = function (b) {
   return p && p !== b ? p : null;
 };
 
-// Körper, die direkt an b hängen
+// Körper, die direkt an b hängen (Kopplung; das Produkt eines Erzeugers zählt nicht)
 MF.childBodies = function (b) {
-  return MF.model.bodies.filter(function (c) { return c !== b && c.parent === b.id; });
+  var prod = b.spawner && b.spawner.product;
+  return MF.model.bodies.filter(function (c) { return c !== b && c.parent === b.id && c.id !== prod; });
 };
 
 // Lage local im Koordinatensystem frame -> Welt
@@ -614,7 +702,7 @@ MF.vecDeg = function (v) {
 MF.templates = {
   source: {
     label: 'Quelle', icon: 'i-source', prefix: 'Q', color: '#D9701A', group: 'Materialfluss',
-    hint: 'Erzeugt im Takt Kisten und legt sie auf das Band darunter',
+    hint: 'Erzeugt im Takt Teile und legt sie auf das Band darunter. Form, Größe, Werkstoff und Farbe der Teile bestimmt das Produkt, das im Baum unter der Quelle hängt (Standard: Kiste 0,3 m)',
     make: function () {
       return {
         kind: 'ghost',
@@ -625,8 +713,8 @@ MF.templates = {
       };
     },
     props: [
-      { key: 'enabled', label: 'Aktiv', type: 'bool', hint: 'Erzeugt die Quelle Kisten?', fn: 'spawner', field: 'enabled' },
-      { key: 'interval', label: 'Takt', type: 'number', unit: 's', step: 0.1, min: 0.1, max: 60, hint: 'Abstand zwischen zwei Kisten', fn: 'spawner', field: 'interval' },
+      { key: 'enabled', label: 'Aktiv', type: 'bool', hint: 'Erzeugt die Quelle Teile?', fn: 'spawner', field: 'enabled' },
+      { key: 'interval', label: 'Takt', type: 'number', unit: 's', step: 0.1, min: 0.1, max: 60, hint: 'Abstand zwischen zwei Teilen', fn: 'spawner', field: 'interval' },
       { key: 'maxCount', label: 'Max. Anzahl', type: 'number', step: 1, min: 0, hint: '0 = unbegrenzt', fn: 'spawner', field: 'maxCount' }
     ]
   },
@@ -696,7 +784,7 @@ MF.templates = {
   },
   sink: {
     label: 'Senke', icon: 'i-sink', prefix: 'SE', color: '#1B2430', group: 'Materialfluss',
-    hint: 'Nimmt Kisten auf und zählt sie (Anzahl); liegt etwas tiefer als das Band',
+    hint: 'Nimmt Teile auf (Mittelpunkt in der Senke) und zählt sie (Anzahl); liegt etwas tiefer als das Band',
     make: function () {
       return {
         kind: 'ghost',
@@ -707,7 +795,7 @@ MF.templates = {
       };
     },
     props: [
-      { key: 'count', label: 'Zählerstand', type: 'number', readonly: true, live: true, hint: 'Aufgenommene Kisten', fn: 'sink',
+      { key: 'count', label: 'Zählerstand', type: 'number', readonly: true, live: true, hint: 'Aufgenommene Teile', fn: 'sink',
         get: function (b) { return (b.rt && b.rt.count) || 0; } }
     ]
   },
@@ -797,6 +885,7 @@ MF.templateGroups = function () {
 
 // Symbol im Baum und im Panel: das der Vorlage, sonst ein allgemeiner Körper
 MF.bodyIcon = function (body) {
+  if (MF.isProduct(body)) return 'i-product';
   var t = MF.templates[body.template];
   return t ? t.icon : 'i-body';
 };
@@ -947,6 +1036,8 @@ MF.addFunction = function (body, fn) {
   if (body[fn]) return '';
   body[fn] = MF.FUNCTIONS[fn].make();
   MF.syncIo(body);
+  // Ein Erzeuger in der Anlage bekommt sein Produkt (Standard-Kiste)
+  if (fn === 'spawner' && MF.store.findBody(body.id) === body) MF.store.addProduct(body);
   return '';
 };
 
@@ -954,6 +1045,7 @@ MF.addFunction = function (body, fn) {
 MF.removeFunction = function (body, fn) {
   if (!body[fn]) return [];
   var before = MF.io(body).map(function (s) { return s.name; });
+  if (fn === 'spawner') MF.store.dropProduct(body);
   body[fn] = null;
   return MF.syncIo(body, before);
 };
@@ -965,6 +1057,11 @@ MF.removeFunction = function (body, fn) {
 MF.setKind = function (body, kind, dryRun) {
   var res = { fns: [], slope: false, signals: [] };
   if (MF.KIND_LABELS[kind] === undefined) return res;
+  // Das Produkt eines Erzeugers ist die Vorlage dynamischer Teile
+  if (MF.isProduct(body) && kind !== 'dynamic') {
+    res.error = body.name + ' ist das Produkt von ' + MF.parentBody(body).name + ' – Produkte sind immer dynamisch.';
+    return res;
+  }
   MF.FN_KEYS.forEach(function (fn) {
     if (body[fn] && MF.FUNCTIONS[fn].kinds.indexOf(kind) < 0) res.fns.push(fn);
   });
@@ -979,6 +1076,7 @@ MF.setKind = function (body, kind, dryRun) {
   }
   var before = MF.io(body).map(function (s) { return s.name; });
   body.kind = kind;
+  if (res.fns.indexOf('spawner') >= 0) MF.store.dropProduct(body);
   res.fns.forEach(function (fn) { body[fn] = null; });
   if (res.slope || (body.shape.h2 !== undefined && kind !== 'static')) delete body.shape.h2;
   body.rt = {};
@@ -993,14 +1091,21 @@ MF.setKind = function (body, kind, dryRun) {
 };
 
 // Form und Lage ändern: changes mit w, d, r, h, h2 (null = Neigung weg), points,
-// x, y, z, rot. Geprüft wird vorher; bei einem Fehler bleibt alles, wie es war.
+// x, y, z, rot. Mit type ('rect', 'circle', 'polygon') wechselt der Formtyp
+// (MF.convertShape; Maße aus changes, sonst aus dem Hüllrechteck der alten Form).
+// Geprüft wird vorher; bei einem Fehler bleibt alles, wie es war.
 // Gibt einen Fehlertext zurück oder ''.
 MF.setForm = function (body, changes) {
   var sh = JSON.parse(JSON.stringify(body.shape));
+  if (changes.type !== undefined && changes.type !== sh.type) {
+    sh = MF.convertShape(sh, changes.type);
+    if (!sh) return 'Formtyp muss "rect", "circle" oder "polygon" sein.';
+  }
   var pose = { x: body.pose.x, y: body.pose.y, z: body.pose.z, rot: body.pose.rot };
   var ok = { rect: ['w', 'd'], circle: ['r'], polygon: ['points'] }[sh.type] || [];
   for (var k in changes) {
     var v = changes[k];
+    if (k === 'type') continue;
     if (k === 'x' || k === 'y' || k === 'z' || k === 'rot') {
       if (typeof v !== 'number' || !isFinite(v)) return 'Lage "' + k + '" muss eine Zahl sein.';
       pose[k] = k === 'rot' ? MF.geom.normDeg(v) : Math.round(v * 1e6) / 1e6;
@@ -1024,6 +1129,33 @@ MF.setForm = function (body, changes) {
   body.shape = sh;
   body.pose = pose;
   return '';
+};
+
+// Form in einen anderen Formtyp umrechnen, ungefähr gleich groß um denselben
+// Ursprung: Rechteck aus dem Hüllrechteck, Kreis passt hinein, Polygon = Rechteck
+// mit vier Punkten bzw. Achteck aus einem Kreis. Höhe und Neigung bleiben.
+// null bei unbekanntem Typ.
+MF.convertShape = function (sh, type) {
+  var r6 = MF.geom.round6;
+  var bb = MF.geom.bounds(sh, { x: 0, y: 0, rot: 0 });
+  var w = r6(bb.x1 - bb.x0), d = r6(bb.y1 - bb.y0), out;
+  if (type === 'rect') out = { type: 'rect', w: w, d: d };
+  else if (type === 'circle') out = { type: 'circle', r: r6(Math.min(w, d) / 2) };
+  else if (type === 'polygon') {
+    var pts = [];
+    if (sh.type === 'circle') {
+      for (var i = 0; i < 8; i++) {
+        var a = Math.PI * (2 * i + 1) / 8;
+        pts.push([r6(sh.r * Math.cos(a)), r6(sh.r * Math.sin(a))]);
+      }
+    } else {
+      pts = [[r6(bb.x0), r6(bb.y0)], [r6(bb.x1), r6(bb.y0)], [r6(bb.x1), r6(bb.y1)], [r6(bb.x0), r6(bb.y1)]];
+    }
+    out = { type: 'polygon', points: pts };
+  } else return null;
+  out.h = sh.h;
+  if (sh.h2 !== undefined) out.h2 = sh.h2;
+  return out;
 };
 
 // ---------- Beispielanlage ----------
@@ -1090,6 +1222,7 @@ MF.EXAMPLE_BODIES.forEach(function (src) {
   MF.model.bodies.push(b);
 });
 delete MF.EXAMPLE_BODIES;
+MF.ensureProducts(MF.model.bodies);   // Q1 bekommt sein Produkt P1 (Kiste)
 
 // ---------- Zentraler Zustand mit einfachem Ereignissystem ----------
 
@@ -1149,9 +1282,34 @@ MF.store = {
     b.name = t.label + ' ' + next.n;
     b.parent = parent || null;
     MF.model.bodies.push(b);
+    if (b.spawner) this.addProduct(b);
     this.selectedId = b.id;
     this.changed();
     return b;
+  },
+
+  // ---------- Produkt eines Erzeugers ----------
+
+  // Produkt-Körper für den Erzeuger src anlegen (spec { shape, material, look },
+  // Standard: Kiste), direkt hinter src. Ein vorhandenes Produkt wird ersetzt.
+  addProduct: function (src, spec) {
+    this.dropProduct(src);
+    var p = MF.productBody(src, spec || MF.defaultProduct(), this.nextId(MF.PRODUCT.prefix).id);
+    var bs = MF.model.bodies;
+    bs.splice(bs.indexOf(src) + 1, 0, p);
+    src.spawner.product = p.id;
+    return p;
+  },
+
+  // Produkt des Erzeugers src entfernen (Erzeuger weg oder gelöscht). Nur für
+  // Körper der Anlage – eine Probe-Kopie (MCP prüft Änderungen erst daran) lässt es stehen.
+  dropProduct: function (src) {
+    var p = this.findBody(src.id) === src ? MF.productOf(src) : null, bs = MF.model.bodies;
+    if (p) {
+      bs.splice(bs.indexOf(p), 1);
+      if (this.selectedId === p.id) this.selectedId = src.id;
+    }
+    if (src.spawner) src.spawner.product = null;
   },
 
   // Neuer Körper aus einer gezeichneten Form (ghost, Name "Körper n", IDs K1, K2 …).
@@ -1186,6 +1344,10 @@ MF.store = {
   duplicateBody: function (id) {
     var src = this.findBody(id);
     if (!src) return null;
+    if (MF.isProduct(src)) {
+      if (MF.ui) MF.ui.message(src.name + ' gehört zu ' + MF.parentBody(src).name + ' – zum Duplizieren die Quelle wählen.');
+      return null;
+    }
     var t = MF.templates[src.template];
     var next = this.nextId(t ? t.prefix : MF.BODY.prefix);
     var b = JSON.parse(JSON.stringify(src, function (k, v) { return k === 'rt' || k === 'force' ? undefined : v; }));
@@ -1197,6 +1359,13 @@ MF.store = {
     b.force = {};
     MF.model.bodies.push(b);
     this.placeAfter(MF.model.bodies, b, src);
+    // Erzeuger: sein Produkt mit, als eigener Körper unter der Kopie
+    var prod = MF.productOf(src);
+    if (prod) {
+      var pc = this.addProduct(b, { shape: prod.shape, material: prod.material, look: prod.look });
+      pc.pose = { x: prod.pose.x, y: prod.pose.y, z: prod.pose.z, rot: prod.pose.rot };
+      pc.look.visible = prod.look.visible;
+    }
     this.selectedId = b.id;
     this.changed();
     return b;
@@ -1209,9 +1378,15 @@ MF.store = {
     var b = this.findBody(id);
     var i = bs.indexOf(b);
     if (i < 0) return false;
+    if (MF.isProduct(b)) {
+      if (MF.ui) MF.ui.message(b.name + ' gehört zu ' + MF.parentBody(b).name + ' und lässt sich nicht einzeln löschen – ' +
+        'es ist die Vorlage der Teile. Ändern geht (Form, Werkstoff, Farbe), weg kommt es mit der Quelle.');
+      return false;
+    }
     var self = this;
     MF.childBodies(b).forEach(function (c) { self.reparent(c, self.parentOf(b, 'plant')); });
-    bs.splice(i, 1);
+    if (b.spawner) this.dropProduct(b);
+    bs.splice(bs.indexOf(b), 1);
     MF.model.rules.forEach(function (r) {
       if (r.when && r.when.indexOf(id + '.') === 0) r.when = '';
       if (r.then && r.then.indexOf(id + '.') === 0) r.then = '';
@@ -1350,6 +1525,7 @@ MF.store = {
   // Darf Körper b an den Körper target gehängt werden? Fehlertext oder ''
   coupleError: function (b, target) {
     if (target === b) return 'Ein Körper kann nicht an sich selbst hängen.';
+    if (MF.isProduct(target)) return target.name + ' ist die Vorlage der Teile von ' + MF.parentBody(target).name + ' – an ein Produkt lässt sich nichts koppeln.';
     if (this.isWithin(target.id, b.id)) return target.name + ' hängt an ' + b.name + ' – Kopplung im Kreis ist nicht möglich.';
     if (b.kind === 'dynamic') return b.name + ' ist dynamisch und bewegt sich nur mit der Physik – keine Kopplung möglich.';
     if (target.kind === 'dynamic') return target.name + ' ist dynamisch – an ihn lässt sich nichts koppeln.';
@@ -1478,6 +1654,10 @@ MF.store = {
     var n = this.findNode(id);
     if (!n) return 'Unbekannter Knoten.';
     if (n.area !== area) return 'Nur innerhalb von "' + this.AREAS[n.area] + '" verschiebbar.';
+    if (n.kind === 'body' && MF.isProduct(n.obj)) {
+      return (parent || null) === n.obj.parent ? '' : n.obj.name + ' gehört zu ' + MF.parentBody(n.obj).name +
+        ' und bleibt unter ihr – zum Verschieben die Quelle ziehen.';
+    }
     if (parent && area === 'plant' && this.findBody(parent)) {
       if (n.kind !== 'body') return 'Nur Körper lassen sich an einen Körper hängen.';
       return this.coupleError(n.obj, this.findBody(parent));

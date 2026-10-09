@@ -22,6 +22,12 @@ const BEISPIELE = [
     key: 'rutsche', title: 'Band und Rutsche',
     text: 'Band B1 liefert auf eine gezeichnete Rutsche K1 (static, Rechteck 1,5 × 0,5 m, h 0,68 m am Anfang = 2 cm unter dem Band, ' +
       'h2 0,1 m am Ende, Reibung 0,1). Die Schwerkraft bringt die Kisten in die Senke SE1 am Fuß der Rutsche.'
+  },
+  {
+    key: 'dosen', title: 'Kisten und Dosen',
+    text: 'Zwei Strecken übereinander: oben Q1 mit Kisten (Produkt P1, Standard) auf B1 nach SE1; unten Q2 mit Dosen auf B2 nach SE2. ' +
+      'Das Produkt P2 von Q2 ist ein Zylinder (update_body P2: type "circle", r 0,08 m, h 0,2 m, Dichte 400, grau), alle 1,5 s eine Dose. ' +
+      'Lichtschranke LS1 quer über B2 sieht jede Dose (LS1.Belegt). Keine Logik nötig; in 30 s kommen etwa 12 Kisten und 15 Dosen an.'
   }
 ];
 

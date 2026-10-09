@@ -104,8 +104,8 @@ const WERKZEUGE = [
     name: 'list_templates',
     title: 'Vorlagen und Funktionen',
     description: 'Alle Vorlagen (Katalog) mit Standardform, Höhe z/top, Funktionen, Signalen und Eigenschaften (props mit Einheit und ' +
-      'Grenzen) sowie alle Funktionen (surface, axis, sensor, spawner, sink) mit Feldern, erlaubten Körperarten und Signalen. ' +
-      'Kommt direkt aus der App – neue Vorlagen erscheinen hier von selbst.',
+      'Grenzen) sowie alle Funktionen (surface, axis, sensor, spawner, sink) mit Feldern, erlaubten Körperarten und Signalen, ' +
+      'dazu das Standard-Produkt eines Erzeugers (Kiste 0,3 m). Kommt direkt aus der App – neue Vorlagen erscheinen hier von selbst.',
     inputSchema: LEER,
     annotations: { readOnlyHint: true },
     run: async function (a, k) { return daten(await k.sitzung.vorlagen()); }
@@ -205,8 +205,11 @@ const WERKZEUGE = [
     name: 'update_body',
     title: 'Körper ändern',
     description: 'Körper ändern wie im Eigenschaften-Panel. fields: Lage x, y, z, rot; Form w, d, r, h, h2 (null = Neigung weg), points; ' +
+      'type (rect, circle, polygon: Formtyp wechseln, Maße gleich mitgeben); ' +
       'kind (entfernt nicht erlaubte Funktionen); name; material {friction, restitution, density}; color; visible; ' +
-      'props {Eigenschaft der Vorlage: Wert}. Ungültiges wird ganz abgelehnt, nichts halb geändert.',
+      'props {Eigenschaft der Vorlage: Wert}. Ungültiges wird ganz abgelehnt, nichts halb geändert. ' +
+      'Produkt eines Erzeugers (Körper P… unter der Quelle, productOf in get_overview): bestimmt Form, Höhe, Masse (density) und Farbe ' +
+      'der erzeugten Teile, z. B. Dosen: {"type": "circle", "r": 0.08, "h": 0.2, "color": "#9AA3AE"}; pose relativ zur Quelle, rot = Startdrehung.',
     inputSchema: objekt({
       id: T('Körper-ID, z. B. "B1"'),
       fields: { type: 'object', description: 'Zu ändernde Felder, z. B. {"x": 3, "w": 4.5, "props": {"speed": 0.8}}' }
@@ -218,7 +221,8 @@ const WERKZEUGE = [
     title: 'Funktion setzen',
     description: 'Funktion eines Körpers anlegen/ändern (fields = Objekt, {} = Standardwerte) oder entfernen (fields = null). ' +
       'Funktionen: surface (Transportfläche: speed m/s, dir Grad lokal, running), axis (Achse), sensor (invert, debounce ms), ' +
-      'spawner (Erzeuger: interval s, maxCount, enabled), sink (Senke). Erlaubte Körperarten und Felder: list_templates.',
+      'spawner (Erzeuger: interval s, maxCount, enabled; bekommt einen Produkt-Körper P… – Form der Teile per update_body daran), ' +
+      'sink (Senke). Erlaubte Körperarten und Felder: list_templates.',
     inputSchema: objekt({
       id: T('Körper-ID'),
       function: T('surface, axis, sensor, spawner, sink (oder der deutsche Name)'),
@@ -230,7 +234,7 @@ const WERKZEUGE = [
     name: 'delete',
     title: 'Löschen',
     description: 'Körper, Regeln oder Ordner löschen (IDs). Regeln auf Signale gelöschter Körper verlieren den Bezug; ' +
-      'beim Ordner wandert der Inhalt eine Ebene nach oben.',
+      'beim Ordner wandert der Inhalt eine Ebene nach oben. Ein Erzeuger nimmt sein Produkt mit; das Produkt allein lässt sich nicht löschen.',
     inputSchema: objekt({ ids: { type: 'array', minItems: 1, items: { type: 'string' }, description: 'IDs, z. B. ["B2", "R3"]' } }, ['ids']),
     annotations: { destructiveHint: true },
     run: async function (a, k) { return daten(await k.sitzung.loeschen(a.ids), 'Gelöscht.'); }
@@ -285,9 +289,10 @@ const WERKZEUGE = [
   {
     name: 'simulate',
     title: 'Simulieren',
-    description: 'Simulation headless laufen lassen (fester Zeitschritt, echte Physik) und Zusammenfassung liefern: Kisten erzeugt je ' +
-      'Erzeuger, aufgenommen je Senke, auf dem Boden (heruntergefallen), stillstehend (Stau), Rückstau an Erzeugern, Signalwerte am Ende, ' +
-      'Flanken und Anteil "an" je BOOL-Signal, SCL-Laufzeitfehler, Hinweise. reset (Standard true) startet bei 0 s ohne Kisten. ' +
+    description: 'Simulation headless laufen lassen (fester Zeitschritt, echte Physik) und Zusammenfassung liefern (unter "boxes"): Teile erzeugt je ' +
+      'Erzeuger, aufgenommen je Senke, auf dem Boden (heruntergefallen), stillstehend (Stau), welches Produkt jeder Erzeuger macht, ' +
+      'Rückstau an Erzeugern, Signalwerte am Ende, ' +
+      'Flanken und Anteil "an" je BOOL-Signal, SCL-Laufzeitfehler, Hinweise. reset (Standard true) startet bei 0 s ohne Teile. ' +
       'set_signals setzt Eingänge bzw. forct Ausgänge vor dem Lauf, trace zeichnet Wechsel einzelner Signale mit Zeit auf. render: Bild am Ende mitliefern.',
     inputSchema: objekt({
       seconds: Z('Dauer in s (bis 600)', { exclusiveMinimum: 0, maximum: 600 }),
@@ -326,10 +331,10 @@ const WERKZEUGE = [
     name: 'render_topview',
     title: 'Draufsicht als Bild',
     description: 'PNG der Draufsicht: Körper mit IDs, Laufrichtungen (Pfeile), Gefälle, Achsen, Raster mit Metern (x nach rechts, ' +
-      'y nach unten) und aktuelle Kisten. Zum Vergleich mit der Skizze des Nutzers nach dem Bauen aufrufen.',
+      'y nach unten) und aktuelle Teile in ihrer Form (Produkt der Quelle). Zum Vergleich mit der Skizze des Nutzers nach dem Bauen aufrufen.',
     inputSchema: objekt({
       width: { type: 'integer', minimum: 200, maximum: 2000, description: 'Breite in Pixeln (Standard 1000)' },
-      boxes: B('Kisten zeigen (Standard true)'),
+      boxes: B('Teile zeigen (Standard true)'),
       labels: T('Beschriftung', { enum: ['id', 'name', 'none'] }),
       region: { type: 'object', description: 'Ausschnitt in m {x0, y0, x1, y1} (Standard: ganze Anlage)', properties: { x0: Z('m'), y0: Z('m'), x1: Z('m'), y1: Z('m') }, required: ['x0', 'y0', 'x1', 'y1'], additionalProperties: false }
     }),

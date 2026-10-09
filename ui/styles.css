@@ -509,6 +509,7 @@ button, input, select {
 }
 
 .tree-icon.t-source  { color: var(--accent); }
+.tree-icon.t-product { color: var(--accent); opacity: 0.8; }
 .tree-icon.t-rule    { color: var(--in); }
 
 .tree-label {

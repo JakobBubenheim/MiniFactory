@@ -7,8 +7,11 @@
 //   1. Sensoren lesen   – Rapier-Schnittabfragen der Sensorflächen (+ Entprellung)
 //   2. Logik            – Wenn-dann-Regeln, dann SCL-Bausteine
 //   3. Aktoren          – Achsen fahren (kinematische Körper), Transportflächen an/aus/Tempo
-//   4. Physik-Schritt   – world.step(); Transportflächen ziehen aufliegende Kisten mit
+//   4. Physik-Schritt   – world.step(); Transportflächen ziehen aufliegende Teile mit
 //   5. Erzeuger und Senken
+//
+// Teile: was Erzeuger erzeugen – dynamische Körper in der Form ihres Produkts
+// (MF.productOf, Standard Kiste 0,3 m). Die Liste heißt aus Gewohnheit boxes.
 //
 // Der SPS-Zyklus ist settings.dtMs lang (wie bisher frei wählbar: 10/20/50/100 ms).
 // Die Physik rechnet darin in gleich langen Unterschritten von höchstens 20 ms
@@ -24,11 +27,12 @@ MF.engine = {
   CONTACT_HZ: 60,          // Kontaktsteifigkeit; Rapier-Standard 30 Hz lässt Kisten im Stau 5 mm ineinander rutschen
   SURFACE_K: 1,            // Nachführfaktor der Transportfläche
   SUPPORT_NZ: 0.7,         // Auflage: |Normale z| größer als das
-  LOST_Z: -2,              // Kisten darunter sind verloren und werden entfernt
+  LOST_Z: -2,              // Teile darunter sind verloren und werden entfernt
+  SPAWN_GAP: 0.005,        // Platz frei? Das Teil, rundum so viel größer, darf nichts schneiden
 
   world: null,
   phys: {},                // Körper-ID -> { sig, rb, colliders, parts } (Rapier-Teile eines Körpers)
-  boxes: [],               // erzeugte Kisten: { id, rb, size, color, prev, cur }
+  boxes: [],               // erzeugte Teile: { id, rb, shape, size, color, product, source, prev, cur }
   nextBoxId: 1,
   renderAlpha: 1,          // Anteil bis zum nächsten Schritt im zuletzt gezeichneten Bild
 
@@ -94,7 +98,7 @@ MF.engine = {
 
   // ---------- Welt ----------
 
-  // Anlage in den Ausgangszustand: neue Rapier-Welt, keine Kisten, Zähler und Takte zurück
+  // Anlage in den Ausgangszustand: neue Rapier-Welt, keine Teile, Zähler und Takte zurück
   resetWorld: function () {
     var R = this.R;
     if (this.world) this.world.free();
@@ -208,9 +212,10 @@ MF.engine = {
   // Rapier, zwischen den letzten beiden Schritten mit alpha (0..1) interpoliert.
   // Nach Reset (rt leer) liegt er an seiner gezeichneten Lage. Die Draufsicht zeigt
   // nur die Drehung um z; kippt er im Raum, bleibt der Grundriss gleich.
+  // Das Produkt eines Erzeugers simuliert nicht: es liegt immer am Erzeuger.
   dynamicPose: function (b, alpha) {
     var rt = b.rt || {}, c = rt.cur;
-    if (!c) return b.pose;
+    if (!c) return MF.poseInWorld(b);
     var p = rt.prev || c;
     var y0 = MF.sim.yawOf(p.q), y1 = MF.sim.yawOf(c.q);
     var dy = Math.atan2(Math.sin(y1 - y0), Math.cos(y1 - y0));
@@ -240,12 +245,14 @@ MF.engine = {
   },
 
   // Rapier-Welt an das Modell angleichen: neue, geänderte und gelöschte Körper.
-  // Läuft vor jedem Schritt; Kisten bleiben erhalten.
+  // Läuft vor jedem Schritt; Teile bleiben erhalten. Produkte sind nur Vorlagen
+  // und kommen nicht in die Welt.
   sync: function () {
     var self = this, R = this.R, world = this.world;
     var seen = {}, rebuilt = false;
     MF.model.bodies.forEach(function (b) {
       if (!b.rt) b.rt = {};
+      if (MF.isProduct(b)) return;
       seen[b.id] = true;
       var sig = self.signature(b);
       var p = self.phys[b.id];
@@ -289,11 +296,11 @@ MF.engine = {
       p.rb.setRotation(q, true);
       rebuilt = true;
     });
-    // Liegt eine schlafende Kiste auf einem neu gebauten Körper, soll sie es merken
+    // Liegt ein schlafendes Teil auf einem neu gebauten Körper, soll es das merken
     if (rebuilt) this.boxes.forEach(function (bx) { bx.rb.wakeUp(); });
   },
 
-  // Schneidet eine dynamische Kiste die Form des Körpers (in seiner aktuellen Lage)?
+  // Schneidet ein dynamischer Körper (Teil) die Form des Körpers (in seiner aktuellen Lage)?
   overlapsBox: function (b) {
     var self = this, hit = false, pose = this.worldPose(b);
     var q = this.quatZ(pose.rot);
@@ -533,15 +540,17 @@ MF.engine = {
     });
   },
 
-  // ---------- Kisten ----------
+  // ---------- Teile (aus Erzeugern) ----------
 
   boxState: function (rb) {
     var p = rb.translation(), q = rb.rotation();
     return { x: p.x, y: p.y, z: p.z, q: { x: q.x, y: q.y, z: q.z, w: q.w } };
   },
 
-  // Erzeuger: legt im Takt eine Kiste nach seiner Vorlage auf, Unterseite auf
-  // der Lage des Erzeugers – aber nur, wenn der Platz frei ist (sonst im nächsten Zyklus).
+  // Erzeuger: legt im Takt ein Teil in der Form seines Produkts auf – dort, wo das
+  // Produkt liegt (Lage relativ zum Erzeuger, Unterseite auf seiner Höhe, seine
+  // Drehung als Startdrehung). Aber nur, wenn der Platz frei ist (sonst im nächsten
+  // Zyklus): das Teil, rundum SPAWN_GAP größer, darf keinen dynamischen Körper schneiden.
   stepSpawner: function (b, dt) {
     var sp = b.spawner, rt = b.rt;
     if (!sp.enabled || !this.input(b, 'Freigabe')) return;
@@ -551,41 +560,65 @@ MF.engine = {
     rt.timer -= dt;
     if (rt.timer > 1e-9) return;
 
-    var R = this.R, tpl = sp.template, sh = tpl.shape;
-    var pose = this.worldPose(b);   // Erzeuger kann an einem bewegten Körper hängen
-    var q = this.quatZ(pose.rot);
-    var free = true;
-    // Platz frei? Form der Kiste, 5 mm größer, an der Ablegestelle
-    var probe = sh.type === 'rect' ? new R.Cuboid(sh.w / 2 + 0.005, sh.d / 2 + 0.005, sh.h / 2 + 0.005) : null;
-    var parts = probe ? [{ shape: probe, t: { x: 0, y: 0, z: sh.h / 2 }, q: { x: 0, y: 0, z: 0, w: 1 } }] : this.shapeParts(sh);
-    var self = this;
-    parts.forEach(function (part) {
+    var prod = MF.productOf(b);
+    if (!prod) return;
+    // Erzeuger kann an einem bewegten Körper hängen
+    var at = this.spawnPose(b, prod), sh = at.shape;
+    var q = this.quatZ(at.rot), free = true, self = this;
+    this.probeParts(sh).forEach(function (part) {
       if (!free) return;
-      var t = MF.geom.toWorld(pose, part.t.x, part.t.y);
-      self.world.intersectionsWithShape({ x: t.x, y: t.y, z: pose.z + part.t.z }, self.mulQuat(q, part.q), part.shape,
+      var t = MF.geom.toWorld(at, part.t.x, part.t.y);
+      self.world.intersectionsWithShape({ x: t.x, y: t.y, z: at.z + part.t.z }, self.mulQuat(q, part.q), part.shape,
         function () { free = false; return false; }, self.DYNAMIC_ONLY);
     });
     if (!free) return;
 
-    this.addBox(tpl, pose.x, pose.y, pose.z, pose.rot);
+    this.addBox(prod, at);
     rt.made++;
     rt.timer += sp.interval;
     if (rt.timer < 0) rt.timer = sp.interval;   // kein Nachholen nach einem Stau
   },
 
-  // Kiste (dynamischer Körper) mit Unterseite auf z anlegen. Der Rapier-Körper
-  // liegt im Mittelpunkt der Kiste, damit Lage = Mittelpunkt ist.
-  addBox: function (tpl, x, y, z, rot) {
-    var self = this, R = this.R, sh = tpl.shape;
+  // Wo das nächste Teil des Erzeugers b entsteht: { x, y, z, rot, shape } – Mitte
+  // (Flächenschwerpunkt) des Grundrisses in der Welt, Unterseite auf z, shape um
+  // den Schwerpunkt gelegt (MF.geom.centered)
+  spawnPose: function (b, prod) {
+    var pose = MF.composePose(this.worldPose(b), prod.pose);
+    var c = MF.geom.centroid(prod.shape), w = MF.geom.toWorld(pose, c.x, c.y);
+    return { x: w.x, y: w.y, z: pose.z, rot: pose.rot, shape: MF.geom.centered(prod.shape) };
+  },
+
+  // Rapier-Formen für "Platz frei?": wie shapeParts, rundum SPAWN_GAP größer
+  probeParts: function (sh) {
+    var R = this.R, g = this.SPAWN_GAP, ID = { x: 0, y: 0, z: 0, w: 1 };
+    if (sh.type === 'rect') return [{ shape: new R.Cuboid(sh.w / 2 + g, sh.d / 2 + g, sh.h / 2 + g), t: { x: 0, y: 0, z: sh.h / 2 }, q: ID }];
+    if (sh.type === 'circle') {
+      var s = Math.SQRT1_2;
+      return [{ shape: new R.RoundCylinder(sh.h / 2, sh.r, g), t: { x: 0, y: 0, z: sh.h / 2 }, q: { x: s, y: 0, z: 0, w: s } }];
+    }
+    return MF.geom.convexParts(sh.points).map(function (poly) {
+      var v = [];
+      poly.forEach(function (p) { v.push(p[0], p[1], 0, p[0], p[1], sh.h); });
+      return { shape: new R.RoundConvexPolyhedron(new Float32Array(v), null, g), t: { x: 0, y: 0, z: 0 }, q: ID };
+    });
+  },
+
+  // Teil (dynamischer Körper) nach dem Produkt prod anlegen; at aus spawnPose.
+  // Der Rapier-Körper liegt im Mittelpunkt (Schwerpunkt des Grundrisses, halbe
+  // Höhe), damit Lage = Mittelpunkt ist (Senke, Draufsicht, 3D-Ansicht).
+  addBox: function (prod, at) {
+    var self = this, R = this.R, sh = at.shape;
     var rb = this.world.createRigidBody(R.RigidBodyDesc.dynamic()
-      .setTranslation(x, y, z + sh.h / 2).setRotation(this.quatZ(rot || 0)));
+      .setTranslation(at.x, at.y, at.z + sh.h / 2).setRotation(this.quatZ(at.rot || 0)));
     this.shapeParts(sh).forEach(function (part) {
-      self.world.createCollider(self.colliderDesc(part.shape, tpl.material || MF.MATERIALS.box)
+      self.world.createCollider(self.colliderDesc(part.shape, prod.material || MF.MATERIALS.box)
         .setTranslation(part.t.x, part.t.y, part.t.z - sh.h / 2).setRotation(part.q), rb);
     });
-    var size = sh.type === 'rect' ? [sh.w, sh.d, sh.h] : sh.type === 'circle' ? [2 * sh.r, 2 * sh.r, sh.h] : [MF.BOX_SIZE, MF.BOX_SIZE, sh.h];
+    var r = MF.geom.bounds(sh, { x: 0, y: 0, rot: 0 });
+    var size = sh.type === 'rect' ? [sh.w, sh.d, sh.h] : [r.x1 - r.x0, r.y1 - r.y0, sh.h];
     var state = this.boxState(rb);
-    var box = { id: this.nextBoxId++, rb: rb, shape: sh, size: size, color: (tpl.look && tpl.look.color) || MF.BOX_COLOR, prev: state, cur: state };
+    var box = { id: this.nextBoxId++, rb: rb, shape: sh, size: size, color: (prod.look && prod.look.color) || MF.BOX_COLOR,
+      product: prod.id, source: prod.parent, prev: state, cur: state };
     this.boxes.push(box);
     return box;
   },
@@ -595,8 +628,8 @@ MF.engine = {
     this.boxes.splice(i, 1);
   },
 
-  // Senke: nimmt Kisten auf, deren Mittelpunkt in ihrer Form liegt, und zählt sie.
-  // Kisten unter z = −2 m sind verloren und werden ebenfalls entfernt.
+  // Senke: nimmt Teile auf, deren Mittelpunkt in ihrer Form liegt, und zählt sie.
+  // Teile unter z = −2 m sind verloren und werden ebenfalls entfernt.
   collectSinks: function () {
     var self = this;
     var sinks = MF.model.bodies.filter(function (b) { return b.sink; });

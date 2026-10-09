@@ -34,6 +34,18 @@ const BAUPLAENE = {
     await s.formZeichnen({ type: 'rect', w: 1.5, d: 0.5, h: 0.68, h2: 0.1, x: 5.25, y: 1, kind: 'static',
       name: 'Rutsche', material: { friction: 0.1 } });                                          // K1: 2 cm unter dem Band, fällt nach +x
     await s.vorlageEinfuegen({ template: 'sink', x: 6.25, y: 1 });                             // SE1 am Fuß der Rutsche
+  },
+  // Zwei Quellen mit verschiedenen Produkten: oben Kisten (Standard), unten Dosen (Zylinder)
+  dosen: async function (s) {
+    await s.neu({ name: 'Kisten und Dosen' });
+    await s.vorlageEinfuegen({ template: 'conveyor', x: 2.5, y: 1, shape: { w: 4 } });          // B1: Kisten
+    await s.vorlageEinfuegen({ template: 'source', x: 0.75, y: 1 });                           // Q1 mit Produkt P1 (Kiste)
+    await s.vorlageEinfuegen({ template: 'sink', x: 4.75, y: 1 });                             // SE1
+    await s.vorlageEinfuegen({ template: 'conveyor', x: 2.5, y: 2, shape: { w: 4 } });          // B2: Dosen
+    await s.vorlageEinfuegen({ template: 'source', x: 0.75, y: 2, props: { interval: 1.5 } });  // Q2 mit Produkt P2
+    await s.koerperAendern('P2', { type: 'circle', r: 0.08, h: 0.2, color: '#9AA3AE', name: 'Dose', material: { density: 400 } });
+    await s.vorlageEinfuegen({ template: 'sensor', x: 3.5, y: 2 });                            // LS1 sieht die Dosen
+    await s.vorlageEinfuegen({ template: 'sink', x: 4.75, y: 2 });                             // SE2
   }
 };
 

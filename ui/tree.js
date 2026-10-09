@@ -92,10 +92,12 @@ MF.tree = {
         return { id: f.id, label: f.name, icon: 'i-folder', kind: 'folder', folder: f, area: area, children: kids(area, f.id) };
       }).concat(c.items.map(function (o) {
         if (area === 'plant') {
-          // Gekoppelte Körper hängen im Baum unter ihrem Elternkörper
+          // Gekoppelte Körper hängen im Baum unter ihrem Elternkörper, das Produkt
+          // eines Erzeugers ebenso (als Erstes)
           var sub = seen[o.id] ? [] : (seen[o.id] = true, kids(area, o.id));
-          return { id: o.id, label: o.name, icon: MF.bodyIcon(o), kind: o.template || o.kind, el: o, area: area,
-            children: sub.length ? sub : undefined };
+          var prod = MF.isProduct(o);
+          return { id: o.id, label: o.name, icon: MF.bodyIcon(o), kind: prod ? 'product' : o.template || o.kind, el: o, area: area,
+            product: prod, children: sub.length ? sub : undefined };
         }
         return { id: o.id, label: o.name, icon: 'i-rule', kind: 'rule', rule: o, area: area, sclNo: sclNo[o.id] };
       }));
@@ -206,8 +208,8 @@ MF.tree = {
     var row = document.createElement('div');
     row.className = 'tree-row';
     row.style.paddingLeft = (4 + (level - 1) * 14) + 'px';
-    // Ordner, Elemente und Regeln lassen sich ziehen
-    if (node.area && !node.root) row.draggable = true;
+    // Ordner, Elemente und Regeln lassen sich ziehen – ein Produkt bleibt unter seiner Quelle
+    if (node.area && !node.root && !node.product) row.draggable = true;
 
     var iconClass = 'tree-icon' + (node.kind ? ' t-' + node.kind : '');
     var html =
@@ -475,7 +477,7 @@ MF.tree = {
       if (n.kind === 'folder') { MF.store.deleteFolder(id); done++; folders++; }
       else if (n.kind === 'body') {
         if (n.obj.look.locked) { MF.ui.message(n.obj.name + ' ist gesperrt.'); return; }
-        MF.store.deleteBody(id); done++;
+        if (MF.store.deleteBody(id)) done++;
       } else { MF.store.deleteRule(id); done++; }
     });
     self.marked = {};
@@ -534,6 +536,12 @@ MF.tree = {
       items.push('-');
     }
     items.push({ label: 'Umbenennen', key: 'F2', disabled: many, run: function () { self.rename(id); } });
+    if (n.kind === 'body' && MF.isProduct(n.obj)) {
+      // Produkt: gehört zur Quelle, nur umbenennen und dorthin springen
+      var src = MF.parentBody(n.obj);
+      items.push({ label: 'Quelle auswählen (' + src.id + ')', run: function () { MF.store.select(src.id); } });
+      return items;
+    }
     if (n.kind !== 'folder') {
       items.push({ label: 'Duplizieren', key: 'Strg+D', disabled: many, run: function () { MF.editor.duplicateSelected(); } });
     }
@@ -650,9 +658,14 @@ MF.tree = {
       var id = li && li.dataset.id;
       var n = MF.store.findNode(id);
       if (!n) { e.preventDefault(); return; }
-      // Gezogen wird die ganze Auswahl, wenn der Eintrag dazugehört
+      // Gezogen wird die ganze Auswahl, wenn der Eintrag dazugehört. Produkte bleiben
+      // unter ihrer Quelle (sie gehen mit, wenn die Quelle gezogen wird).
       var ids = self.isSelected(id) ? self.selection() : [id];
-      ids = self.topLevel(ids.filter(function (x) { return MF.store.areaOf(x) === n.area; }));
+      ids = self.topLevel(ids.filter(function (x) {
+        var b = MF.store.findBody(x);
+        return MF.store.areaOf(x) === n.area && !(b && MF.isProduct(b));
+      }));
+      if (!ids.length) { e.preventDefault(); return; }
       self.drag = { ids: ids, area: n.area, target: null, hoverId: null, hoverTimer: null };
       e.dataTransfer.effectAllowed = 'move';
       try { e.dataTransfer.setData('text/plain', ids.join(',')); } catch (err) { /* IE */ }

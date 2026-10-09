@@ -493,7 +493,8 @@ MF.view3d = {
 
   // ---------- Kisten ----------
 
-  // Gemeinsame Geometrie je Form: Prisma um den Mittelpunkt (Lage der Kiste = Mitte)
+  // Gemeinsame Geometrie je Form: Prisma um den Mittelpunkt (Lage des Teils = Mitte;
+  // die Engine legt die Form um ihren Schwerpunkt). Alle Teile eines Produkts teilen sie.
   boxGeometry: function (shape) {
     var key = JSON.stringify(shape), e = this.boxGeos[key];
     if (!e) e = this.boxGeos[key] = { geo: this.geometry(MF.view3dCore.prism(shape), -shape.h / 2), used: 0 };
@@ -506,7 +507,7 @@ MF.view3d = {
     return e;
   },
 
-  // Geometrien und Werkstoffe, die keine Kiste mehr benutzt, freigeben
+  // Geometrien und Werkstoffe, die kein Teil mehr benutzt, freigeben
   pruneBoxCache: function () {
     var self = this;
     Object.keys(this.boxGeos).forEach(function (k) {
@@ -517,7 +518,7 @@ MF.view3d = {
     });
   },
 
-  // Kisten der Engine zeigen: neue bekommen ein Mesh (aus dem Vorrat), entfernte geben
+  // Teile der Engine zeigen: neue bekommen ein Mesh (aus dem Vorrat), entfernte geben
   // ihres zurück. Meshes besitzen nichts selbst, Geometrie und Werkstoff sind geteilt.
   updateBoxes: function (alpha) {
     var C = MF.view3dCore, boxes = MF.engine.boxes, seen = {}, i, m;

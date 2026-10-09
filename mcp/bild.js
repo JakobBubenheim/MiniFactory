@@ -275,6 +275,8 @@ function draufsicht(szene, opt) {
   const mitKisten = opt.boxes !== false;
   const beschriftung = opt.labels || 'id';
   const koerper = szene.bodies.filter(function (b) { return b.visible; });
+  // Produkte (Vorlage der Teile) liegen in ihrer Quelle: gezeichnet, aber ohne eigenes Schild
+  const beschriftet = function (b) { return !b.product; };
 
   // Ausschnitt in Metern
   let reg = opt.region;
@@ -332,10 +334,11 @@ function draufsicht(szene, opt) {
 
   // Körper von unten nach oben: niedrige Oberkante zuerst, immaterielle zuletzt
   const reihe = koerper.slice().sort(function (a, b) {
-    const ga = a.kind === 'ghost' ? 1 : 0, gb = b.kind === 'ghost' ? 1 : 0;
+    const ga = a.product ? 2 : a.kind === 'ghost' ? 1 : 0, gb = b.product ? 2 : b.kind === 'ghost' ? 1 : 0;
     return ga - gb || a.top - b.top;
   });
   function fuellung(b) {
+    if (b.product) return { c: farbe(b.color), a: 0.45 };
     if (b.sensor) return { c: b.sensor.occupied ? F.belegt : F.sensor, a: 0.45 };
     if (b.sink) return { c: F.senke, a: 0.22 };
     if (b.spawner) return { c: F.quelle, a: 0.28 };
@@ -356,7 +359,7 @@ function draufsicht(szene, opt) {
   });
   reihe.forEach(function (b) {
     const p = pts(b.outline);
-    ras.umriss(p, (b.kind === 'ghost' ? 1.5 : 2) * SS, kante(b), b.kind === 'ghost' ? 0.9 : 1);
+    ras.umriss(p, (b.kind === 'ghost' || b.product ? 1.5 : 2) * SS, b.product ? F.text : kante(b), b.kind === 'ghost' || b.product ? 0.7 : 1);
     if (b.sink) {
       // Kreuz wie in der App
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -408,11 +411,11 @@ function draufsicht(szene, opt) {
     }
   });
 
-  // Kisten
+  // Teile im Grundriss ihres Produkts
   if (mitKisten) {
     szene.boxes.forEach(function (k) {
       const a = k.rot * Math.PI / 180, c = Math.cos(a), si = Math.sin(a);
-      const ecken = [[-k.w / 2, -k.d / 2], [k.w / 2, -k.d / 2], [k.w / 2, k.d / 2], [-k.w / 2, k.d / 2]].map(function (p) {
+      const ecken = k.outline ? pts(k.outline) : [[-k.w / 2, -k.d / 2], [k.w / 2, -k.d / 2], [k.w / 2, k.d / 2], [-k.w / 2, k.d / 2]].map(function (p) {
         return px(k.x + p[0] * c - p[1] * si, k.y + p[0] * si + p[1] * c);
       });
       const fc = farbe(k.color);
@@ -425,7 +428,7 @@ function draufsicht(szene, opt) {
   if (beschriftung !== 'none') {
     const belegt = [];
     const g = SS * 1.5;
-    reihe.slice().reverse().forEach(function (b) {
+    reihe.slice().reverse().filter(beschriftet).forEach(function (b) {
       const t = beschriftung === 'name' ? b.name : b.id;
       const m = px.apply(null, mitte(b));
       const tw = textBreite(t, g), th = 7 * g, pad = 2 * SS;
@@ -457,10 +460,12 @@ function draufsicht(szene, opt) {
   const region = { x0: r2(reg.x0), y0: r2(reg.y0), x1: r2(reg.x1), y1: r2(reg.y1) };
   const text = 'Draufsicht "' + szene.name + '": ' + bild.w + ' × ' + bild.h + ' px, ' + r2(ppm) + ' px je m, ' +
     'Ausschnitt x ' + region.x0 + ' … ' + region.x1 + ' m, y ' + region.y0 + ' … ' + region.y1 + ' m (y nach unten), Raster ' + schritt + ' m. ' +
-    koerper.length + ' Körper' + (mitKisten ? ', ' + szene.boxes.length + ' Kisten' : '') + ' (Simulationszeit ' + szene.sim.time + ' s). ' +
+    koerper.length + ' Körper' + (mitKisten ? ', ' + szene.boxes.length + ' Teile' : '') + ' (Simulationszeit ' + szene.sim.time + ' s). ' +
     'Legende: dunkel/farbig gefüllt = fest (static), grau = kinematisch, halbtransparent = immateriell (ghost); ' +
     'orange Streifen = Sensor (rot = belegt), orange Fläche = Erzeuger, dunkel mit Kreuz = Senke; ' +
-    'oranger Pfeil = Laufrichtung (grau = steht), hellblauer Pfeil = bergab, violetter Pfeil = Achse; braune Quadrate = Kisten.';
+    'halbtransparent mit dunklem Rand in einer Quelle = Produkt (Vorlage der Teile); ' +
+    'oranger Pfeil = Laufrichtung (grau = steht), hellblauer Pfeil = bergab, violetter Pfeil = Achse; ' +
+    'kräftig gefüllte Formen mit dunklem Rand = Teile (Grundriss ihres Produkts, Kisten braun).';
   return { png: bild.png(), width: bild.w, height: bild.h, pxPerM: r2(ppm), region: region, text: text };
 }
 

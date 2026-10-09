@@ -165,8 +165,10 @@ window.MF = window.MF || {};
         if (!isObject(b)) { errors.push(what + ' ist kein Objekt.'); return; }
         if (checkId(b.id, what)) what = 'Körper "' + b.id + '"';
         if (b.name !== undefined && typeof b.name !== 'string') errors.push(what + ': Name muss ein Text sein.');
-        if (typeof b.parent === 'string' && bodies.hasOwnProperty(b.parent)) self.checkCoupling(b, bodies, what, errors);
+        if (self.isProduct(b, bodies)) self.checkProduct(b, what, errors);
+        else if (typeof b.parent === 'string' && bodies.hasOwnProperty(b.parent)) self.checkCoupling(b, bodies, what, errors);
         else checkParent(b, 'plant', what);
+        if (isObject(b.spawner)) self.checkSpawner(b, bodies, what, errors);
         if (b.template !== undefined && b.template !== null && !MF.templates.hasOwnProperty(b.template)) {
           errors.push(what + ': unbekannte Vorlage "' + b.template + '".');
         }
@@ -237,11 +239,40 @@ window.MF = window.MF || {};
       if (sh.h2 !== undefined && !(isNum(sh.h2) && sh.h2 >= 0)) errors.push(what + ': Form "h2" (Höhe am Ende) muss eine Zahl ≥ 0 sein.');
     },
 
+    // Produkt eines Erzeugers: b hängt am Erzeuger, und dessen spawner.product nennt b
+    isProduct: function (b, bodies) {
+      var p = typeof b.parent === 'string' && bodies.hasOwnProperty(b.parent) ? bodies[b.parent] : null;
+      return !!(p && p !== b && isObject(p.spawner) && p.spawner.product === b.id);
+    },
+
+    // Produkt: Vorlage dynamischer Teile, ohne Funktionen
+    checkProduct: function (b, what, errors) {
+      if (b.kind !== 'dynamic') errors.push(what + ': ein Produkt (Vorlage der Teile eines Erzeugers) muss dynamisch sein.');
+      MF.FN_KEYS.forEach(function (fn) {
+        if (isObject(b[fn])) errors.push(what + ': ein Produkt hat keine Funktionen (' + MF.FUNCTIONS[fn].label + ').');
+      });
+    },
+
+    // Erzeuger: product ist die ID seines Produkt-Körpers, der an ihm hängt.
+    // Fehlt sie (Dateien bis 09.10.2026 mit Kistenvorlage spawner.template), legt
+    // das Laden das Produkt an (MF.ensureProducts).
+    checkSpawner: function (b, bodies, what, errors) {
+      var id = b.spawner.product;
+      if (id === undefined || id === null) {
+        if (b.spawner.template !== undefined && !isObject(b.spawner.template)) errors.push(what + ': Kistenvorlage (spawner.template) muss ein Objekt sein.');
+        return;
+      }
+      if (typeof id !== 'string' || !bodies.hasOwnProperty(id)) errors.push(what + ': Produkt "' + id + '" gibt es nicht.');
+      else if (bodies[id].parent !== b.id) errors.push(what + ': Produkt "' + id + '" muss im Baum unter dem Erzeuger hängen (parent "' + b.id + '").');
+    },
+
     // Kopplung (Phase 4): parent ist ein anderer Körper. Kein Kreis, höchstens
     // zwei Ebenen (der Elternkörper hängt selbst nicht an einem Körper), nichts Dynamisches.
+    // An ein Produkt lässt sich nichts koppeln.
     checkCoupling: function (b, bodies, what, errors) {
       var p = bodies[b.parent];
       if (p === b) { errors.push(what + ': hängt an sich selbst.'); return; }
+      if (this.isProduct(p, bodies)) { errors.push(what + ': an das Produkt "' + p.id + '" lässt sich nichts koppeln.'); return; }
       if (b.kind === 'dynamic') errors.push(what + ': dynamische Körper lassen sich nicht an einen Körper koppeln.');
       if (p.kind === 'dynamic') errors.push(what + ': an den dynamischen Körper "' + p.id + '" lässt sich nichts koppeln.');
       var seen = {}, q = p, depth = 1;
@@ -322,7 +353,12 @@ window.MF = window.MF || {};
 
     // Prüft, migriert und baut das Modell. Gibt { model, errors } zurück, ändert nichts.
     build: function (obj) {
-      if (isObject(obj) && obj.format === this.FORMAT) obj = this.migrate(obj);
+      if (isObject(obj) && obj.format === this.FORMAT && typeof obj.version === 'number') {
+        obj = this.migrate(obj);   // immer eine Kopie
+        // Erzeuger ohne Produkt (Dateien bis 09.10.2026: Kistenvorlage spawner.template)
+        // bekommen hier ihren Produkt-Körper – dieselbe Kiste wie bisher
+        if (Array.isArray(obj.bodies)) MF.ensureProducts(obj.bodies);
+      }
       var errors = this.validate(obj);
       if (errors.length) return { model: null, errors: errors };
 
@@ -363,7 +399,6 @@ window.MF = window.MF || {};
         material: clone(isObject(f.material) ? f.material : MF.MATERIALS[f.kind === 'dynamic' ? 'box' : f.kind === 'ghost' ? 'ghost' : 'steel'])
       };
       MF.FN_KEYS.forEach(function (k) { b[k] = isObject(f[k]) ? clone(f[k]) : null; });
-      if (b.spawner && !isObject(b.spawner.template)) b.spawner.template = clone(MF.templates.source.make().spawner.template);
       b.look = {
         color: typeof look.color === 'string' ? look.color : (t ? t.color : '#8A93A0'),
         visible: look.visible !== false,

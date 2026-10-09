@@ -1,7 +1,7 @@
 {
   "format": "mini-fabrik",
   "version": 3,
-  "name": "Band und Rutsche",
+  "name": "Kisten und Dosen",
   "settings": {
     "dtMs": 20,
     "gravity": -9.81,
@@ -133,42 +133,6 @@
       }
     },
     {
-      "id": "K1",
-      "name": "Rutsche",
-      "parent": null,
-      "template": null,
-      "kind": "static",
-      "shape": {
-        "type": "rect",
-        "w": 1.5,
-        "d": 0.5,
-        "h": 0.68,
-        "h2": 0.1
-      },
-      "pose": {
-        "x": 5.25,
-        "y": 1,
-        "z": 0,
-        "rot": 0
-      },
-      "material": {
-        "friction": 0.1,
-        "restitution": 0,
-        "density": 500
-      },
-      "surface": null,
-      "axis": null,
-      "sensor": null,
-      "spawner": null,
-      "sink": null,
-      "inputs": {},
-      "look": {
-        "color": "#3A7CA5",
-        "visible": true,
-        "locked": false
-      }
-    },
-    {
       "id": "SE1",
       "name": "Senke 1",
       "parent": null,
@@ -181,8 +145,200 @@
         "h": 0.6
       },
       "pose": {
-        "x": 6.25,
+        "x": 4.75,
         "y": 1,
+        "z": 0,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": null,
+      "spawner": null,
+      "sink": {},
+      "inputs": {
+        "Reset": 0
+      },
+      "look": {
+        "color": "#1B2430",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "B2",
+      "name": "Förderband 2",
+      "parent": null,
+      "template": "conveyor",
+      "kind": "static",
+      "shape": {
+        "type": "rect",
+        "w": 4,
+        "d": 0.5,
+        "h": 0.1
+      },
+      "pose": {
+        "x": 2.5,
+        "y": 2,
+        "z": 0.6,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0.8,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": {
+        "speed": 0.5,
+        "dir": 0,
+        "running": true
+      },
+      "axis": null,
+      "sensor": null,
+      "spawner": null,
+      "sink": null,
+      "inputs": {
+        "Ein": 1
+      },
+      "look": {
+        "color": "#1B2430",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "Q2",
+      "name": "Quelle 2",
+      "parent": null,
+      "template": "source",
+      "kind": "ghost",
+      "shape": {
+        "type": "rect",
+        "w": 0.5,
+        "d": 0.5,
+        "h": 0.35
+      },
+      "pose": {
+        "x": 0.75,
+        "y": 2,
+        "z": 0.72,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": null,
+      "spawner": {
+        "interval": 1.5,
+        "maxCount": 0,
+        "enabled": true,
+        "product": "P2"
+      },
+      "sink": null,
+      "inputs": {
+        "Freigabe": 1
+      },
+      "look": {
+        "color": "#D9701A",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "P2",
+      "name": "Dose",
+      "parent": "Q2",
+      "template": null,
+      "kind": "dynamic",
+      "shape": {
+        "type": "circle",
+        "r": 0.08,
+        "h": 0.2
+      },
+      "pose": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0.6,
+        "restitution": 0,
+        "density": 400
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": null,
+      "spawner": null,
+      "sink": null,
+      "inputs": {},
+      "look": {
+        "color": "#9AA3AE",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "LS1",
+      "name": "Lichtschranke 1",
+      "parent": null,
+      "template": "sensor",
+      "kind": "ghost",
+      "shape": {
+        "type": "rect",
+        "w": 0.05,
+        "d": 0.5,
+        "h": 0.3
+      },
+      "pose": {
+        "x": 3.5,
+        "y": 2,
+        "z": 0.71,
+        "rot": 0
+      },
+      "material": {
+        "friction": 0,
+        "restitution": 0,
+        "density": 1
+      },
+      "surface": null,
+      "axis": null,
+      "sensor": {
+        "invert": false,
+        "debounce": 0
+      },
+      "spawner": null,
+      "sink": null,
+      "inputs": {},
+      "look": {
+        "color": "#1B2430",
+        "visible": true,
+        "locked": false
+      }
+    },
+    {
+      "id": "SE2",
+      "name": "Senke 2",
+      "parent": null,
+      "template": "sink",
+      "kind": "ghost",
+      "shape": {
+        "type": "rect",
+        "w": 0.5,
+        "d": 0.5,
+        "h": 0.6
+      },
+      "pose": {
+        "x": 4.75,
+        "y": 2,
         "z": 0,
         "rot": 0
       },

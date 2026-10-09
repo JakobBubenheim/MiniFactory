@@ -366,3 +366,76 @@ test('validate: bündige Bänder sind in Ordnung, ein höheres Folgeband wird ge
   await werkzeug('update_body', { id: 'B2', fields: { z: 0.59 } });
   assert.deepEqual(naht(jsonAus(await werkzeug('validate'))), []);
 });
+
+test('Produkt über MCP: update_body macht Dosen, simulate zählt Teile je Produkt, das Bild zeigt sie', async function () {
+  await werkzeug('new_plant', { name: 'Dosen vom Agent' });
+  await werkzeug('add_from_template', { template: 'conveyor', x: 2.5, y: 1, shape: { w: 4 } });
+  const q = jsonAus(await werkzeug('add_from_template', { template: 'source', x: 0.75, y: 1 }));
+  await werkzeug('add_from_template', { template: 'sink', x: 4.75, y: 1 });
+  // Die Quelle nennt ihr Produkt, die Übersicht beschreibt es
+  const p = q.koerper.functions.spawner.product;
+  assert.equal(p, 'P1');
+  let ov = jsonAus(await werkzeug('get_overview'));
+  const prod = ov.bodies.find(function (b) { return b.id === p; });
+  assert.equal(prod.productOf, q.id);
+  assert.equal(prod.kind, 'dynamic');
+  assert.equal(prod.mass, 5.4);
+  // Standard-Produkt steht in list_templates
+  const vorlagen = jsonAus(await werkzeug('list_templates'));
+  assert.equal(vorlagen.templates.find(function (t) { return t.key === 'source'; }).product.shape.w, 0.3);
+
+  // Dose: Formtyp wechseln, Maße, Farbe, Dichte – ein Aufruf
+  const d = jsonAus(await werkzeug('update_body', { id: p, fields: { type: 'circle', r: 0.08, h: 0.2, color: '#9AA3AE', material: { density: 400 } } }));
+  assert.deepEqual(d.koerper.shape, { type: 'circle', r: 0.08, h: 0.2 });
+  // Was nicht geht, wird mit Hinweis abgelehnt
+  assert.match(await fehler('delete', { ids: [p] }), /nicht einzeln löschen/);
+  assert.match(await fehler('update_body', { id: p, fields: { kind: 'static' } }), /immer dynamisch/);
+  assert.match(await fehler('set_function', { id: q.id, function: 'spawner', fields: { product: 'B1' } }), /update_body am Produkt/);
+  assert.match(await fehler('move_to_folder', { ids: [p], folder: null }), /bleibt unter ihr/);
+
+  const sim = jsonAus(await werkzeug('simulate', { seconds: 20 }));
+  assert.ok(sim.boxes.sunk.SE1 >= 6, 'Dosen in SE1: ' + sim.boxes.sunk.SE1);
+  assert.equal(sim.boxes.onFloor.length, 0);
+  assert.equal(sim.boxes.products[q.id].id, p);
+  assert.match(sim.boxes.products[q.id].shape, /^circle r 0\.08, h 0\.2$/);
+  assert.equal(sim.boxes.products[q.id].mass, Math.round(Math.PI * 0.08 * 0.08 * 0.2 * 400 * 1e4) / 1e4);
+  assert.deepEqual(jsonAus(await werkzeug('validate')).fehler, []);
+
+  // Bild: Teile als graue Kreise (Farbe des Produkts) – Pixel genau in der Dosenfarbe
+  await werkzeug('simulate', { seconds: 3 });
+  const r = await werkzeug('render_topview', { width: 800, region: { x0: 0, y0: 0, x1: 5, y1: 2 } });
+  assert.match(r.content.find(function (c) { return c.type === 'text'; }).text, /\d+ Teile/);
+  const png = Buffer.from(r.content.find(function (c) { return c.type === 'image'; }).data, 'base64');
+  const w = png.readUInt32BE(16), h = png.readUInt32BE(20), idat = [];
+  for (let i = 8; i < png.length;) {
+    const len = png.readUInt32BE(i);
+    if (png.toString('ascii', i + 4, i + 8) === 'IDAT') idat.push(png.subarray(i + 8, i + 8 + len));
+    i += 12 + len;
+  }
+  const roh = zlib.inflateSync(Buffer.concat(idat));
+  let dose = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * (w * 3 + 1) + 1 + x * 3;
+    if (roh.subarray(i, i + 3).toString('hex') === '9aa3ae') dose++;
+  }
+  assert.ok(dose > 50, 'Dosen im Bild: ' + dose + ' Pixel');
+
+  // Speichern und in der App laden: Produkt und Teile wie im MCP
+  ov = jsonAus(await werkzeug('get_overview'));
+  assert.deepEqual(ov.bodies.map(function (b) { return b.id; }), ['B1', 'Q1', 'P1', 'SE1']);
+  const gesp = jsonAus(await werkzeug('save_plant', { path: 'agent/dosen' }));
+  const a = neueAnlage(JSON.parse(fs.readFileSync(gesp.path, 'utf8')));
+  assert.equal(a.form('P1').typ, 'circle');
+  a.laufen(20);
+  assert.equal(a.signal('SE1.Anzahl'), sim.boxes.sunk.SE1);
+});
+
+test('Beispiel "dosen": zwei Quellen mit Kisten und Dosen', async function () {
+  const ld = jsonAus(await werkzeug('load_plant', { example: 'dosen' }));
+  assert.equal(ld.products, 2);
+  const sim = jsonAus(await werkzeug('simulate', { seconds: 20 }));
+  assert.ok(sim.boxes.sunk.SE1 >= 6 && sim.boxes.sunk.SE2 >= 8, JSON.stringify(sim.boxes.sunk));
+  assert.match(sim.boxes.products.Q1.shape, /^rect 0\.3 × 0\.3/);
+  assert.match(sim.boxes.products.Q2.shape, /^circle r 0\.08/);
+  assert.ok(sim.edges['LS1.Belegt'].rising >= 9, 'LS1 sieht die Dosen: ' + sim.edges['LS1.Belegt'].rising);
+});

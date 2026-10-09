@@ -262,6 +262,7 @@ MF.props = {
   SHAPE_LABELS: { rect: 'Rechteck', circle: 'Kreis', polygon: 'Polygon' },
 
   renderBody: function (el) {
+    if (MF.isProduct(el)) { this.renderProduct(el); return; }
     var self = this;
     var t = MF.templates[el.template];
     var typeLabel = t ? t.label : 'Körper';
@@ -327,6 +328,78 @@ MF.props = {
       this.field(s4, { label: 'Sichtbar', type: 'bool' }, el.look.visible, function (v) { el.look.visible = v; self.commit(); });
       this.field(s4, { label: 'Gesperrt', type: 'bool' }, el.look.locked, function (v) { el.look.locked = v; self.commit(); self.render(); });
     }
+  },
+
+  // ---------- Produkt eines Erzeugers ----------
+  //
+  // Ein normaler Körper (Form & Lage, Werkstoff, Darstellung), aber ohne Körperart,
+  // Funktionen, Ordner und Kopplung: er ist die Vorlage der Teile seiner Quelle.
+  renderProduct: function (el) {
+    var self = this, src = MF.parentBody(el);
+    this.header('i-product', el.name, el.id + ' · Produkt von ' + src.id + ' · Vorlage der Teile');
+    this.tabs([['props', 'Eigenschaften'], ['look', 'Darstellung']]);
+    var body = this.body();
+
+    if (this.tab === 'props') {
+      var s1 = this.section(body, 'Allgemein');
+      this.field(s1, { label: 'Name', type: 'text' }, el.name, function (v) { el.name = v; self.commit(); self.render(); });
+      this.field(s1, { label: 'ID', type: 'text', readonly: true }, el.id);
+      this.field(s1, { label: 'Quelle', type: 'text', readonly: true, hint: 'Das Produkt hängt im Baum unter seiner Quelle und kommt mit ihr mit' },
+        src.name + ' (' + src.id + ')');
+      this.field(s1, { label: 'Grundform', type: 'select', readonly: el.look.locked,
+        options: [{ value: 'rect', label: 'Rechteck (Quader)' }, { value: 'circle', label: 'Kreis (Zylinder)' }, { value: 'polygon', label: 'Polygon (Prisma)' }],
+        hint: 'Grundriss der Teile; Maße danach unter "Form & Lage" oder an den Griffen in der Draufsicht. ' +
+          'Polygon: Doppelklick auf eine Kante fügt einen Punkt ein (z. B. für ein L)' },
+        el.shape.type, function (v) { self.setForm(el, { type: v }, true); });
+      this.field(s1, { label: 'Masse je Teil', type: 'text', readonly: true, hint: 'Grundfläche × Höhe × Dichte' },
+        this.formatNumber(Math.round(MF.productMass(el) * 1000) / 1000) + ' kg');
+      var go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'props-action';
+      go.textContent = 'Quelle auswählen';
+      go.addEventListener('click', function () { MF.store.select(src.id); });
+      s1.appendChild(go);
+      var note = document.createElement('div');
+      note.className = 'io-note';
+      note.textContent = 'Die Quelle erzeugt Teile in genau dieser Form, Höhe, Masse und Farbe – dort, wo das Produkt liegt ' +
+        '(Lage relativ zur Quelle), mit seiner Drehung. Das Produkt selbst simuliert nicht mit. ' +
+        'Andere Form: "Grundform" wählen, dann Maße unter "Form & Lage" oder an den Griffen in der Draufsicht.';
+      s1.appendChild(note);
+
+      this.renderForm(body, el);
+      this.renderMaterial(body, el);
+    }
+
+    if (this.tab === 'look') {
+      var s4 = this.section(body, 'Darstellung');
+      this.field(s4, { label: 'Farbe', type: 'color', hint: 'Farbe der erzeugten Teile' }, el.look.color, function (v) { el.look.color = v; self.commit(); });
+      this.field(s4, { label: 'Sichtbar', type: 'bool', hint: 'Nur die Vorlage an der Quelle; Teile sind immer sichtbar' }, el.look.visible, function (v) { el.look.visible = v; self.commit(); });
+      this.field(s4, { label: 'Gesperrt', type: 'bool' }, el.look.locked, function (v) { el.look.locked = v; self.commit(); self.render(); });
+    }
+  },
+
+  // Kurzbeschreibung eines Produkts, z. B. "Kreis r 0,1 m, Höhe 0,2 m · 3,1 kg"
+  productSummary: function (p) {
+    var f = this.formatNumber.bind(this), sh = p.shape, r3 = function (v) { return f(Math.round(v * 1000) / 1000); };
+    var form = sh.type === 'rect' ? 'Rechteck ' + r3(sh.w) + ' × ' + r3(sh.d) + ' m'
+      : sh.type === 'circle' ? 'Kreis r ' + r3(sh.r) + ' m' : 'Polygon (' + sh.points.length + ' Punkte)';
+    return form + ', Höhe ' + r3(sh.h) + ' m · ' + r3(MF.productMass(p)) + ' kg';
+  },
+
+  // Im Abschnitt des Erzeugers: welches Produkt er erzeugt, Knopf zum Bearbeiten
+  renderProductLink: function (s, el) {
+    var p = MF.productOf(el);
+    if (!p) return;
+    this.field(s, { label: 'Produkt', type: 'text', readonly: true,
+      hint: 'Form, Größe, Werkstoff und Farbe der Teile bestimmt der Körper "' + p.name + '" unter der Quelle im Baum' },
+      this.productSummary(p));
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'props-action';
+    b.textContent = 'Produkt bearbeiten';
+    b.title = 'Wählt ' + p.name + ' aus: Form, Höhe, Werkstoff und Farbe der Teile ändern';
+    b.addEventListener('click', function () { MF.tree.reveal(p.id); MF.store.select(p.id); });
+    s.appendChild(b);
   },
 
   // Form und Lage über das Modell ändern (prüft z. B. Polygon, Neigung).
@@ -490,6 +563,7 @@ MF.props = {
       });
       if (p.live) input.dataset.live = p.key;
     });
+    if (fn === 'spawner') this.renderProductLink(s, el);
     if (fn === 'axis') {
       var note = document.createElement('div');
       note.className = 'io-note';
@@ -933,7 +1007,7 @@ MF.props = {
         var n = list.filter(function (el) { return el.template === t; }).length;
         if (n) self.field(s1, { label: MF.templates[t].label, type: 'text', readonly: true }, n);
       });
-      var free = list.filter(function (el) { return !MF.templates[el.template]; }).length;
+      var free = list.filter(function (el) { return !MF.templates[el.template] && !MF.isProduct(el); }).length;
       if (free) self.field(s1, { label: 'Ohne Vorlage', type: 'text', readonly: true }, free);
     }
     if (id === 'logic' || id === 'project') {

@@ -47,7 +47,7 @@ function r(v) { return typeof v === 'number' ? Math.round(v * 1e4) / 1e4 : v; }
 function istZahl(v) { return typeof v === 'number' && isFinite(v); }
 function istObjekt(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
 
-const FORM_FELDER = ['x', 'y', 'z', 'rot', 'w', 'd', 'r', 'h', 'h2', 'points'];
+const FORM_FELDER = ['type', 'x', 'y', 'z', 'rot', 'w', 'd', 'r', 'h', 'h2', 'points'];
 const KOERPER_FELDER = FORM_FELDER.concat(['name', 'kind', 'material', 'color', 'visible', 'props']);
 const MAX_SEKUNDEN = 600;
 
@@ -161,6 +161,7 @@ class SitzungHeadless {
     if (felder.kind !== undefined && felder.kind !== b.kind) {
       if (MF.file.KINDS.indexOf(felder.kind) < 0) throw fehler('Körperart "' + felder.kind + '" gibt es nicht. Möglich: ' + MF.file.KINDS.join(', ') + '.');
       const res = MF.setKind(b, felder.kind);
+      if (res.error) throw fehler(res.error);
       if (echt) MF.store.dropSignals(b.id, res.signals);
       if (res.fns.length) hinweise.push('Als ' + felder.kind + ' entfernt: ' + res.fns.map(function (fn) { return MF.FUNCTIONS[fn].label; }).join(', ') + '.');
       if (res.slope) hinweise.push('Neigung (h2) entfernt – gibt es nur bei static.');
@@ -225,6 +226,10 @@ class SitzungHeadless {
         else f[def.field] = w;
         return;
       }
+      if (fn === 'spawner' && k === 'product') {
+        throw fehler('Das Produkt (' + (f.product || '–') + ') ist ein eigener Körper unter dem Erzeuger: Form, Größe, Werkstoff und Farbe ' +
+          'mit update_body am Produkt ändern, z. B. { "id": "' + (f.product || 'P1') + '", "fields": { "type": "circle", "r": 0.1, "h": 0.2 } }.');
+      }
       if (!(k in f)) {
         const moeglich = defs.filter(function (d) { return !d.readonly; }).map(function (d) { return d.key; })
           .concat(Object.keys(f)).filter(function (x, i, a) { return a.indexOf(x) === i; });
@@ -283,14 +288,17 @@ class SitzungHeadless {
       out.slope = { deg: r(MF.geom.slopeDeg(sh)), downhill: MF.geom.normDeg(b.pose.rot + (sh.h2 < sh.h ? 0 : 180)) };
     }
     if (b.kind !== 'ghost' && b.material) out.material = kopie(b.material);
+    if (MF.isProduct(b)) {
+      // Vorlage der Teile eines Erzeugers: pose relativ zum Erzeuger, simuliert nicht mit
+      out.productOf = b.parent;
+      out.mass = r(MF.productMass(b));
+      const w = MF.poseInWorld(b);
+      out.world = { x: r(w.x), y: r(w.y), z: r(w.z), rot: r(w.rot) };
+    }
     const fns = {};
     MF.FN_KEYS.forEach(function (fn) {
       if (!b[fn]) return;
       const f = kopie(b[fn]);
-      if (fn === 'spawner' && f.template) {
-        // Kistenvorlage knapp: nur die Form
-        f.template = { shape: f.template.shape, color: f.template.look && f.template.look.color };
-      }
       if (fn === 'surface') {
         f.worldDir = MF.geom.normDeg(b.pose.rot + b.surface.dir);
         const n = MF.dirName(f.worldDir);
@@ -340,6 +348,13 @@ class SitzungHeadless {
     return { state: MF.engine.state, time: r(MF.engine.timeMs / 1000), boxes: MF.engine.boxes.length };
   }
 
+  // Produkt kurz beschrieben, z. B. { id: 'P1', shape: 'circle r 0.1, h 0.2', mass: 1.257, color }
+  _produktKurz(p) {
+    const MF = this.MF, sh = p.shape;
+    const form = sh.type === 'rect' ? 'rect ' + r(sh.w) + ' × ' + r(sh.d) : sh.type === 'circle' ? 'circle r ' + r(sh.r) : 'polygon ' + sh.points.length + ' Punkte';
+    return { id: p.id, shape: form + ', h ' + r(sh.h), mass: r(MF.productMass(p)), color: p.look.color };
+  }
+
   async uebersicht() {
     await this._bereit;
     const MF = this.MF, self = this;
@@ -380,6 +395,12 @@ class SitzungHeadless {
         out.z = r(b.pose.z);
         out.top = r(b.pose.z + MF.geom.maxHeight(b.shape));
         out.functions = MF.FN_KEYS.filter(function (fn) { return b[fn]; });
+        if (b.spawner) {
+          const p = MF.defaultProduct();
+          out.product = { shape: p.shape, material: p.material, color: p.look.color,
+            hinweis: 'Jeder Erzeuger bekommt einen Produkt-Körper (ID P…) unter sich – die Vorlage seiner Teile. ' +
+              'Ändern mit update_body am Produkt (type, w/d/r/points, h, rot, material, color).' };
+        }
         out.signals = MF.io(b).map(function (s) { return { name: s.name, dir: s.dir, type: s.type }; });
         out.props = MF.propsOf(b).map(function (p) {
           const o = feld(p, p.fn ? b[p.fn] : b);
@@ -413,7 +434,13 @@ class SitzungHeadless {
       functions: functions,
       kinds: MF.file.KINDS.map(function (k) { return { key: k, label: MF.KIND_LABELS[k], functions: MF.allowedFns(k) }; }),
       materials: kopie(MF.MATERIALS),
-      constants: { beltTop: MF.BELT_TOP, boxSize: MF.BOX_SIZE, directions: kopie(MF.DIRS) }
+      constants: { beltTop: MF.BELT_TOP, boxSize: MF.BOX_SIZE, directions: kopie(MF.DIRS) },
+      product: {
+        text: 'Produkt eines Erzeugers: Körper unter dem Erzeuger (kind dynamic, keine Funktionen), Vorlage der Teile. ' +
+          'pose relativ zum Erzeuger (dort entstehen die Teile, rot = Startdrehung). Form beliebig (rect, circle, polygon – konkav geht), ' +
+          'Höhe h, material.density bestimmt die Masse. Lässt sich nicht löschen oder verschieben, geht mit dem Erzeuger.',
+        default: kopie(MF.defaultProduct())
+      }
     };
   }
 
@@ -448,7 +475,8 @@ class SitzungHeadless {
     if (!MF.file.deserialize(kopie(obj))) throw fehler('Datei nicht geladen: ' + this._meldungen().join(' / '));
     MF.file.setDirty(false);
     this._meldungen();
-    return { name: MF.model.name, bodies: MF.model.bodies.length, rules: MF.model.rules.length };
+    const produkte = MF.model.bodies.filter(function (b) { return MF.isProduct(b); }).length;
+    return { name: MF.model.name, bodies: MF.model.bodies.length - produkte, products: produkte, rules: MF.model.rules.length };
   }
 
   async datei() {
@@ -486,10 +514,14 @@ class SitzungHeadless {
     }
 
     bodies.forEach(function (b) {
-      // Erzeuger: Kiste landet auf einer Fläche knapp darunter?
+      // Erzeuger: Teil landet auf einer Fläche knapp darunter?
       if (b.spawner) {
         const t = traeger(b.pose.x, b.pose.y, b.pose.z - 0.05, b.pose.z + 0.001, b);
-        if (!t) hinweise.push(b.id + ' (Erzeuger) liegt über keiner Fläche, deren Oberkante 0–5 cm darunter ist – Kisten fallen auf den Boden. Üblich: Unterseite 2 cm über der Bandoberkante (z = ' + (MF.BELT_TOP + 0.02) + ').');
+        if (!t) hinweise.push(b.id + ' (Erzeuger) liegt über keiner Fläche, deren Oberkante 0–5 cm darunter ist – Teile fallen auf den Boden. Üblich: Unterseite 2 cm über der Bandoberkante (z = ' + (MF.BELT_TOP + 0.02) + ').');
+        const p = MF.productOf(b), bb = p && MF.geom.bounds(p.shape, MF.WORLD);
+        if (p && Math.min(bb.x1 - bb.x0, bb.y1 - bb.y0) < 0.03) {
+          hinweise.push(p.id + ' (Produkt von ' + b.id + ') ist sehr klein (unter 3 cm) – solche Teile fallen leicht durch Spalte.');
+        }
       }
       // Transportfläche: was kommt hinter dem Ende?
       if (b.surface && b.shape.type === 'rect') {
@@ -504,18 +536,18 @@ class SitzungHeadless {
           return o !== b && (o.sink || o.kind !== 'ghost') && MF.geom.containsXY(o.shape, o.pose, ex, ey) &&
             (o.sink || oben(o) <= top + 0.005);
         });
-        if (!weiter) hinweise.push(b.id + ': hinter dem Ende (Laufrichtung ' + dirW + '°, bei x ' + r(ex) + ', y ' + r(ey) + ') liegt weder Senke noch Fläche – Kisten fallen dort herunter.');
+        if (!weiter) hinweise.push(b.id + ': hinter dem Ende (Laufrichtung ' + dirW + '°, bei x ' + r(ex) + ', y ' + r(ey) + ') liegt weder Senke noch Fläche – Teile fallen dort herunter.');
         // Anschließende Transportfläche: bündig (gleiche Oberkante); höher hakt die Kiste an der Kante
         bodies.forEach(function (o) {
           if (o === b || !o.surface || o.kind === 'ghost') return;
           if (!MF.geom.containsXY(o.shape, o.pose, b.pose.x + v.x * (halb + 0.01), b.pose.y + v.y * (halb + 0.01))) return;
           const d = oben(o) - top;
-          if (d > 0.001) hinweise.push(o.id + ' schließt an ' + b.id + ' an, liegt aber ' + r(d * 1000) + ' mm höher – Kisten stoßen an die Kante. Oberkanten bündig legen (z = ' + r(top - o.shape.h) + ').');
+          if (d > 0.001) hinweise.push(o.id + ' schließt an ' + b.id + ' an, liegt aber ' + r(d * 1000) + ' mm höher – Teile stoßen an die Kante. Oberkanten bündig legen (z = ' + r(top - o.shape.h) + ').');
         });
       }
       // Sensor: liegt er über einer Fläche, auf der Kisten laufen?
       if (b.sensor && !traeger(b.pose.x, b.pose.y, b.pose.z - 0.3, b.pose.z + 0.001, b)) {
-        hinweise.push(b.id + ' (Sensor) liegt über keiner festen Fläche – prüfen, ob dort Kisten vorbeikommen (z ' + r(b.pose.z) + ' bis ' + r(oben(b)) + ').');
+        hinweise.push(b.id + ' (Sensor) liegt über keiner festen Fläche – prüfen, ob dort Teile vorbeikommen (z ' + r(b.pose.z) + ' bis ' + r(oben(b)) + ').');
       }
     });
 
@@ -652,6 +684,13 @@ class SitzungHeadless {
     if (!Array.isArray(ids) || !ids.length) throw fehler('"ids" muss eine nicht leere Liste sein.');
     const unbekannt = ids.filter(function (id) { return !MF.store.findNode(id); });
     if (unbekannt.length) throw fehler('Unbekannt: ' + unbekannt.join(', ') + '. Nichts gelöscht.');
+    ids.forEach(function (id) {
+      const b = MF.store.findBody(id);
+      if (b && MF.isProduct(b) && ids.indexOf(b.parent) < 0) {
+        throw fehler(id + ' ist das Produkt von ' + b.parent + ' (Vorlage seiner Teile) und lässt sich nicht einzeln löschen – ' +
+          'ändern mit update_body, weg kommt es mit dem Erzeuger. Nichts gelöscht.');
+      }
+    });
     return this._aenderung(function () {
       ids.forEach(function (id) {
         const n = MF.store.findNode(id);
@@ -891,7 +930,7 @@ class SitzungHeadless {
       spuren[n].wechsel.push({ t: r(t0), v: r(spuren[n].wert) });
     });
     const sclFehler = {};
-    const geboren = {};   // Kiste -> Zeit, zu der sie zuerst da war
+    const geboren = {};   // Teil -> Zeit, zu der es zuerst da war
     MF.engine.boxes.forEach(function (bx) { geboren[bx.id] = -Infinity; });
 
     for (let i = 0; i < schritte; i++) {
@@ -936,9 +975,12 @@ class SitzungHeadless {
     }
 
     quellen.forEach(function (b) { erzeugt[b.id] = ((b.rt && b.rt.made) || 0) - (a.reset !== false ? 0 : erzeugt0[b.id]); });
+    // Welche Teile jeder Erzeuger macht (Form, Masse) – Produkt-Körper unter dem Erzeuger
+    const produkte = {};
+    quellen.forEach(function (b) { const p = MF.productOf(b); if (p) produkte[b.id] = self._produktKurz(p); });
     const t1 = MF.engine.timeMs / 1000;
 
-    // Kisten am Ende: wo liegen sie, stehen sie?
+    // Teile am Ende: wo liegen sie, stehen sie?
     function traegerUnter(bx) {
       const unten = bx.cur.z - bx.size[2] / 2;
       return MF.model.bodies.find(function (b) {
@@ -955,9 +997,9 @@ class SitzungHeadless {
       const tempo = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
       const unten = bx.cur.z - bx.size[2] / 2;
       const t = traegerUnter(bx);
-      const lage = { x: r(bx.cur.x), y: r(bx.cur.y), z: r(bx.cur.z) };
+      const lage = { x: r(bx.cur.x), y: r(bx.cur.y), z: r(bx.cur.z), product: bx.product };
       if (!t && unten < 0.05) amBoden.push(lage);
-      else if (tempo < 0.01 && t1 - geboren[bx.id] > 0.5) {   // gerade erst abgelegte Kisten stehen noch
+      else if (tempo < 0.01 && t1 - geboren[bx.id] > 0.5) {   // gerade erst abgelegte Teile stehen noch
         lage.auf = t ? t.id : null;
         if (t && t.surface && MF.engine.surfaceOn(t)) lage.hinweis = 'Stau: steht auf laufender Fläche';
         stehen.push(lage);
@@ -968,15 +1010,15 @@ class SitzungHeadless {
     const summeErzeugt = Object.keys(erzeugt).reduce(function (s, k) { return s + erzeugt[k]; }, 0);
     const summeAuf = Object.keys(aufgenommen).reduce(function (s, k) { return s + aufgenommen[k]; }, 0);
     if (!quellen.length) hinweise.push('Die Anlage hat keinen Erzeuger (Vorlage "source").');
-    else if (!summeErzeugt) hinweise.push('Es wurde keine Kiste erzeugt – Erzeuger aktiv (enabled), Freigabe = 1, Platz frei?');
-    if (summeErzeugt && !senken.length) hinweise.push('Die Anlage hat keine Senke – Kisten werden nicht gezählt.');
-    else if (summeErzeugt && !summeAuf && sekunden >= 10) hinweise.push('Kisten wurden erzeugt, aber keine kam in einer Senke an.');
-    if (amBoden.length) hinweise.push(amBoden.length + ' Kiste(n) liegen auf dem Boden (heruntergefallen) – Lage der Bänder, Senken und Schieber prüfen.');
-    if (verloren) hinweise.push(verloren + ' Kiste(n) fielen unter z = −2 m und wurden entfernt.');
+    else if (!summeErzeugt) hinweise.push('Es wurde kein Teil erzeugt – Erzeuger aktiv (enabled), Freigabe = 1, Platz frei?');
+    if (summeErzeugt && !senken.length) hinweise.push('Die Anlage hat keine Senke – Teile werden nicht gezählt.');
+    else if (summeErzeugt && !summeAuf && sekunden >= 10) hinweise.push('Teile wurden erzeugt, aber keines kam in einer Senke an.');
+    if (amBoden.length) hinweise.push(amBoden.length + ' Teil(e) liegen auf dem Boden (heruntergefallen) – Lage der Bänder, Senken und Schieber prüfen.');
+    if (verloren) hinweise.push(verloren + ' Teil(e) fielen unter z = −2 m und wurden entfernt.');
     const stau = stehen.filter(function (s) { return s.hinweis; });
-    if (stau.length) hinweise.push(stau.length + ' Kiste(n) stehen auf laufenden Flächen still (Stau, z. B. an einem Schieber oder einer Kante).');
+    if (stau.length) hinweise.push(stau.length + ' Teil(e) stehen auf laufenden Flächen still (Stau, z. B. an einem Schieber oder einer Kante).');
     Object.keys(blockiert).forEach(function (id) {
-      if (blockiert[id] >= 1) hinweise.push(id + ' war ' + r(blockiert[id]) + ' s blockiert (Platz für die nächste Kiste belegt – Rückstau).');
+      if (blockiert[id] >= 1) hinweise.push(id + ' war ' + r(blockiert[id]) + ' s blockiert (Platz für das nächste Teil belegt – Rückstau).');
     });
     Object.keys(sclFehler).forEach(function (id) { hinweise.push(id + ': SCL-Laufzeitfehler bei t = ' + sclFehler[id].t + ' s: ' + sclFehler[id].message); });
 
@@ -987,13 +1029,15 @@ class SitzungHeadless {
     });
     const out = {
       time: { start: r(t0), end: r(t1), steps: schritte, dtMs: MF.engine.clock.dtMs },
+      // Teile aus den Erzeugern (Schlüssel "boxes" aus der Zeit, als es nur Kisten gab)
       boxes: {
         created: erzeugt,
         sunk: aufgenommen,
         lostBelowFloor: verloren,
         inPlant: MF.engine.boxes.length,
         onFloor: amBoden,
-        standingStill: stehen
+        standingStill: stehen,
+        products: produkte
       },
       hints: hinweise,
       signalsEnd: this._signalWerte(),
@@ -1025,6 +1069,7 @@ class SitzungHeadless {
       if (b.surface) o.surface = { dir: MF.geom.normDeg(pose.rot + b.surface.dir), on: MF.engine.surfaceSpeed(b) > 0 };
       if (b.sensor) o.sensor = { occupied: !!MF.engine.signal(b, 'Belegt') };
       if (b.spawner) o.spawner = true;
+      if (MF.isProduct(b)) o.product = true;
       if (b.sink) o.sink = { count: (b.rt && b.rt.count) || 0 };
       if (MF.geom.isSloped(b.shape)) o.downhill = MF.geom.normDeg(pose.rot + (b.shape.h2 < b.shape.h ? 0 : 180));
       if (b.axis) {
@@ -1034,8 +1079,13 @@ class SitzungHeadless {
       }
       return o;
     });
+    // Teile mit ihrem Grundriss in der Welt (Form des Produkts, gedreht um z)
     const kisten = MF.engine.boxes.map(function (bx) {
-      return { x: bx.cur.x, y: bx.cur.y, z: bx.cur.z, rot: MF.sim.yawOf(bx.cur.q) * 180 / Math.PI, w: bx.size[0], d: bx.size[1], color: bx.color };
+      const rot = MF.sim.yawOf(bx.cur.q) * 180 / Math.PI;
+      const pose = { x: bx.cur.x, y: bx.cur.y, rot: rot };
+      return { x: bx.cur.x, y: bx.cur.y, z: bx.cur.z, rot: rot, w: bx.size[0], d: bx.size[1], color: bx.color,
+        type: bx.shape.type, product: bx.product,
+        outline: MF.geom.worldOutline(bx.shape, pose).map(function (p) { return [p.x, p.y]; }) };
     });
     return { name: MF.model.name, bodies: kopie(koerper), boxes: kopie(kisten), sim: this._simInfo() };
   }

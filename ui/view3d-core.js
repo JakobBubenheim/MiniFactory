@@ -263,7 +263,7 @@ MF.view3dCore = {
   // sein Mesh neu gebaut; Lage und Laufzeitwerte (Achse, Band, Sensor) nicht.
   bodyKey: function (b) {
     return JSON.stringify([b.kind, b.shape, b.look && b.look.color, b.look && b.look.visible !== false,
-      b.surface ? b.surface.dir : null, MF.geom.rollOf(b), !!b.sensor, !!b.spawner, !!b.sink, !!b.axis]);
+      b.surface ? b.surface.dir : null, MF.geom.rollOf(b), !!b.sensor, !!b.spawner, !!b.sink, !!b.axis, MF.isProduct(b)]);
   },
 
   // Darstellung einer Körperart (Werte für die Werkstoffe in ui/view3d.js)
@@ -272,12 +272,14 @@ MF.view3dCore = {
   //   kinematic: fest in Stahlgrau (wie Draufsicht), Kanten in der Körperfarbe
   //   dynamic:   fest in der Körperfarbe
   // Sensor: Fläche in Strahlfarbe, belegt rot; Erzeuger kräftiger, Senke dunkel.
+  // Produkt eines Erzeugers: halbtransparent wie ghost (es simuliert nicht), Kanten dunkel.
   COLORS: { beam: '#D9701A', busy: '#C0392B', steel: '#9AA3AE', sink: '#1B2430', select: '#D9701A',
     arrowOn: '#D9701A', arrowOff: '#8A93A0' },
 
   look: function (b, busy) {
     var c = this.COLORS;
     var color = (b.look && b.look.color) || '#8A93A0';
+    if (MF.isProduct(b)) return { solid: false, color: color, edge: '#1B2430', opacity: 0.5 };
     if (b.kind === 'ghost') {
       if (b.sensor) return { solid: false, color: busy ? c.busy : c.beam, edge: busy ? c.busy : color, opacity: busy ? 0.5 : 0.22 };
       if (b.spawner) return { solid: false, color: color, edge: color, opacity: 0.35 };
@@ -319,7 +321,7 @@ MF.view3dCore = {
     return out;
   },
 
-  // Kiste aus der Engine ({ prev, cur } mit x, y, z, q) zum Anteil alpha
+  // Teil aus der Engine ({ prev, cur } mit x, y, z, q) zum Anteil alpha
   boxPose: function (bx, alpha) {
     var p = bx.prev || bx.cur, c = bx.cur;
     return { x: this.lerp(p.x, c.x, alpha), y: this.lerp(p.y, c.y, alpha), z: this.lerp(p.z, c.z, alpha),

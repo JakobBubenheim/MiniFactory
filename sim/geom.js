@@ -212,6 +212,26 @@ MF.geom = {
     return Math.abs(this.signedArea(shape.points || []));
   },
 
+  // Flächenschwerpunkt des Grundrisses (lokal): Rechteck und Kreis 0, Polygon
+  // aus der Fläche (bei einem L kann er außerhalb der Form liegen)
+  centroid: function (shape) {
+    if (shape.type !== 'polygon') return { x: 0, y: 0 };
+    var pts = shape.points, a = 0, cx = 0, cy = 0;
+    for (var i = 0; i < pts.length; i++) {
+      var p = pts[i], q = pts[(i + 1) % pts.length], c = p[0] * q[1] - q[0] * p[1];
+      a += c; cx += (p[0] + q[0]) * c; cy += (p[1] + q[1]) * c;
+    }
+    if (Math.abs(a) < 1e-12) return { x: 0, y: 0 };
+    return { x: cx / (3 * a), y: cy / (3 * a) };
+  },
+
+  // Form um ihren Schwerpunkt gelegt (Teile aus einem Erzeuger: Lage = Mittelpunkt)
+  centered: function (shape) {
+    var c = this.centroid(shape), out = JSON.parse(JSON.stringify(shape));
+    if (shape.type === 'polygon') out.points = shape.points.map(function (p) { return [p[0] - c.x, p[1] - c.y]; });
+    return out;
+  },
+
   signedArea: function (pts) {
     var a = 0;
     for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) a += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
