@@ -18,6 +18,7 @@ Meter, Grad, Sekunden. Draufsicht wie in der App: **x nach rechts, y nach unten*
 
 - `pose = {x, y, z, rot}`: x/y = **Mitte des Grundrisses** (bei Polygonen der Ursprung der Punkte), z = **Unterseite**.
 - Rechteck: `w` entlang der lokalen x-Achse, `d` entlang lokal y. Ein Band mit `rot: 90` läuft nach unten.
+- Jeder Winkel geht, nicht nur 0/90/180/270: `rot: 30` legt ein Band schräg (läuft nach rechts unten).
 - `top` (in `get_overview`) = Oberkante = z + Höhe. `bounds` = Hüllrechteck in der Draufsicht.
 
 ## 2. Körper, Körperarten, Funktionen
@@ -50,8 +51,10 @@ Quelle (`productOf` in `get_overview`). Neue Quellen haben die Standard-Kiste (0
 | `stopper` Stopper | ST1 … | Leiste 0,05 × 0,4 m quer im Band | eingefahren 2 cm unter dem Band | `Ausfahren`: 1 hält Kisten an |
 | `diverter` Weiche | W1 … | Arm 0,8 × 0,05 m, dreht ums linke Ende | 2 cm über dem Band | `Ausfahren`: 1 schwenkt 45° über das Band |
 
-Eigenschaften setzt du mit `props`, z. B. Band `{"speed": 0.5, "direction": "unten"}`, Quelle `{"interval": 2}`,
-Schieber `{"stroke": 600, "speed": 1, "direction": "unten"}` (Hub in **mm**). `direction` dreht den ganzen Körper.
+Eigenschaften setzt du mit `props`, z. B. Band `{"speed": 0.5, "direction": 90}`, Quelle `{"interval": 2}`,
+Schieber `{"stroke": 600, "speed": 1, "direction": 90}` (Hub in **mm**). `direction` ist die Lauf- bzw. Schubrichtung
+in **Grad** (0 = rechts, 90 = unten, 180 = links, 270 = oben, auch schräg wie 37.5) und dreht den ganzen Körper.
+Die Namen `"rechts"`, `"unten"`, `"links"`, `"oben"` gelten weiter; gelesen (`get_overview`) wird immer die Zahl.
 Standard-Teil: Kiste 0,3 m Würfel, 5,4 kg (Produkt der Quelle, änderbar). Weitere Vorlagen und alle Standardwerte stehen in `list_templates`.
 
 ### 3a. Produkt eines Erzeugers ändern (andere Teile als Kisten)
@@ -80,7 +83,7 @@ Grenzen `min`/`max` gelten immer, z. B. Drehtisch `{"mode": "position", "min": -
 
 ## 4. Bauregeln (wichtig)
 
-1. **Band**: Oberkante 0,7 m. Länge über `shape: {"w": 4}`. Laufrichtung über `rot` oder `props.direction`.
+1. **Band**: Oberkante 0,7 m. Länge über `shape: {"w": 4}`. Laufrichtung über `rot` oder `props.direction` (Grad, auch schräg).
 2. **Quelle** über den **Anfang** des Bands legen, ganz auf dem Band (z bleibt 0,72 = 2 cm über der Oberkante).
 3. **Senke** direkt **hinter das Bandende** (Kante an Kante), Höhe 0–0,6 m: das Teil fällt hinein. Am Fuß einer Rutsche genauso.
 4. **Bänder hintereinander bündig**: alle Bänder und Tische mit Oberkante 0,7 m (`z: 0.6`), Stirnkante an Stirnkante. Die Bandenden sind in der Physik gerundet wie eine Umlenkrolle (r 5 cm), Teile laufen darüber. Ein Folgeband **höher** als das liefernde hakt – `validate` meldet das.
@@ -88,11 +91,12 @@ Grenzen `min`/`max` gelten immer, z. B. Drehtisch `{"mode": "position", "min": -
    Endet es erst am Rand, fallen die Kisten herunter. Rutschen Kisten mit Schwung über die Außenkante: eine glatte
    **Führungswand** außen neben das abnehmende Band (`draw_shape`, static, 0,1 m breit, 1 m hoch, Reibung 0,05) und das
    zuliefernde Band etwas kürzer (endet ~10 cm vor der Wand). Eine Wand **quer** am Bandende stoppt Kisten (Stau).
-6. **Lichtschranke quer** über das Band (bei einem Band in x-Richtung `rot: 0`, in y-Richtung `rot: 90`), mitten auf der Bandachse.
+6. **Lichtschranke quer** über das Band (gleiches `rot` wie das Band: in x-Richtung `rot: 0`, in y-Richtung `rot: 90`, schräg z. B. `rot: 30`), mitten auf der Bandachse.
 7. **Schieber** neben das Band: seine Vorderkante (lokal y = +0,25) liegt an der Bandkante, Schubrichtung quer zum Band.
    Hub ≈ Bandbreite + 0,1 m (`stroke: 600` bei 0,5 m), Tempo **1 m/s** (bei 0,3 m/s staut es sich, wenn alle 2 s eine Kiste kommt).
    Gegenüber eine Senke. Der Fangwinkel des Schiebers sitzt auf lokal +x: Schiebt er nach `unten`, muss das Band nach `rechts`
-   laufen (allgemein: Bandrichtung = Schubrichtung − 90°). Für die andere Seite die ganze Anordnung drehen.
+   laufen (allgemein: Bandrichtung = Schubrichtung − 90°, gleiches `rot` wie das Band). Für die andere Seite die ganze Anordnung drehen.
+   Schräge Anordnungen: alle Lagen um denselben Punkt drehen und überall denselben Winkel zu `rot` addieren – sie laufen wie gerade.
 8. **Rutsche**: `draw_shape` Rechteck, `kind: "static"`, `h` am Anfang (z. B. 0,68 = 2 cm unter dem Band), `h2` am Ende
    (z. B. 0,1), Reibung 0,1 (`material: {"friction": 0.1}`). Bergab zeigt lokal +x, wenn `h2 < h`. Keine Transportfläche darauf.
 9. Abstände: Teile brauchen Platz; Quelle `interval` ≥ 1,5 s bei 0,5 m/s (Kiste 0,3 m).

@@ -32,6 +32,12 @@
 // ihres Produkt-Körpers. produkt() nennt ihn, teile() beschreibt die erzeugten Teile
 // (Form, Masse, Produkt); kisten() & Co. gelten weiter für alle Teile. form() kann mit
 // typ den Formtyp wechseln. elemente() zählt Produkte nicht mit (sie sind Vorlagen).
+//
+// Gradgenau drehen: Die Eigenschaft "direction" ist seit feature/drehung ein Winkel
+// in Grad. eigenschaft(id, 'direction') liest weiter den Namen wie vorher ('rechts' …,
+// '' bei schrägen Winkeln) und nimmt Namen und Zahlen an; richtung() liest und setzt
+// Grad wie das Feld im Panel. drehung() und drehungSchritt() wie das Feld "Drehung"
+// (Eingabe bzw. − / +), drehenZiehen() wie das Werkzeug Drehen beim Ziehen.
 'use strict';
 
 const { before } = require('node:test');
@@ -249,9 +255,49 @@ function neueAnlage(datei) {
     eigenschaft(id, key, wert) {
       const e = el(id);
       if (!MF.propDef(e, key)) throw new Error('Eigenschaft "' + key + '" gibt es bei ' + id + ' nicht');
-      if (arguments.length < 3) return kopie(MF.getProp(e, key));
+      if (arguments.length < 3) {
+        const v = MF.getProp(e, key);
+        return key === 'direction' ? MF.dirName(v) : kopie(v);   // Name wie vor feature/drehung
+      }
       MF.setProp(e, key, wert);
       geaendert();
+    },
+    /** Richtung einer Vorlage in Grad lesen (wert weglassen) oder setzen wie im Panel (Zahl oder Name) */
+    richtung(id, wert) {
+      const e = el(id);
+      if (!MF.propDef(e, 'direction')) throw new Error(id + ' hat keine Richtung');
+      if (arguments.length < 2) return MF.getProp(e, 'direction');
+      MF.setProp(e, 'direction', wert);
+      geaendert();
+    },
+    /** Feld "Drehung" im Panel: lesen oder Zahl eingeben (0,1° genau, unabhängig vom Fangen) */
+    drehung(id, grad) {
+      const e = el(id);
+      if (arguments.length < 2) return e.pose.rot;
+      if (MF.setRotation(e, grad)) geaendert();
+    },
+    /** − / + am Feld "Drehung" (n = ±1, mit Shift ±10): Schritte des Fangwinkels */
+    drehungSchritt(id, n) {
+      const e = el(id);
+      if (MF.setRotation(e, MF.snap.angleStepped(e.pose.rot, n, MF.model.settings.snap))) geaendert();
+      return e.pose.rot;
+    },
+    /**
+     * Werkzeug Drehen: Körper am Punkt von (Welt, m) anfassen und über die Punkte bis ziehen –
+     * dreht um seine Lage, Winkel-Fangen wie im Editor (MF.snap.dragAngle), eine Geste im Verlauf.
+     * opt: { ohneFangen (Alt) }. Gibt die Drehung danach zurück.
+     */
+    drehenZiehen(id, von, bis, opt) {
+      opt = opt || {};
+      const e = el(id), pose0 = { x: e.pose.x, y: e.pose.y, rot: e.pose.rot };
+      MF.history.begin();
+      bis.forEach(function (w) {
+        const rot = MF.snap.dragAngle(pose0.rot, pose0, kopie(von), kopie(w), MF.model.settings.snap, !!opt.ohneFangen);
+        if (!MF.setForm(e, { rot: rot })) MF.store.changed();
+        MF.history.lastTime -= 10000;   // wie eine lange Pause beim Ziehen
+      });
+      MF.history.end();
+      return e.pose.rot;
     },
     /** Körper als Dateiinhalt (Form, Lage, Funktionen …) */
     koerper(id) { return kopie(MF.file.serializeBody(el(id))); },

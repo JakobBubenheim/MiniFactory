@@ -1,6 +1,6 @@
 // Eigenschaften-Panel: zeigt den im Baum oder auf der Fläche gewählten Knoten.
 // Körper haben die Tabs Eigenschaften | I/O | Darstellung. Eigenschaften:
-//   Allgemein, Form & Lage (Maße, Höhe, Neigung, x/y/z, Drehung), Körperart,
+//   Allgemein, Form & Lage (Form, Drehung, Maße, Höhe, Neigung, x/y/z), Körperart,
 //   je Funktion ein Abschnitt (Felder, Entfernen), Funktion hinzufügen, Werkstoff.
 // Die Eigenschaften einer Vorlage (Tempo, Richtung, Hub …) erscheinen im Abschnitt
 // ihrer Funktion und werden über MF.getProp/MF.setProp gelesen und geschrieben;
@@ -101,9 +101,11 @@ MF.props = {
     return t === '' ? NaN : Number(t);
   },
 
-  // Auf min/max begrenzen; bei Schritt 1 ganzzahlig, mit quantize auf Vielfache von step
+  // Auf min/max begrenzen; mit round eigene Rundung (z. B. Winkel auf 0,1°), bei Schritt 1
+  // ganzzahlig, mit quantize auf Vielfache von step
   clamp: function (def, v) {
-    if (def.step === 1) v = Math.round(v);
+    if (def.round) v = def.round(v);
+    else if (def.step === 1) v = Math.round(v);
     else if (def.quantize) v = Math.round(Math.round(v / def.step) * def.step * 1e6) / 1e6;
     if (def.min !== undefined) v = Math.max(def.min, v);
     if (def.max !== undefined) v = Math.min(def.max, v);
@@ -112,6 +114,8 @@ MF.props = {
 
   // Eine Zeile "Label | Wert".
   // def: {label, type, unit, step, min, max, options, readonly, hint, onText, offText}
+  // type 'angle': Winkel in Grad, 0,1° genau, − / + gehen Fangschritte (MF.snap.angleStepped);
+  // type 'direction' (Richtung einer Vorlage): dazu Schnellknöpfe 0°/90°/180°/270°.
   field: function (parent, def, value, onChange) {
     var row = document.createElement('label');
     row.className = 'field';
@@ -157,6 +161,8 @@ MF.props = {
       val.appendChild(input);
     } else if (def.type === 'number') {
       input = this.numberControl(def, value, editable ? onChange : null, val);
+    } else if (def.type === 'angle' || def.type === 'direction') {
+      input = this.numberControl(this.angleDef(def), value, editable ? onChange : null, val);
     } else {
       input = document.createElement('input');
       input.type = def.type === 'color' ? 'color' : 'text';
@@ -174,7 +180,38 @@ MF.props = {
     row.appendChild(lab);
     row.appendChild(val);
     parent.appendChild(row);
+    if (def.type === 'direction' && editable) parent.appendChild(this.dirButtons(def, input, onChange));
     return input;
+  },
+
+  // Winkelfeld: Eingabe auf 0,1° (0 … 360), Stepper und Pfeiltasten auf den Fangwinkel
+  angleDef: function (def) {
+    var d = {};
+    for (var k in def) d[k] = def[k];
+    d.type = 'number';
+    if (d.unit === undefined) d.unit = '°';
+    d.round = function (v) { return MF.snap.angle(v, null, true); };
+    d.stepFn = function (v, n) { return MF.snap.angleStepped(v, n, MF.model.settings.snap); };
+    return d;
+  },
+
+  // Schnellknöpfe unter einem Richtungsfeld: 0° rechts, 90° unten, 180° links, 270° oben
+  dirButtons: function (def, input, onChange) {
+    var self = this, row = document.createElement('div');
+    row.className = 'dir-quick';
+    Object.keys(MF.DIRS).forEach(function (name) {
+      var deg = MF.DIRS[name], b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'manual-btn';
+      b.textContent = deg + '° ' + name;
+      b.title = def.label + ' auf ' + deg + '° (' + name + ')';
+      b.addEventListener('click', function () {
+        input.value = self.formatNumber(deg);
+        onChange(deg);
+      });
+      row.appendChild(b);
+    });
+    return row;
   },
 
   // An/Aus-Schalter: ein Klick schaltet um
@@ -210,6 +247,10 @@ MF.props = {
 
     var current = value;
     var step = def.step || 1;
+    // n Schritte weiter (Pfeiltasten, − / +); stepFn: eigene Schritte, z. B. Fangwinkel
+    function stepped(n) {
+      return def.stepFn ? def.stepFn(current, n) : Math.round((current + n * step) * 1e6) / 1e6;
+    }
 
     function set(v, rewrite) {
       v = self.clamp(def, v);
@@ -226,11 +267,13 @@ MF.props = {
     });
     // Beim Verlassen oder Enter den tatsächlich gültigen Wert anzeigen
     input.addEventListener('change', function () { input.value = self.formatNumber(current); });
+    // Wert von außen ändern, ohne onChange (z. B. Richtung nach Drehung)
+    input.mfShow = function (v) { current = v; if (document.activeElement !== input) input.value = self.formatNumber(v); };
     input.addEventListener('keydown', function (e) {
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       e.preventDefault();
       var n = (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1);
-      set(Math.round((current + n * step) * 1e6) / 1e6, true);
+      set(stepped(n), true);
     });
 
     function stepper(sign, text, label) {
@@ -243,7 +286,7 @@ MF.props = {
       b.addEventListener('click', function (e) {
         e.preventDefault();
         var n = sign * (e.shiftKey ? 10 : 1);
-        set(Math.round((current + n * step) * 1e6) / 1e6, true);
+        set(stepped(n), true);
       });
       return b;
     }
@@ -429,6 +472,10 @@ MF.props = {
     }
     this.field(s, { label: 'Form', type: 'text', readonly: true, hint: 'Grundriss in der Draufsicht; ändern über die Griffe auf der Fläche' },
       this.SHAPE_LABELS[sh.type] + (sh.type === 'polygon' ? ' (' + sh.points.length + ' Punkte)' : ''));
+    // Drehung gleich unter der Form: 0,1° genau, − / + gehen Fangschritte
+    this.field(s, { label: 'Drehung', type: 'angle', readonly: ro,
+      hint: 'Im Uhrzeigersinn um die Lage, 0,1° genau; − / + gehen Schritte des Fangwinkels. Lauf- bzw. Schubrichtung drehen mit' },
+      el.pose.rot, function (v) { self.rotate(el, v); }).dataset.angle = 'rot';
     if (sh.type === 'rect') {
       this.field(s, f('Breite', 'Ausdehnung in lokaler x-Richtung'), sh.w, function (v) { self.setForm(el, { w: v }); });
       this.field(s, f('Tiefe', 'Ausdehnung in lokaler y-Richtung'), sh.d, function (v) { self.setForm(el, { d: v }); });
@@ -460,9 +507,23 @@ MF.props = {
       function (v) { self.setForm(el, { y: MF.editor.snapValue(v) }); });
     this.field(s, f('Z (Unterseite)', 'Höhe der Unterseite über dem Boden', { min: -10, max: 100 }), el.pose.z,
       function (v) { self.setForm(el, { z: v }); });
-    this.field(s, { label: 'Drehung', type: 'number', unit: '°', step: MF.editor.snap ? MF.model.settings.snap.angle || 5 : 1,
-      min: -360, max: 720, readonly: ro, hint: 'Im Uhrzeigersinn um die Lage; Lauf- bzw. Schubrichtung drehen mit' },
-      el.pose.rot, function (v) { MF.editor.setRotation(el, v); });
+  },
+
+  // Drehung (rot in Grad) bzw. Richtung (dir: Eingabe für die Eigenschaft der Vorlage)
+  // setzen. Das Panel bleibt stehen (Fokus im Feld), Drehung und Richtung zeigen
+  // danach beide den neuen Wert.
+  rotate: function (el, rot, dir) {
+    if (el.look.locked) { MF.ui.message(el.name + ' ist gesperrt.'); return; }
+    var before = el.pose.rot;
+    if (dir !== undefined) MF.setProp(el, 'direction', dir);
+    else MF.setRotation(el, rot);
+    if (el.pose.rot === before) return;
+    this.commit();
+    var map = { rot: el.pose.rot, dir: MF.propDef(el, 'direction') ? MF.getProp(el, 'direction') : null };
+    Array.prototype.forEach.call(this.root.querySelectorAll('[data-angle]'), function (inp) {
+      var v = map[inp.dataset.angle];
+      if (v !== null && v !== undefined && inp.mfShow) inp.mfShow(v);
+    });
   },
 
   // Körperart. Fallen dabei Funktionen weg, wird vorher gefragt.
@@ -554,14 +615,18 @@ MF.props = {
       if (d.live) { input.dataset.live = d.key; input.dataset.liveFn = fn; }
     });
     tprops.forEach(function (p) {
-      var input = self.field(s, p, MF.getProp(el, p.key), function (v) {
+      // Richtung dreht den Körper: bei gesperrten Körpern nur lesbar wie die Drehung
+      var pd = p;
+      if (p.key === 'direction' && el.look.locked) { pd = {}; for (var k in p) pd[k] = p[k]; pd.readonly = true; }
+      var input = self.field(s, pd, MF.getProp(el, p.key), function (v) {
         var before = layout();
+        // Richtung dreht den Körper: ohne Neuaufbau (Fokus bleibt), Drehung mitziehen
+        if (p.key === 'direction') { self.rotate(el, null, v); return; }
         MF.setProp(el, p.key, v);
-        // Richtung dreht den Körper: Lage und Panel neu zeigen
-        if (p.key === 'direction') { MF.store.changed(); self.render(); return; }
         changed(before);
       });
       if (p.live) input.dataset.live = p.key;
+      if (p.key === 'direction') input.dataset.angle = 'dir';
     });
     if (fn === 'spawner') this.renderProductLink(s, el);
     if (fn === 'axis') {

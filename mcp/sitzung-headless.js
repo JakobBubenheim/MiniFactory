@@ -133,6 +133,14 @@ class SitzungHeadless {
       if (typeof v !== 'boolean') throw fehler(name + ' muss true oder false sein.');
       return v;
     }
+    if (def.type === 'direction') {
+      // Grad (Zahl) oder wie früher ein Name: rechts, unten, links, oben
+      if (this.MF.dirValue(v) === null || (typeof v === 'string' && !Object.prototype.hasOwnProperty.call(this.MF.DIRS, v))) {
+        throw fehler(name + ' muss eine Zahl in Grad sein (0 = rechts, 90 = unten, 180 = links, 270 = oben) ' +
+          'oder einer der Namen ' + Object.keys(this.MF.DIRS).join(', ') + '.');
+      }
+      return v;
+    }
     if (def.type === 'select') {
       const opts = (def.options || []).map(function (o) { return typeof o === 'object' ? o.value : o; });
       if (opts.indexOf(v) < 0) throw fehler(name + ' muss einer dieser Werte sein: ' + opts.join(', ') + '.');
@@ -382,6 +390,7 @@ class SitzungHeadless {
       });
       const opts = typeof d.options === 'function' ? d.options(ctx) : d.options;
       if (opts) o.options = opts.map(function (x) { return typeof x === 'object' ? x.value : x; });
+      if (d.type === 'direction') o.names = kopie(MF.DIRS);   // statt Grad auch diese Namen
       return o;
     }
     const templates = Object.keys(MF.templates).map(function (key) {

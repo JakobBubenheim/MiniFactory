@@ -142,6 +142,27 @@ MF.dirName = function (deg) {
   return '';
 };
 
+// Richtung aus einer Eingabe: Grad (Zahl, auch Text wie "37,5") oder einer der Namen
+// rechts/unten/links/oben. Gibt Grad auf 0,1° (0 … 360) zurück oder null.
+MF.dirValue = function (v) {
+  if (typeof v === 'string') {
+    if (Object.prototype.hasOwnProperty.call(MF.DIRS, v)) return MF.DIRS[v];
+    var t = v.trim().replace(',', '.').replace(/°$/, '');
+    v = t === '' ? NaN : Number(t);
+  }
+  if (typeof v !== 'number' || !isFinite(v)) return null;
+  return MF.snap.angle(v, null, true);
+};
+
+// Drehung eines Körpers setzen (Panel, Werkzeug Drehen): auf 0,1° genau, 0 … 360.
+// Gedreht wird um die Lage (pose). true, wenn sie sich geändert hat.
+MF.setRotation = function (body, deg) {
+  var rot = MF.snap.angle(deg, null, true);
+  if (rot === body.pose.rot) return false;
+  body.pose.rot = rot;
+  return true;
+};
+
 // ---------- Funktionen und ihre Signale ----------
 //
 // io: Signale der Funktion. dir 'in' = Eingang (Regeln/SCL schreiben ihn),
@@ -685,6 +706,13 @@ MF.turnTo = function (body, dirLocal, worldDeg) {
   body.pose.rot = MF.geom.normDeg(worldDeg - dirLocal);
 };
 
+// Wie turnTo, Richtung als Eingabe für MF.dirValue (Grad oder Name), Drehung auf 0,1°.
+// Unbekannte Eingaben ändern nichts.
+MF.turnDir = function (body, dirLocal, v) {
+  var d = MF.dirValue(v);
+  if (d !== null) MF.setRotation(body, d - dirLocal);
+};
+
 // Richtung eines Vektors [x, y, …] in Grad
 MF.vecDeg = function (v) {
   return MF.geom.normDeg(Math.atan2(v[1], v[0]) * 180 / Math.PI);
@@ -733,10 +761,10 @@ MF.templates = {
     props: [
       { key: 'running', label: 'Antrieb', type: 'bool', hint: 'Band ein- oder ausschalten', fn: 'surface', field: 'running' },
       { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0, max: 5, hint: 'Bandgeschwindigkeit', fn: 'surface', field: 'speed' },
-      { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'], fn: 'surface',
-        hint: 'Laufrichtung des Bands; das Band dreht sich mit',
-        get: function (b) { return MF.dirName(b.pose.rot + b.surface.dir); },
-        set: function (b, v) { if (v in MF.DIRS) MF.turnTo(b, b.surface.dir, MF.DIRS[v]); } }
+      { key: 'direction', label: 'Richtung', type: 'direction', unit: '°', fn: 'surface',
+        hint: 'Laufrichtung des Bands in Grad im Uhrzeigersinn (0° = rechts, 90° = unten); das Band dreht sich mit',
+        get: function (b) { return MF.dirValue(b.pose.rot + b.surface.dir); },
+        set: function (b, v) { MF.turnDir(b, b.surface.dir, v); } }
     ]
   },
   sensor: {
@@ -776,10 +804,10 @@ MF.templates = {
       { key: 'speed', label: 'Tempo', type: 'number', unit: 'm/s', step: 0.1, min: 0.1, max: 5, hint: 'Ausfahrgeschwindigkeit', fn: 'axis', field: 'vmax' },
       { key: 'returnDelay', label: 'Rückfahrverzug', type: 'number', unit: 's', step: 0.1, min: 0, max: 60, hint: 'Wartezeit vor dem Einfahren', fn: 'axis', field: 'returnDelay',
         when: function (b) { return b.axis.mode === 'zweipunkt' && b.axis.valve !== 'bi'; } },
-      { key: 'direction', label: 'Richtung', type: 'select', options: ['rechts', 'links', 'oben', 'unten'], fn: 'axis',
-        hint: 'Schubrichtung; der Schieber dreht sich mit',
-        get: function (b) { return MF.dirName(b.pose.rot + MF.vecDeg(b.axis.dir)); },
-        set: function (b, v) { if (v in MF.DIRS) MF.turnTo(b, MF.vecDeg(b.axis.dir), MF.DIRS[v]); } }
+      { key: 'direction', label: 'Richtung', type: 'direction', unit: '°', fn: 'axis',
+        hint: 'Schubrichtung in Grad im Uhrzeigersinn (0° = rechts, 90° = unten); der Schieber dreht sich mit',
+        get: function (b) { return MF.dirValue(b.pose.rot + MF.vecDeg(b.axis.dir)); },
+        set: function (b, v) { MF.turnDir(b, MF.vecDeg(b.axis.dir), v); } }
     ]
   },
   sink: {

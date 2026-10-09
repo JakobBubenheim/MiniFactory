@@ -31,9 +31,9 @@ Die Einstiege sind `entry-rapier.js` und `entry-three.js`.
 2. `npm install`, dann `npm run build`.
 3. Versionen in `lib/LICENSES.md` nachtragen (Lizenztexte prüfen, falls sich etwas geändert hat).
 4. Prüfen:
-   - `node spike/node-check.js` – Rapier im node:vm-Kontext
-   - `node spike/node-measure.js` – Messungen und Determinismus
-   - `spike-3d.html` per Doppelklick in Chrome, Safari und Firefox öffnen
+   - `npm test` im Wurzelverzeichnis – lädt Rapier im node:vm-Kontext (`tools/headless.js`) und rechnet
+     alle Physik-Tests inkl. Determinismus
+   - `index.html` per Doppelklick in Chrome, Safari und Firefox öffnen (Draufsicht und 3D-Ansicht)
 5. `lib/`, `package.json`, `package-lock.json` und `LICENSES.md` zusammen committen.
 
 Ein weiteres Three.js-Addon (z. B. `TransformControls`) kommt in `entry-three.js` dazu und
@@ -42,6 +42,6 @@ wird an `THREE_ADDONS` gehängt.
 ## Hinweise
 
 - Rapier im node:vm-Kontext braucht zusätzlich die Globals `TextDecoder` und `performance`
-  (siehe `spike/node-load.js`). Ohne `TextDecoder` scheitert schon das Laden, ohne
+  (siehe `tools/headless.js`). Ohne `TextDecoder` scheitert schon das Laden, ohne
   `performance` bricht `world.step()` mit „RuntimeError: unreachable“ ab.
 - `node_modules/` wird nicht committet (`.gitignore` in diesem Ordner).
