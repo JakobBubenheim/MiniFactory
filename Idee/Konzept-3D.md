@@ -1,6 +1,6 @@
 # Konzept: Umbau auf 3D-Physik („2,5D“)
 
-Stand: 09.10.2026 (Phase 4 eingetragen – der Umbau ist fertig, siehe Abschnitt 5). Dieses Dokument ist der gemeinsame Plan für alle Branches des Umbaus.
+Stand: 09.10.2026 (Phase 4 eingetragen – der Umbau ist fertig, siehe Abschnitt 5; danach Objektfang, Abschnitt 3). Dieses Dokument ist der gemeinsame Plan für alle Branches des Umbaus.
 Wer an einer Phase arbeitet, liest es zuerst und hält sich an die Entscheidungen hier.
 Ändert sich eine Entscheidung, wird zuerst dieses Dokument angepasst.
 
@@ -77,7 +77,7 @@ Version 3 ist der Umbau. `MF.file.migrate()` rechnet 1 → 2 → 3 schrittweise 
   "format": "mini-fabrik",
   "version": 3,
   "name": "Beispielanlage",
-  "settings": { "dtMs": 20, "gravity": -9.81, "snap": { "on": true, "pos": 0.05, "angle": 5 } },
+  "settings": { "dtMs": 20, "gravity": -9.81, "snap": { "on": true, "obj": true, "pos": 0.05, "angle": 5 } },
   "folders": [ { "id": "F1", "name": "Förderstrecke 1", "parent": null } ],
   "bodies": [
     {
@@ -110,7 +110,8 @@ Version 3 ist der Umbau. `MF.file.migrate()` rechnet 1 → 2 → 3 schrittweise 
 - `surface.dir`: Laufrichtung in Grad, lokal zum Körper. In der Draufsicht zeigt y nach unten,
   positive Winkel drehen im Uhrzeigersinn: **rechts 0°, unten 90°, links 180°, oben 270°**
   (geprüft gegen den Spike: dort läuft Band B mit `{ x: 0, y: 1 }` „nach unten“).
-- `settings.snap.on` (Fangen an/aus) gehört zur Anlage, `snap.pos` ist das Fangraster in m.
+- `settings.snap.on` (Fangen an/aus) und `settings.snap.obj` (Objektfang an/aus, fehlt = an) gehören zur
+  Anlage, `snap.pos` ist das Fangraster in m. Die beiden Schalter sind kein Schritt im Verlauf.
 - Die Signale (I/O) hängen an den **Funktionen**, nicht an der Vorlage (`MF.io(body)`):
   Erzeuger `Freigabe`/`Erzeugt`, Transportfläche `Ein`/`Läuft`/`Tempo`, Sensor `Belegt`,
   Achse (zweipunkt) `Ausfahren`/`Ausgefahren`/`Eingefahren`/`Ist` (neu), Senke `Reset`/`Anzahl`.
@@ -163,7 +164,7 @@ Festgelegt in Phase 3 (frei gestaltete Körper; `sim/model.js`, `sim/geom.js`, `
 | Vorlagen-Körper | lassen sich genauso ändern. Jede Vorlagen-Eigenschaft gehört zu einer Funktion (`fn`) und verschwindet mit ihr; im Panel stehen sie im Abschnitt ihrer Funktion, frei gezeichnete Körper zeigen dort die allgemeinen Felder (`MF.FUNCTIONS[fn].fields`). „Richtung“ zeigt „–“, wenn der Körper schräg gedreht ist |
 | `dynamic` aus dem Modell | Rapier-Körper ab Start, Lage aus der Physik (Draufsicht zeigt Lage und Drehung um z, Kippen nicht). Das Modell behält die gezeichnete Lage; Reset und jede Änderung am Körper setzen ihn dorthin zurück. Senken entfernen nur erzeugte Kisten, keine Modell-Körper; Sensoren und Erzeuger sehen dynamische Körper wie Kisten. Keine Funktionen. Während er unterwegs ist, zeigt die Draufsicht keine Griffe |
 | Wann was geht | Form, Lage, Höhe, Körperart, Werkstoff und Funktionen ändern wirkt sofort, auch im Lauf (die Engine gleicht die Welt bei jeder Änderung an). Neue Formen zeichnen geht nur, wenn die Simulation nicht läuft – wie Einfügen aus dem Katalog |
-| Fangen | Punkte und Maße auf `snap.pos`, Drehung (Griff, Panel-Schritt) auf `snap.angle`; **Alt** hält Fangen beim Zeichnen und Ziehen aus (dann 1 mm), beim Polygon fängt **Shift** Kantenwinkel und -länge ab dem letzten Punkt. Reine Funktionen in `MF.geom` (`snapPoint`, `snapAngle`, `snapPolar`) |
+| Fangen | Punkte und Maße auf `snap.pos`, Drehung (Griff, Panel-Schritt) auf `snap.angle`; **Alt** hält Fangen beim Zeichnen und Ziehen aus (dann 1 mm), beim Polygon fängt **Shift** Kantenwinkel und -länge ab dem letzten Punkt. Reine Funktionen, seit dem Objektfang in `MF.snap` (`sim/snap.js`: `gridPoint`, `angle`, `polar` …), siehe unten |
 | Bedienung | Werkzeuge Rechteck **E**, Kreis **K**, Polygon **P** (R ist Reset). Griffe in Auswählen/Verschieben: Drehgriff über der lokalen Oberkante, Rechteck Ecken/Kanten (Gegenseite bleibt stehen), Kreis Radius, Polygonpunkte; Doppelklick auf eine Kante fügt einen Punkt ein, auf einen Punkt löscht ihn. Jede Mausbearbeitung ist **ein** Schritt im Verlauf (`MF.history.begin()/end()`) |
 
 Festgelegt in Phase 4 (Achsen, Kopplung, neue Vorlagen; `sim/model.js`, `sim/engine.js`, `sim/sim.js`, `ui/editor.js`):
@@ -187,6 +188,21 @@ Festgelegt in Phase 4 (Achsen, Kopplung, neue Vorlagen; `sim/model.js`, `sim/eng
 | Achse in der Draufsicht | für den gewählten Körper in Blau: linear Linie von min bis max mit Pfeil und Marke der Stellung, senkrecht ein Kreis mit Punkt (hoch) bzw. Kreuz (runter) und Text, rotatorisch Bogen von min bis max mit Zeiger. Griffe: Ursprung, min, max, Richtung (nur linear in der Ebene); Fangen wie bei Formen (Lage `snap.pos`, Winkel `snap.angle`, Alt aus). Jede Geste ein Schritt im Verlauf, Esc bricht ab. Bearbeiten (Griffe, Verschieben, Pfeiltasten) rechnet bei gekoppelten und gedrehten Körpern ins Koordinatensystem der Lage zurück |
 | Katalog | entsteht aus `MF.templates` (`MF.templateGroups()`); jede Vorlage hat `label`, `icon`, `prefix`, `color`, `group`, `hint`, `make()`, `props`. Keine Sonderfälle je Vorlage in Oberfläche oder Engine |
 | Neue Vorlagen | **Drehtisch** `DT` (Gruppe Tische): Kreis r 0,4 m, kinematisch, Band 0,5 m/s, Drehachse `position` −180 … 180°, 90 °/s. **Hubtisch** `HT` (Tische): 0,6 × 0,5 m mit Band, linear z, `zweipunkt`, Hub 0,3 m, 0,2 m/s. Beide Oberkante 0,698 m (2 mm unter dem Band). **Stopper** `ST` (Aktoren): Leiste 0,05 × 0,4 m, eingefahren 2 cm unter der Bandoberkante, linear z, `zweipunkt`, 0,14 m, 0,5 m/s, Gleitbelag. **Weiche** `W` (Aktoren): Arm 0,8 × 0,05 m, 2 cm über dem Band, Drehachse am linken Ende, `zweipunkt` 0 … 45°, 90 °/s, Gleitbelag; an die obere Bandkante gelegt lenkt sie ausgefahren auf ein nach unten abgehendes Band. Portal/Greifer: nicht in diesem Umbau (Greifen fehlt) |
+
+Festgelegt beim Objektfang (Branch `feature/objektfang`; `sim/snap.js`, `ui/editor.js`, `sim/sim.js`):
+
+| Thema | Festlegung |
+|---|---|
+| Eine Fang-Stelle | **Alles Fangen läuft über `MF.snap`** (reine Rechnung, ohne DOM): `point()` für Zeichnen und Griffe, `moveBody()` für Verschieben und Einfügen aus dem Katalog, `len`/`gridPoint`/`angle`/`angleValue`/`polar` fürs Raster (Achs-Griffe, Drehen, Pfeiltasten, Panel über `MF.editor.snapStep`/`snapValue`). Der Editor rundet nicht selbst. Objektfang aus → genau das Raster wie zuvor (Verschieben ohne Raster 1 cm, Zeichnen/Griffe 1 mm) |
+| Fangziele | Ecken □ und Kantenmitten △ (Rechteck, Polygon), Mittelpunkte ○ (alle Formen; Polygon: Mitte des Hüllrechtecks), Kreis-Quadranten ◇ (Weltachsen), Kanten ═, Bandenden, Flucht (x- oder y-Linie durch einen Zielpunkt, dünne gestrichelte Hilfslinie). Keine Ziele: der gezogene Körper, seine gekoppelten Kinder, ausgeblendete Körper, Kisten |
+| Reichweite | **8 Bildschirmpixel** (`MF.snap.RANGE_PX`), unabhängig vom Zoom |
+| Vorrang | Punkt → Kante → Flucht → Raster. Beim **Verschieben** zählt der Körper als Ganzes: liegt eine seiner Kanten parallel (± 1,8°) und gegenüber einer Zielkante näher als jeder Punkt an einem Zielpunkt, legt sie sich bündig an; danach rasten entlang der Kante Ecken bzw. Mitten aufeinander, sonst fängt dort das Raster. Liegen nach einem Punktfang die Mittelpunkte aufeinander, heißt es „an Mitte“. Achsparallele Kanten und Flucht legen nur eine Achse fest, die andere fängt weiter (bei gekoppelten Körpern auf gedrehtem Eltern nur ganze Punkte) |
+| Gilt für | Verschieben (Maus) und Einfügen aus dem Katalog (Ziehen und Klick), Zeichnen (Punkte von Rechteck/Kreis/Polygon, Marker schon vor dem ersten Punkt), Griffe für Größe, Radius und Polygonpunkte (Maße folgen dann genau dem gefangenen Punkt). Drehen und Achs-Griffe fangen nur am Raster, Pfeiltasten gehen Rasterschritte, Polygon mit Shift fängt Winkel und Länge |
+| Alt | hält Raster **und** Objektfang aus, auch beim Ziehen aus dem Katalog (dort hatte Alt vorher keine Wirkung) |
+| Höhenregel Bandenden | Neue Bänder aus dem Katalog liegen alle auf 0,7 m; die 2-mm-Regel wendet sonst nur die Migration an. Darum setzt der Objektfang die Höhe: rastet eine **Stirnkante** (Kante quer zur Laufrichtung) einer Transportfläche an die Stirnkante einer anderen, liegt der **gezogene** Körper danach mit seiner Oberkante 2 mm **tiefer**, wenn er abnimmt (seine hintere Stirnkante liegt an), bzw. 2 mm **höher**, wenn er liefert (vordere Stirnkante). Der andere Körper bleibt unverändert, Ketten setzen sich fort (0,7 → 0,698 → 0,696). Ohne Bandende behält er die Höhe vom Anfassen. Meldung „an Bandende von B1 (nimmt ab, 2 mm tiefer)“ |
+| Anzeige | Marker am Fangpunkt in Grün (`MF.sim.snapMark`), Text in der Statusleiste („Objektfang: an Kante von B1.“) und in der Meldung nach dem Ziehen bzw. Einfügen |
+| Schalter | Knopf **„Objektfang“** neben „Fangen“ in den Reitern Modell und Design (`MF.ui.syncToggles`), Kürzel **O**. `settings.snap.obj`, Standard an; alte Dateien ohne `obj` = an, `validate()` verlangt `true`/`false`. Kein Schritt im Verlauf: Rückgängig lässt `snap.on` und `snap.obj`, wie sie sind (`MF.history.snapshot` lässt sie weg) |
+| Behoben | `MF.sim.drawPose()`/`restDrawPose()` gaben ohne Achse und Kopplung `b.pose` selbst zurück; der Editor merkte sich das beim Anfassen, und ein gezogener Körper lief seit Phase 4 nur halb so schnell wie die Maus. Beide liefern jetzt eine Kopie |
 
 ## 4. Simulationszyklus
 
