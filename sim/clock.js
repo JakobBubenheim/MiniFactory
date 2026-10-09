@@ -12,12 +12,12 @@
 (function (global) {
   'use strict';
 
-  const SPEEDS = [0.25, 0.5, 1, 2, 5, 10];
-  const DT_OPTIONS_MS = [10, 20, 50, 100];
-  const DEFAULT_DT_MS = 50;
+  var SPEEDS = [0.25, 0.5, 1, 2, 5, 10];
+  var DT_OPTIONS_MS = [10, 20, 50, 100];
+  var DEFAULT_DT_MS = 50;
 
-  const MAX_FRAME_S = 0.25; // längere Pausen (z. B. Tab im Hintergrund) werden gekappt
-  const MAX_STEPS_PER_FRAME = 10; // schützt vor Aufholschleifen bei hoher Geschwindigkeit
+  var MAX_FRAME_S = 0.25; // längere Pausen (z. B. Tab im Hintergrund) werden gekappt
+  var MAX_STEPS_PER_FRAME = 10; // schützt vor Aufholschleifen bei hoher Geschwindigkeit
 
   /**
    * @param {object} options
@@ -28,19 +28,19 @@
    * @param {number} [options.dtMs]                  Schrittweite in ms (Standard 50)
    */
   function createClock(options) {
-    const onTick = options.onTick;
-    const onRender = options.onRender || function () {};
-    const onReset = options.onReset || function () {};
-    const onChange = options.onChange || function () {};
+    var onTick = options.onTick;
+    var onRender = options.onRender || function () {};
+    var onReset = options.onReset || function () {};
+    var onChange = options.onChange || function () {};
 
-    let dtMs = options.dtMs || DEFAULT_DT_MS;
-    let speed = 1;
-    let running = false;
-    let tickCount = 0;
-    let timeMs = 0; // Simulationszeit als ganze Millisekunden, damit nichts driftet
-    let accS = 0;
-    let lastFrame = null;
-    let frameHandle = null;
+    var dtMs = options.dtMs || DEFAULT_DT_MS;
+    var speed = 1;
+    var running = false;
+    var tickCount = 0;
+    var timeMs = 0; // Simulationszeit als ganze Millisekunden, damit nichts driftet
+    var accS = 0;
+    var lastFrame = null;
+    var frameHandle = null;
 
     function doTick() {
       onTick(dtMs / 1000);
@@ -53,8 +53,8 @@
     function advance(realSeconds) {
       if (!running) return 0;
       accS += Math.min(realSeconds, MAX_FRAME_S) * speed;
-      const dtS = dtMs / 1000;
-      let steps = 0;
+      var dtS = dtMs / 1000;
+      var steps = 0;
       while (accS >= dtS && steps < MAX_STEPS_PER_FRAME) {
         doTick();
         accS -= dtS;
@@ -73,7 +73,7 @@
       frameHandle = global.requestAnimationFrame(frame);
     }
 
-    const api = {
+    var api = {
       SPEEDS: SPEEDS,
       DT_OPTIONS_MS: DT_OPTIONS_MS,
 
@@ -146,9 +146,10 @@
 
   // Zeit als "mm:ss" bzw. "mm:ss.t" für die Statusleiste
   function formatTime(ms, withTenths) {
-    const totalS = Math.floor(ms / 1000);
-    const mm = String(Math.floor(totalS / 60)).padStart(2, '0');
-    const ss = String(totalS % 60).padStart(2, '0');
+    var totalS = Math.floor(ms / 1000);
+    var m = Math.floor(totalS / 60), sec = totalS % 60;
+    var mm = (m < 10 ? '0' : '') + m;
+    var ss = (sec < 10 ? '0' : '') + sec;
     return withTenths ? mm + ':' + ss + '.' + Math.floor((ms % 1000) / 100) : mm + ':' + ss;
   }
 

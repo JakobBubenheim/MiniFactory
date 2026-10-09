@@ -11,7 +11,7 @@ und sich an die Entscheidungen und Phasen dort halten.
 - Reines HTML/CSS/JS, keine Build-Schritte; startet per Doppelklick auf `index.html` (file://)
 - ES5, klassische `<script>`-Tags (keine ES-Module), alles im Namensraum `MF`
 - Kommentare, Texte in der Oberfläche, Testnamen und Commit-Messages auf Deutsch
-- Keine Laufzeit-Abhängigkeiten; Node nur für Tests (und später zum Bündeln von `lib/vendor.js`)
+- Keine Laufzeit-Abhängigkeiten; Node nur für Tests, den MCP-Server (`mcp/`) und zum Bündeln von `lib/rapier.js`/`lib/three.js` (`tools/vendor/`)
 
 ## Ordner
 

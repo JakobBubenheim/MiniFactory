@@ -2,6 +2,11 @@
 
 Stand: 08.10.2026, Branch `feat/3d-spike`. Gehört zu [Konzept-3D.md](Konzept-3D.md).
 
+> **Hinweis (09.10.2026):** Der Spike-Code (`spike/`, `spike-3d.html`) wurde entfernt, die App kann
+> inzwischen alles, was er gezeigt hat. Er liegt in der Git-Historie, zuletzt in Commit `d534acc`
+> (`git show d534acc:spike/scene.js`, `git checkout d534acc -- spike spike-3d.html`). Die Messwerte und
+> Entscheidungen unten gelten weiter; Abschnitt 4a (Umlenkrolle) ersetzt die 2-mm-Regel aus 4.2.
+
 **Kurz:** Rapier 3D und Three.js laufen per Doppelklick (file://) ohne Server. Die Physik ist
 schnell genug (200 Kisten: < 1,5 ms pro Schritt, 60 FPS) und **bitgenau deterministisch – auch
 zwischen Node, Chromium und Firefox**. Gewählte Transportflächen-Methode: **a) Geschwindigkeit

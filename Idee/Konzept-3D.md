@@ -307,7 +307,7 @@ das Verhalten der Anlage.
 |---|---|---|---|
 | 0a | `feature/tests` | Headless-Tests, Prüf-Agent, CI | – |
 | 0b | `feature/baum-ordner` | freie Ordner im Strukturbaum, Dateiformat v2 | – |
-| 1 | `feature/3d-spike` | ✅ `lib/rapier.js` + `lib/three.js` bauen, Rapier + Three per Doppelklick laden, Demo `spike-3d.html`; Transportflächen-Methode festgelegt (siehe Abschnitt 4, Spike-3D-Ergebnis.md) | 0a |
+| 1 | `feature/3d-spike` | ✅ `lib/rapier.js` + `lib/three.js` bauen, Rapier + Three per Doppelklick laden, Demo `spike-3d.html` (Code am 09.10.2026 entfernt, siehe Spike-3D-Ergebnis.md); Transportflächen-Methode festgelegt (siehe Abschnitt 4, Spike-3D-Ergebnis.md) | 0a |
 | 2 | `feature/physik-kern` | ✅ Datenmodell v3 + Migration (`sim/migrate.js`), neue Engine auf Rapier (`sim/engine.js`), alle Katalog-Elemente als Vorlagen mit Funktionen, Draufsicht zeichnet Körper (`sim/geom.js`, `sim/sim.js`); alte Raster-Engine entfernt. Festlegungen siehe Abschnitte 1, 3 und 4 | 0a, 0b, 1 |
 | 3 | `feature/formen` | ✅ Rechteck/Kreis/Polygon zeichnen, Höhe, freie Lage und Drehung, Körperart und Funktionen im Eigenschaften-Panel, Fangen; geneigte Oberseite `shape.h2` für Rutschen. Festlegungen siehe Abschnitt 3 | 2 |
 | 4 | `feature/achsen` | ✅ Achsen linear/rotatorisch mit allen Betriebsarten, Kopplung über den Baum (Körper unter Körper), Achse in der Draufsicht anzeigen und ziehen, neue Vorlagen Drehtisch, Hubtisch, Stopper, Weiche; Katalog aus `MF.templates`. Festlegungen siehe Abschnitt 3 | 2 (besser nach 3) |
