@@ -25,6 +25,8 @@
 // Objektfang: fangPunkt() fängt einen Punkt wie beim Zeichnen bzw. an einem Griff,
 // ziehen() verschiebt einen Körper wie das Werkzeug Verschieben (beides über MF.snap,
 // dieselbe Rechnung wie im Editor), fangenEinstellen() legt die Schalter um.
+// Handbetrieb: handbetrieb() ruft dieselbe Funktion wie die Knöpfe im Panel
+// (MF.axisManual), handbetriebHinweis() liefert den Satz zu Regeln und SCL.
 'use strict';
 
 const { before } = require('node:test');
@@ -330,6 +332,21 @@ function neueAnlage(datei) {
       if (err) { MF.ui.message(err); return false; }
       geaendert();
       return true;
+    },
+    /**
+     * Knopf im Abschnitt Handbetrieb drücken: 'out' / 'in' (zweipunkt), 'goto' mit Ziel
+     * in m bzw. Grad (position), 'jog' mit −1 / 0 / 1 (geschwindigkeit). Kein Schritt im Verlauf.
+     * Gibt true zurück oder false, wenn abgelehnt (Meldung in meldungen()).
+     */
+    handbetrieb(id, befehl, wert) {
+      const err = MF.axisManual(el(id), befehl, wert);
+      if (err) { MF.ui.message(err); return false; }
+      return true;
+    },
+    /** Beschriftung der Knöpfe { out, in } und Hinweis auf Regeln/SCL (Zeilen) */
+    handbetriebHinweis(id) {
+      const e = el(id);
+      return kopie({ knoepfe: MF.axisManualLabels(e.axis), zeilen: MF.axisManualHint(e) });
     },
     /** Achse wie in der Draufsicht am Griff ziehen: eine Geste mit Zwischenständen, ein Schritt im Verlauf */
     achseZiehen(id, staende) {

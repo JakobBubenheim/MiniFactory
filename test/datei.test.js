@@ -133,7 +133,6 @@ test('Alte Version-1-Datei lädt und läuft: Kisten landen über R1 in SE2', fun
   assert.equal(a.regel('R1').enabled, true, 'Regel ohne enabled ist aktiv');
   assert.equal(a.regel('R1').kind, 'rule');
   assert.equal(a.signal('B1.Ein'), 1, 'Eingänge auf Startwert');
-  a.laufen(20);
-  assert.ok(a.signal('SE2.Anzahl') >= 3);
+  assert.notEqual(a.laufenBis(function () { return a.signal('SE2.Anzahl') >= 3; }, 20), null, 'SE2: ' + a.signal('SE2.Anzahl'));
   assert.equal(a.signal('SE1.Anzahl'), 0);
 });

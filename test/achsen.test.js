@@ -25,11 +25,19 @@ function nahe(ist, soll, tol, text) {
 // Winkelabstand in Grad (−180 … 180)
 function winkel(a, b) { return ((a - b) % 360 + 540) % 360 - 180; }
 
+// Drehtisch in Betriebsart position, −180 … 180° – so kam er bis zum Handbetrieb-Branch
+// aus dem Katalog (seitdem zweipunkt 0 … 90°). Für Tests der Betriebsart position.
+function drehtischPosition(a, x, y) {
+  const id = a.anlegen('turntable', x, y);
+  assert.equal(a.achse(id, { mode: 'position', min: -180, max: 180 }), true);
+  return id;
+}
+
 // ---------- Drehtisch per SCL (Abnahmekriterium des Umbaus, Konzept Abschnitt 5) ----------
 
 test('Drehtisch per SCL auf 90°: erreicht 90° ± Toleranz, meldet InPosition und fährt nie schneller als vmax', function () {
   const a = neueAnlage(LEER);
-  const dt = a.anlegen('turntable', 2, 2);
+  const dt = drehtischPosition(a, 2, 2);
   assert.equal(dt, 'DT1');
   const vmax = a.achse('DT1').vmax;
   assert.equal(a.achse('DT1').type, 'rotary');
@@ -61,7 +69,7 @@ test('Drehtisch per SCL auf 90°: erreicht 90° ± Toleranz, meldet InPosition u
 
 test('Betriebsart position: ohne Freigabe keine Bewegung, Grenzen gelten immer', function () {
   const a = neueAnlage(LEER);
-  a.anlegen('turntable', 2, 2);
+  drehtischPosition(a, 2, 2);
   assert.equal(a.signal('DT1.InPosition'), 1, 'Grundstellung 0 = Soll 0');
   a.setzen('DT1.Soll', 90);
   assert.equal(a.signal('DT1.InPosition'), 0);
@@ -91,7 +99,7 @@ test('Betriebsart position: ohne Freigabe keine Bewegung, Grenzen gelten immer',
 
 test('Betriebsart geschwindigkeit: fährt mit Soll (höchstens vmax) und bleibt an den Grenzen stehen', function () {
   const a = neueAnlage(LEER);
-  a.anlegen('turntable', 2, 2);
+  drehtischPosition(a, 2, 2);
   assert.equal(a.feld('DT1', 'Achse', 'mode', 'geschwindigkeit'), true);
   assert.deepEqual(a.signale('DT1'), ['Ein', 'Läuft', 'Tempo', 'Soll', 'Freigabe', 'Ist']);
   a.achse('DT1', { min: 0, max: 90 });
@@ -179,7 +187,7 @@ test('Typ und Betriebsart sind wählbar, die Signale passen sich an; der Schiebe
 
 test('Achse ändern prüft die Werte; Achse am Griff ziehen ist ein Schritt im Verlauf', function () {
   const a = neueAnlage(LEER);
-  a.anlegen('turntable', 2, 2);
+  drehtischPosition(a, 2, 2);
   assert.equal(a.achse('DT1', { min: 10, max: 5 }), false);
   assert.match(a.meldungen().pop(), /max ist kleiner als min/);
   assert.equal(a.achse('DT1', { dir: [1, 0, 0] }), false);
@@ -207,7 +215,7 @@ test('Drehtisch, Hubtisch, Stopper und Weiche stehen im Katalog und ergeben gül
   const v = {};
   a.vorlagen().forEach(function (t) { v[t.key] = t; });
   const erwartet = {
-    turntable: ['DT1', 'Drehtisch', ['Ein', 'Läuft', 'Tempo', 'Soll', 'Freigabe', 'Ist', 'InPosition']],
+    turntable: ['DT1', 'Drehtisch', ['Ein', 'Läuft', 'Tempo', 'Ausfahren', 'Ausgefahren', 'Eingefahren', 'Ist']],
     lift: ['HT1', 'Hubtisch', ['Ein', 'Läuft', 'Tempo', 'Ausfahren', 'Ausgefahren', 'Eingefahren', 'Ist']],
     stopper: ['ST1', 'Stopper', ['Ausfahren', 'Ausgefahren', 'Eingefahren', 'Ist']],
     diverter: ['W1', 'Weiche', ['Ausfahren', 'Ausgefahren', 'Eingefahren', 'Ist']]
@@ -241,7 +249,7 @@ test('Kiste fährt auf den Drehtisch, der Tisch dreht 90°, die Kiste dreht mit 
   const q = a.anlegen('source', 0.5, 2);
   a.eigenschaft(q, 'maxCount', 1);
   band(a, 1, 2, 2);                          // zuführend nach rechts bis x = 2
-  a.anlegen('turntable', 2.4, 2);            // r = 0,4 m, Oberkante 0,698 m
+  drehtischPosition(a, 2.4, 2);              // r = 0,4 m, Oberkante 0,698 m
   band(a, 2.4, 3.4, 2, 90, 0.696);           // abgehend nach unten, 2 mm tiefer
   const se = a.anlegen('sink', 2.4, 4.65);
 
@@ -328,7 +336,8 @@ test('Weiche lenkt Kisten je nach Stellung auf Band A oder Band B', function () 
     const sa = a.anlegen('sink', 4.5, 2);
     const sb = a.anlegen('sink', 2.25, 4.5);
     a.setzen(w + '.Ausfahren', stellung);
-    a.laufen(20);
+    // bisher fest 20 s: fertig, sobald fünf Kisten in einer der Senken sind
+    a.laufenBis(function () { return a.signal(sa + '.Anzahl') + a.signal(sb + '.Anzahl') >= 5; }, 20);
     return { a: a.signal(sa + '.Anzahl'), b: a.signal(sb + '.Anzahl'), daneben: a.kisten3d().filter(function (k) { return k.z < 0.8; }).length };
   }
   const gerade = lauf(0), ab = lauf(1);
