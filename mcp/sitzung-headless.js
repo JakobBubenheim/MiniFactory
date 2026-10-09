@@ -213,7 +213,9 @@ class SitzungHeadless {
     const MF = this.MF, self = this, F = MF.FUNCTIONS[fn];
     const vorher = MF.io(b).map(function (s) { return s.name; });
     const f = b[fn];
-    const defs = (F.fields || []).filter(function (d) { return !d.body; });
+    // MF.fieldsOf löst Felder wie das Panel auf: Auswahllisten als Funktion
+    // (z. B. Betriebsarten) und Felder, die nur je nach Typ gelten (when).
+    const defs = (MF.fieldsOf ? MF.fieldsOf(b, fn) : (F.fields || [])).filter(function (d) { return !d.body; });
     Object.keys(felder).forEach(function (k) {
       const v = felder[k];
       const def = defs.find(function (d) { return d.key === k; });
@@ -356,10 +358,15 @@ class SitzungHeadless {
   async vorlagen() {
     await this._bereit;
     const MF = this.MF;
-    function feld(d) {
+    // ctx: Funktionswerte, mit denen Felder als Funktion (z. B. options) aufgelöst werden
+    function feld(d, ctx) {
       const o = { key: d.key, label: d.label, type: d.type };
-      ['unit', 'min', 'max', 'step', 'readonly', 'hint'].forEach(function (k) { if (d[k] !== undefined) o[k] = d[k]; });
-      if (d.options) o.options = d.options.map(function (x) { return typeof x === 'object' ? x.value : x; });
+      ['unit', 'min', 'max', 'step', 'readonly', 'hint'].forEach(function (k) {
+        const v = typeof d[k] === 'function' ? d[k](ctx) : d[k];
+        if (v !== undefined) o[k] = v;
+      });
+      const opts = typeof d.options === 'function' ? d.options(ctx) : d.options;
+      if (opts) o.options = opts.map(function (x) { return typeof x === 'object' ? x.value : x; });
       return o;
     }
     const templates = Object.keys(MF.templates).map(function (key) {
@@ -375,7 +382,7 @@ class SitzungHeadless {
         out.functions = MF.FN_KEYS.filter(function (fn) { return b[fn]; });
         out.signals = MF.io(b).map(function (s) { return { name: s.name, dir: s.dir, type: s.type }; });
         out.props = MF.propsOf(b).map(function (p) {
-          const o = feld(p);
+          const o = feld(p, p.fn ? b[p.fn] : b);
           o.default = kopie(MF.getProp(b, p.key));
           return o;
         });
@@ -390,7 +397,7 @@ class SitzungHeadless {
       const out = {
         key: fn, label: F.label, kinds: kopie(F.kinds),
         defaults: kopie(f),
-        fields: (F.fields || []).filter(function (d) { return !d.body; }).map(feld),
+        fields: (F.fields || []).filter(function (d) { return !d.body; }).map(function (d) { return feld(d, f); }),
         signals: F.io(f).map(function (s) { return { name: s.name, dir: s.dir, type: s.type }; })
       };
       if (F.MODES) {

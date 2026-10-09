@@ -281,3 +281,30 @@ test('SCL aus der Anleitung übersetzt in der Beispielanlage', async function ()
   const sim = jsonAus(await werkzeug('simulate', { seconds: 10 }));
   assert.equal(sim.sclRuntimeErrors, undefined);
 });
+
+test('Achsen über MCP: Drehtisch per SCL auf 90°, Betriebsart umstellen passt die Signale an', async function () {
+  await werkzeug('new_plant', { name: 'Drehtisch vom Agent' });
+  const dt = jsonAus(await werkzeug('add_from_template', { template: 'turntable', x: 1, y: 1 })).id;
+  // Betriebsarten stehen in list_templates als Liste (in der App eine Funktion)
+  const achse = jsonAus(await werkzeug('list_templates')).functions.find(function (f) { return f.key === 'axis'; });
+  const mode = achse.fields.find(function (f) { return f.key === 'mode'; });
+  assert.ok(mode.options.indexOf('position') >= 0 && mode.options.indexOf('geschwindigkeit') >= 0, JSON.stringify(mode));
+
+  await werkzeug('add_scl', { code: dt + '.Soll := 90.0;\n' + dt + '.Freigabe := TRUE;' });
+  await werkzeug('simulate', { seconds: 3 });
+  const sig = JSON.stringify(jsonAus(await werkzeug('get_signals')));
+  const ist = jsonAus(await werkzeug('get_signals'));
+  const wert = function (name) {
+    const s = (Array.isArray(ist) ? ist : ist.signals).find(function (x) { return x.name === name; });
+    assert.ok(s, name + ' fehlt: ' + sig);
+    return s.value;
+  };
+  assert.ok(Math.abs(wert(dt + '.Ist') - 90) < 0.5, 'Ist = ' + wert(dt + '.Ist'));
+  assert.equal(Number(wert(dt + '.InPosition')), 1);
+
+  await werkzeug('set_function', { id: dt, function: 'axis', fields: { mode: 'geschwindigkeit' } });
+  const namen = JSON.stringify(jsonAus(await werkzeug('get_signals')));
+  assert.ok(namen.indexOf(dt + '.InPosition') < 0, 'InPosition gibt es bei Geschwindigkeit nicht');
+  assert.ok(namen.indexOf(dt + '.Soll') >= 0);
+  assert.match(await fehler('set_function', { id: dt, function: 'axis', fields: { mode: 'fliegen' } }), /position|zweipunkt/);
+});
