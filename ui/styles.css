@@ -2051,3 +2051,74 @@ body.is-dragging, body.is-dragging * {
   pointer-events: none;
 }
 .stage-loading[hidden] { display: none; }
+
+/* Handbetrieb (Eigenschaften, Achse) */
+
+.manual {
+  padding: 6px 10px 0;
+}
+
+.manual-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.manual-btn {
+  min-width: 32px;
+  height: 24px;
+  padding: 0 10px;
+  background: var(--dark-3);
+  border: 1px solid var(--line);
+  color: var(--light);
+  cursor: pointer;
+}
+
+.manual-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.manual-btn:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.manual-target {
+  width: 64px;
+  height: 22px;
+  padding: 0 4px;
+  background: var(--dark);
+  border: 1px solid var(--line);
+  color: var(--light);
+  text-align: right;
+}
+
+.manual-bar {
+  height: 6px;
+  background: var(--dark);
+  border: 1px solid var(--line);
+}
+
+.manual-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--in);
+}
+
+.manual-status {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  color: var(--light-dim);
+}
+
+.manual .io-note {
+  padding: 6px 0;
+}
+
+.manual-stopped {
+  color: var(--accent);
+}

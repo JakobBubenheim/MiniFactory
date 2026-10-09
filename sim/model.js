@@ -519,7 +519,8 @@ MF.axisManualHint = function (body) {
       'SCL: ' + id + '.Ausfahren := TRUE; … ' + id + '.Einfahren := TRUE; – Endlagen: ' + id + '.Ausgefahren, ' + id + '.Eingefahren'];
   }
   if (ax.mode === 'zweipunkt') {
-    return ['In Regeln: DANN ' + id + '.Ausfahren (1 = ' + num(ax.max) + ' ' + MF.axisUnit(ax).pos + ', 0 = zurück).',
+    var de = String(Math.round(ax.max * 1000) / 1000).replace('.', ',');
+    return ['In Regeln: DANN ' + id + '.Ausfahren (1 = ' + de + ' ' + MF.axisUnit(ax).pos + ', 0 = zurück).',
       'SCL: ' + id + '.Ausfahren := TRUE; – Endlagen: ' + id + '.Ausgefahren, ' + id + '.Eingefahren'];
   }
   if (ax.mode === 'position') {

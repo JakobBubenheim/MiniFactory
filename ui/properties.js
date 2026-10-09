@@ -525,6 +525,135 @@ MF.props = {
       MF.ui.message(F.label + ' von ' + el.name + ' entfernt' + (gone.length ? ' – Signale ' + gone.join(', ') + ' gibt es nicht mehr' : '') + '.');
     });
     s.appendChild(rm);
+
+    if (fn === 'axis' && MF.hasAxis(el)) this.renderManual(body, el);
+  },
+
+  // ---------- Handbetrieb ----------
+  //
+  // Knöpfe je Betriebsart (MF.axisManual schreibt dieselben Eingänge wie der
+  // I/O-Tab, kein Schritt im Verlauf), Stellung als Balken und Zahl, Zustand und
+  // welche Signale man in Regeln/SCL dafür nimmt. Stellung, Zustand und der
+  // Hinweis bei stehender Simulation laufen über refreshLive mit.
+  renderManual: function (body, el) {
+    var self = this, ax = el.axis, unit = MF.axisUnit(ax).pos;
+    var s = this.section(body, 'Handbetrieb');
+    var box = document.createElement('div');
+    box.className = 'manual';
+    s.appendChild(box);
+
+    // Schreibt eine aktive Regel die Eingänge, wirkt der Handbetrieb nicht
+    var inputs = MF.io(el).filter(function (x) { return x.dir === 'in' && x.fn === 'axis'; });
+    var owners = [];
+    inputs.forEach(function (x) {
+      MF.logic.activeSetting(el.id + '.' + x.name).forEach(function (r) { if (owners.indexOf(r.name) < 0) owners.push(r.name); });
+    });
+
+    function run(cmd, v) {
+      var err = MF.axisManual(el, cmd, v);
+      if (err) MF.ui.message(err);
+      self.refreshLive();
+    }
+    // Knopf; cmd ist ein Befehl für MF.axisManual oder eine eigene Funktion
+    function button(text, title, cmd, v) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'manual-btn';
+      b.textContent = text;
+      b.title = title;
+      b.disabled = owners.length > 0;
+      b.addEventListener('click', typeof cmd === 'function' ? cmd : function () { run(cmd, v); });
+      return b;
+    }
+    var row = document.createElement('div');
+    row.className = 'manual-row';
+    box.appendChild(row);
+
+    if (ax.mode === 'zweipunkt') {
+      var L = MF.axisManualLabels(ax), bi = ax.valve === 'bi';
+      row.appendChild(button(L.out, bi ? 'Impuls auf ' + el.id + '.Ausfahren' : el.id + '.Ausfahren = 1', 'out'));
+      row.appendChild(button(L.in, bi ? 'Impuls auf ' + el.id + '.Einfahren' : el.id + '.Ausfahren = 0, sofort (ohne Rückfahrverzug)', 'in'));
+    } else if (ax.mode === 'position') {
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'manual-target';
+      input.inputMode = 'decimal';
+      input.value = this.formatNumber(MF.engine.input(el, 'Soll'));
+      input.title = 'Ziel in ' + unit + ' (' + this.formatNumber(ax.min) + ' … ' + this.formatNumber(ax.max) + '), Enter fährt hin';
+      input.disabled = owners.length > 0;
+      var go = function () {
+        var v = self.parseNumber(input.value);
+        if (isNaN(v)) { MF.ui.message('Ziel: bitte eine Zahl eingeben.'); return; }
+        run('goto', v);
+        input.value = self.formatNumber(MF.engine.input(el, 'Soll'));
+      };
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+      var u = document.createElement('span');
+      u.className = 'unit';
+      u.textContent = unit;
+      row.appendChild(input);
+      row.appendChild(u);
+      row.appendChild(button('Fahren', 'Soll = Ziel, Freigabe = 1', go));
+      // Schnellknöpfe: linear min/max, rotatorisch 0°/90°/180°/−90° (soweit in den Grenzen)
+      var quick = ax.type === 'rotary' ? [0, 90, 180, -90] : [ax.min, ax.max];
+      var row2 = document.createElement('div');
+      row2.className = 'manual-row';
+      quick.forEach(function (q) {
+        if (q < ax.min - 1e-9 || q > ax.max + 1e-9) return;
+        var b = button(self.formatNumber(q) + ' ' + unit, 'Soll = ' + self.formatNumber(q) + ', Freigabe = 1', 'goto', q);
+        b.addEventListener('click', function () { input.value = self.formatNumber(q); });
+        row2.appendChild(b);
+      });
+      box.appendChild(row2);
+    } else {
+      var sp = this.formatNumber(ax.vmax) + ' ' + MF.axisUnit(ax).speed;
+      row.appendChild(button('◀', 'Rückwärts mit ' + sp, 'jog', -1));
+      row.appendChild(button('■', 'Anhalten (Freigabe = 0)', 'jog', 0));
+      row.appendChild(button('▶', 'Vorwärts mit ' + sp, 'jog', 1));
+    }
+
+    // Stellung live: Balken von min bis max und Zahl, Zustand
+    var bar = document.createElement('div');
+    bar.className = 'manual-bar';
+    bar.innerHTML = '<span class="manual-fill" data-manual="fill"></span>';
+    bar.title = 'Stellung zwischen ' + this.formatNumber(ax.min) + ' und ' + this.formatNumber(ax.max) + ' ' + unit;
+    box.appendChild(bar);
+    var stat = document.createElement('div');
+    stat.className = 'manual-status';
+    stat.innerHTML = '<span class="mono" data-manual="pos"></span><span data-manual="state"></span>';
+    box.appendChild(stat);
+
+    var stopped = document.createElement('div');
+    stopped.className = 'io-note manual-stopped';
+    stopped.dataset.manual = 'stopped';
+    stopped.textContent = 'Simulation starten, damit sich etwas bewegt – die Befehle werden gemerkt.';
+    box.appendChild(stopped);
+
+    var note = document.createElement('div');
+    note.className = 'io-note';
+    note.textContent = (owners.length ? 'Wird von ' + owners.join(', ') + ' gesetzt – Handbetrieb wirkt erst, wenn die Regel aus ist. ' : '') +
+      MF.axisManualHint(el).join(' ');
+    box.appendChild(note);
+    this.refreshManual(el);
+  },
+
+  // Stellung, Zustand und Hinweis "Simulation starten" aktualisieren
+  refreshManual: function (el) {
+    var root = this.root, ax = el.axis;
+    var fill = root.querySelector('[data-manual="fill"]');
+    if (!fill || !ax) return;
+    var pos = MF.axisPos(el), span = ax.max - ax.min;
+    fill.style.width = (span > 0 ? Math.max(0, Math.min(1, (pos - ax.min) / span)) * 100 : 0) + '%';
+    root.querySelector('[data-manual="pos"]').textContent = this.formatNumber(Math.round(pos * 1000) / 1000) + ' ' + MF.axisUnit(ax).pos;
+    var rt = el.rt || {};
+    var moving = rt.prevPos !== undefined && Math.abs(pos - rt.prevPos) > 1e-9 && MF.engine.state === 'running';
+    var state = moving ? 'fährt' : 'steht';
+    if (ax.mode === 'zweipunkt') {
+      if (MF.engine.signal(el, 'Ausgefahren')) state += ' · ausgefahren';
+      else if (MF.engine.signal(el, 'Eingefahren')) state += ' · eingefahren';
+    } else if (ax.mode === 'position' && MF.engine.signal(el, 'InPosition')) state += ' · InPosition';
+    root.querySelector('[data-manual="state"]').textContent = state;
+    root.querySelector('[data-manual="stopped"]').hidden = MF.engine.state === 'running';
   },
 
   // Werkstoff: Reibung, Stoßzahl, Dichte (nur bei dynamischen Körpern wirksam)
@@ -901,6 +1030,7 @@ MF.props = {
       else v = MF.getProp(el, input.dataset.live);
       input.value = MF.props.formatNumber(v);
     });
+    if (el.axis) this.refreshManual(el);
     this.root.querySelectorAll('tr[data-signal]').forEach(function (tr) {
       var name = tr.dataset.signal;
       var v = MF.engine.signal(el, name);
