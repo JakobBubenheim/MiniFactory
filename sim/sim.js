@@ -47,24 +47,27 @@ MF.sim = {
 
   // Aktuelle Lage eines Körpers fürs Zeichnen: Achsen (auch die des Elternkörpers
   // bei Kopplung) zwischen zwei Schritten interpoliert, dynamisch aus der Physik.
-  // Die 3D-Ansicht benutzt dieselbe Lage.
+  // Die 3D-Ansicht benutzt dieselbe Lage. Immer eine Kopie – nie b.pose selbst –,
+  // damit der Editor sie beim Anfassen festhalten kann, während er b.pose ändert.
   drawPose: function (b) {
-    if (!MF.engine.world) return MF.poseInWorld(b);
-    if (b.kind === 'dynamic') return MF.engine.dynamicPose(b, MF.engine.alpha());
+    if (!MF.engine.world) return this.copyPose(MF.poseInWorld(b));
+    if (b.kind === 'dynamic') return this.copyPose(MF.engine.dynamicPose(b, MF.engine.alpha()));
     var a = MF.engine.alpha();
-    return MF.poseInWorld(b, function (x) {
+    return this.copyPose(MF.poseInWorld(b, function (x) {
       var rt = x.rt || {}, pos = MF.axisPos(x);
       var prev = rt.prevPos !== undefined && rt.axisType === x.axis.type ? rt.prevPos : pos;
       return prev + (pos - prev) * a;
-    });
+    }));
   },
 
   // Koordinatensystem der Achse beim Zeichnen: Lage des Körpers mit Achse in
-  // Stellung 0 (Elternkörper in seiner gezeichneten Lage)
+  // Stellung 0 (Elternkörper in seiner gezeichneten Lage); ebenfalls eine Kopie
   restDrawPose: function (b) {
     var p = MF.parentBody(b);
-    return p ? MF.composePose(this.drawPose(p), b.pose) : b.pose;
+    return p ? MF.composePose(this.drawPose(p), b.pose) : this.copyPose(b.pose);
   },
+
+  copyPose: function (p) { return { x: p.x, y: p.y, z: p.z, rot: p.rot }; },
 
   // Sichtbarer Körper unter dem Mauszeiger, sonst null. Liegen mehrere
   // übereinander (z. B. Lichtschranke auf Band), gewinnt der kleinste.
