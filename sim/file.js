@@ -109,7 +109,8 @@ window.MF = window.MF || {};
           if (s.dtMs !== undefined && !(isNum(s.dtMs) && s.dtMs > 0 && s.dtMs === Math.round(s.dtMs))) errors.push('Zeitschritt (dtMs) muss eine ganze Zahl > 0 sein.');
           if (s.gravity !== undefined && !isNum(s.gravity)) errors.push('Schwerkraft (gravity) muss eine Zahl sein.');
           if (s.snap !== undefined && !(isObject(s.snap) && (s.snap.pos === undefined || isNum(s.snap.pos) && s.snap.pos > 0) &&
-              (s.snap.angle === undefined || isNum(s.snap.angle) && s.snap.angle > 0))) errors.push('"snap" muss { on, pos > 0, angle > 0 } sein.');
+              (s.snap.angle === undefined || isNum(s.snap.angle) && s.snap.angle > 0) &&
+              (s.snap.obj === undefined || typeof s.snap.obj === 'boolean'))) errors.push('"snap" muss { on, obj, pos > 0, angle > 0 } sein.');
         }
       }
 
@@ -331,7 +332,8 @@ window.MF = window.MF || {};
         settings: {
           dtMs: s.dtMs || 20,
           gravity: isNum(s.gravity) ? s.gravity : -9.81,
-          snap: { on: snap.on !== false, pos: snap.pos || 0.05, angle: snap.angle || 5 }
+          // Objektfang (obj): alte Dateien kennen ihn nicht – dann an
+          snap: { on: snap.on !== false, obj: snap.obj !== false, pos: snap.pos || 0.05, angle: snap.angle || 5 }
         },
         folders: (obj.folders || []).map(function (f) {
           return { id: f.id, name: f.name, parent: f.parent || null, area: f.area };
@@ -433,7 +435,7 @@ window.MF = window.MF || {};
     newPlant: function () {
       if (!this.confirmDiscard()) return;
       this.deserialize({ format: this.FORMAT, version: this.VERSION, name: 'Neue Anlage',
-        settings: { dtMs: 20, gravity: -9.81, snap: { on: true, pos: 0.05, angle: 5 } }, folders: [], bodies: [], rules: [] });
+        settings: { dtMs: 20, gravity: -9.81, snap: { on: true, obj: true, pos: 0.05, angle: 5 } }, folders: [], bodies: [], rules: [] });
       this.handle = null;
       this.setDirty(false);
       MF.ui.message('Neue Anlage angelegt.');
