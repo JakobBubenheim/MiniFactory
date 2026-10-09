@@ -146,6 +146,7 @@ MF.sim = {
     if (this.showTags) this.drawTags();
     this.drawSelection();
     this.drawDraft();
+    this.drawSnapMark();
     if (this.editLabel) this.drawLabel(this.editLabel.text, this.editLabel.x + 12, this.editLabel.y + 14);
   },
 
@@ -724,6 +725,48 @@ MF.sim = {
       ctx.stroke();
     }
     if (d.label && cur) this.drawLabel(d.label, cur.x + 12, cur.y + 14, d.bad);
+    ctx.restore();
+  },
+
+  // ---------- Objektfang ----------
+  //
+  // snapMark (vom Editor gesetzt, siehe MF.snap.hit): { kind, x, y (Welt), guides }
+  // Marker je Art: □ Ecke, △ Kantenmitte, ○ Mittelpunkt, ◇ Quadrant, ═ Kante/Bandende;
+  // Flucht als dünne gestrichelte Hilfslinie.
+  snapMark: null,
+  SNAP_COLOR: '#0E8A6A',
+
+  drawSnapMark: function () {
+    var m = this.snapMark;
+    if (!m) return;
+    var ctx = this.ctx, self = this;
+    ctx.save();
+    ctx.strokeStyle = this.SNAP_COLOR;
+    ctx.lineWidth = 1;
+    (m.guides || []).forEach(function (g) {
+      var a = self.toScreen(g.x1, g.y1), b = self.toScreen(g.x2, g.y2);
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(Math.round(a.x) + 0.5, Math.round(a.y) + 0.5);
+      ctx.lineTo(Math.round(b.x) + 0.5, Math.round(b.y) + 0.5);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();   // kleines Kreuz am Punkt, auf den ausgerichtet wird
+      ctx.moveTo(a.x - 3, a.y - 3); ctx.lineTo(a.x + 3, a.y + 3);
+      ctx.moveTo(a.x + 3, a.y - 3); ctx.lineTo(a.x - 3, a.y + 3);
+      ctx.stroke();
+    });
+    if (m.x !== null && m.x !== undefined) {
+      var p = this.toScreen(m.x, m.y), r = 6;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (m.kind === 'corner') ctx.rect(p.x - r, p.y - r, 2 * r, 2 * r);
+      else if (m.kind === 'mid') { ctx.moveTo(p.x, p.y - r); ctx.lineTo(p.x + r, p.y + r * 0.8); ctx.lineTo(p.x - r, p.y + r * 0.8); ctx.closePath(); }
+      else if (m.kind === 'center') ctx.arc(p.x, p.y, r, 0, 2 * Math.PI);
+      else if (m.kind === 'quad') { ctx.moveTo(p.x, p.y - r); ctx.lineTo(p.x + r, p.y); ctx.lineTo(p.x, p.y + r); ctx.lineTo(p.x - r, p.y); ctx.closePath(); }
+      else { ctx.moveTo(p.x - r, p.y - 2.5); ctx.lineTo(p.x + r, p.y - 2.5); ctx.moveTo(p.x - r, p.y + 2.5); ctx.lineTo(p.x + r, p.y + 2.5); }
+      ctx.stroke();
+    }
     ctx.restore();
   },
 

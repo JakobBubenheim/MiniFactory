@@ -311,42 +311,9 @@ MF.geom = {
       (o3 === 0 && onSeg(c, a, d)) || (o4 === 0 && onSeg(c, b, d));
   },
 
-  // ---------- Fangen (Zeichenhilfe) ----------
-  //
-  // snap = settings.snap { on, pos, angle }. Mit off = true (Alt gedrückt) oder
-  // snap.on = false wird nur auf 1 mm gerundet, damit keine Rechenreste entstehen.
-  FREE_POS: 0.001,
-
   round6: function (v) { return Math.round(v * 1e6) / 1e6; },
 
-  snapStep: function (snap, off) {
-    return !off && snap && snap.on !== false ? snap.pos || 0.05 : this.FREE_POS;
-  },
-
-  // Länge bzw. Koordinate auf das Fangraster
-  snapLen: function (v, snap, off) {
-    var step = this.snapStep(snap, off);
-    return this.round6(Math.round(v / step) * step);
-  },
-
-  snapPoint: function (x, y, snap, off) {
-    return { x: this.snapLen(x, snap, off), y: this.snapLen(y, snap, off) };
-  },
-
-  // Winkel auf snap.angle (Grad); ohne Fangen auf 0,1°
-  snapAngle: function (deg, snap, off) {
-    var step = !off && snap && snap.on !== false ? snap.angle || 5 : 0.1;
-    return this.normDeg(Math.round(deg / step) * step) + 0;   // + 0: nie −0
-  },
-
-  // Punkt b so legen, dass die Strecke von a einen gefangenen Winkel und eine
-  // gefangene Länge hat (Polygon zeichnen mit Shift)
-  snapPolar: function (a, b, snap, off) {
-    var dx = b.x - a.x, dy = b.y - a.y;
-    var len = this.snapLen(Math.sqrt(dx * dx + dy * dy), snap, off);
-    var ang = this.rad(this.snapAngle(Math.atan2(dy, dx) * 180 / Math.PI, snap, off));
-    return { x: this.round6(a.x + len * Math.cos(ang)), y: this.round6(a.y + len * Math.sin(ang)) };
-  },
+  // Fangen (Raster und Objektfang): sim/snap.js (MF.snap)
 
   // ---------- Formen aus gezeichneten Punkten ----------
 

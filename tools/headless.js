@@ -34,6 +34,7 @@ const ROOT = path.join(__dirname, '..');
 // Skripte in der Reihenfolge aus index.html (ohne ui/*.js außer dem Verlauf)
 const SKRIPTE = [
   'sim/geom.js',
+  'sim/snap.js',      // Fangen: Raster und Objektfang (reine Rechnung)
   'sim/model.js',
   'sim/sim.js',       // nur für Zoom/Verschiebung beim Speichern; zeichnet ohne Canvas nichts
   'sim/clock.js',

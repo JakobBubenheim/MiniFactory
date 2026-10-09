@@ -41,10 +41,13 @@ MF.history = {
   // Modell ohne Ansicht und ohne Laufzeitwerte, als JSON-Text.
   // Das Dateiformat entspricht dem Modell im Speicher (Körper mit look, Funktionen …);
   // Laufzeitwerte (rt, force, Kisten) schreibt serialize() ohnehin nicht.
+  // Die Schalter Fangen und Objektfang (snap.on, snap.obj) sind kein Schritt: Rückgängig
+  // lässt sie, wie sie gerade sind.
   snapshot: function () {
     var data = MF.file.serialize();
     data = JSON.parse(JSON.stringify(data));
     delete data.view;
+    if (data.settings && data.settings.snap) { delete data.settings.snap.on; delete data.settings.snap.obj; }
     return JSON.stringify(data);
   },
 
@@ -119,7 +122,12 @@ MF.history = {
     if (data.settings) {
       Object.keys(data.settings).forEach(function (k) {
         if (k === 'dtMs') { if (data.settings.dtMs !== model.settings.dtMs) MF.engine.setDtMs(data.settings.dtMs); }
-        else model.settings[k] = data.settings[k];
+        else if (k === 'snap') {
+          var sw = model.settings.snap || {};
+          model.settings.snap = data.settings.snap;
+          model.settings.snap.on = sw.on !== false;
+          model.settings.snap.obj = sw.obj !== false;
+        } else model.settings[k] = data.settings[k];
       });
     }
 

@@ -206,6 +206,7 @@ MF.ui = {
         case 'tool-circle':  MF.editor.setTool('circle'); break;
         case 'tool-polygon': MF.editor.setTool('polygon'); break;
         case 'toggle-snap': MF.editor.toggleSnap(); break;
+        case 'toggle-objsnap': MF.editor.toggleObjSnap(); break;
         case 'file-new':  MF.file.newPlant(); break;
         case 'file-open': MF.file.open(); break;
         case 'file-save': MF.file.save(); break;
@@ -235,7 +236,7 @@ MF.ui = {
     });
   },
 
-  // Markiert Raster-, Namen- und Fangen-Buttons als aktiv, wenn eingeschaltet,
+  // Markiert Raster-, Namen-, Fangen- und Objektfang-Buttons als aktiv, wenn eingeschaltet,
   // und genau einen Werkzeug-Button.
   syncToggles: function () {
     Object.keys(MF.editor.TOOLS).forEach(function (t) {
@@ -247,6 +248,10 @@ MF.ui = {
     document.querySelectorAll('[data-action="toggle-snap"]').forEach(function (b) {
       b.classList.toggle('is-active', MF.editor.snap);
       b.setAttribute('aria-pressed', String(MF.editor.snap));
+    });
+    document.querySelectorAll('[data-action="toggle-objsnap"]').forEach(function (b) {
+      b.classList.toggle('is-active', MF.editor.objSnap);
+      b.setAttribute('aria-pressed', String(MF.editor.objSnap));
     });
     document.querySelectorAll('[data-action="toggle-grid"]').forEach(function (b) {
       b.classList.toggle('is-active', MF.sim.showGrid);

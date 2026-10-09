@@ -19,8 +19,10 @@
 //   ziehen; Doppelklick auf eine Kante fügt einen Punkt ein, auf einen Punkt löscht ihn.
 //   Jede Bearbeitung ist ein Schritt im Verlauf; Esc während des Ziehens bricht ab.
 // - Fangen an: Lage auf das Fangraster (settings.snap.pos, z. B. 5 cm), Drehung auf
-//   settings.snap.angle (z. B. 5°); aus: 1 cm. Alt hält Fangen beim Ziehen und
-//   Zeichnen vorübergehend aus. Das Raster ist nur Zeichenhilfe.
+//   settings.snap.angle (z. B. 5°); aus: 1 cm. Objektfang (Kürzel O): Ecken, Mitten,
+//   Kanten, Bandenden und Flucht anderer Körper beim Verschieben, Einfügen, Zeichnen
+//   und an den Griffen, mit Marker und Text in der Statusleiste. Alt hält beides beim
+//   Ziehen und Zeichnen vorübergehend aus. Gefangen wird nur über MF.snap (sim/snap.js).
 // - Löschen mit Entf/Rücktaste, Duplizieren mit Strg/Cmd+D, Strg/Cmd+G packt
 //   die im Strukturbaum ausgewählten Einträge in einen neuen Ordner,
 //   Pfeiltasten verschieben um einen Fangschritt (mit Shift um zehn).
@@ -31,7 +33,6 @@ window.MF = window.MF || {};
 MF.editor = {
   DRAG_START_PX: 4,   // erst ab dieser Mausbewegung zählt es als Ziehen
   tool: 'select',     // 'select' | 'move' | 'rotate' | 'rect' | 'circle' | 'polygon'
-  FREE_STEP: 0.01,    // Schrittweite in m, wenn Fangen aus ist
   HANDLE_PX: 7,       // Fangbereich der Griffe in Pixeln
   CLOSE_PX: 9,        // so nah am Startpunkt schließt ein Klick das Polygon
 
@@ -71,25 +72,54 @@ MF.editor = {
     MF.ui.message('Werkzeug: ' + t.label + (t.hint ? ' – ' + t.hint + ', Esc bricht ab.' : '.'));
   },
 
-  // Fangen gehört zur Anlage (settings.snap), wird aber nicht als Änderung gezählt
+  // Fangen und Objektfang gehören zur Anlage (settings.snap.on/obj), werden aber nicht
+  // als Änderung gezählt und sind kein Schritt im Verlauf
   get snap() { return MF.model.settings.snap.on !== false; },
+  get objSnap() { return MF.model.settings.snap.obj !== false; },
 
   toggleSnap: function () {
     MF.model.settings.snap.on = !this.snap;
-    MF.ui.syncToggles();
+    this.switched();
     MF.props.render();   // Schrittweite der X/Y-Felder
     MF.ui.message(this.snap ? 'Fangen an: Schritte von ' + MF.props.formatNumber(this.snapStep() * 100) + ' cm.'
       : 'Fangen aus: Schritte von 1 cm.');
   },
 
-  // Schrittweite für Lagen in Metern
-  snapStep: function () { return this.snap ? MF.model.settings.snap.pos || 0.05 : this.FREE_STEP; },
-
-  // Lage auf das Fangraster bzw. auf 1 cm runden; off (Alt gedrückt): auf 1 mm
-  snapValue: function (v, off) {
-    var step = off ? MF.geom.FREE_POS : this.snapStep();
-    return Math.round(Math.round(v / step) * step * 1e6) / 1e6;
+  toggleObjSnap: function () {
+    MF.model.settings.snap.obj = !this.objSnap;
+    this.switched();
+    MF.ui.message(this.objSnap ? 'Objektfang an: Ecken, Mitten, Kanten und Bandenden anderer Körper rasten ein (Alt hält aus).'
+      : 'Objektfang aus.');
   },
+
+  // Schalter umgelegt: Ribbon anzeigen, beim nächsten Autosave mitspeichern
+  switched: function () {
+    MF.ui.syncToggles();
+    if (MF.file.scheduleAutosave) MF.file.scheduleAutosave();
+  },
+
+  // Schrittweite für Lagen in Metern (Verschieben, Pfeiltasten, Panel)
+  snapStep: function () { return MF.snap.step(MF.model.settings.snap, false, MF.snap.FREE_MOVE); },
+
+  // Lage auf das Fangraster bzw. auf 1 cm; off (Alt gedrückt): auf 1 mm
+  snapValue: function (v, off) { return MF.snap.len(v, MF.model.settings.snap, off, MF.snap.FREE_MOVE); },
+
+  // Fangziele für eine Bedienung; skip = gezogener Körper (er und seine Kinder sind keine Ziele)
+  snapContext: function (skip) {
+    return MF.snap.context({
+      snap: MF.model.settings.snap, bodies: MF.model.bodies, skip: skip || null, scale: MF.sim.pxPerM(),
+      poseOf: function (b) { return b.kind === 'dynamic' ? MF.poseInWorld(b) : MF.sim.drawPose(b); }
+    });
+  },
+
+  // Marker am Fangpunkt zeigen (hit von MF.snap oder null), Text in die Statusleiste
+  showSnap: function (hit) {
+    MF.sim.snapMark = hit;
+    var text = hit ? hit.text : '';
+    if (text && text !== this.snapText) MF.ui.message('Objektfang: ' + text + '.');
+    this.snapText = text;
+  },
+  snapText: '',
 
   // Länge mit deutschem Komma, auf Millimeter, z. B. "1,25"
   fmtLen: function (v) {
@@ -154,10 +184,11 @@ MF.editor = {
       e.clientX >= r.left && e.clientX < r.right && e.clientY >= r.top && e.clientY < r.bottom };
   },
 
-  // Mitte (in Metern, gefangen) für einen neuen Körper unter (px, py)
-  posFor: function (px, py) {
-    var w = MF.sim.toWorld(px, py);
-    return { x: this.snapValue(w.x), y: this.snapValue(w.y) };
+  // Lage (in Metern, gefangen) für einen neuen Körper aus der Vorlage type mit Mitte
+  // unter (px, py): { x, y, z?, hit }. off = Alt gedrückt.
+  posFor: function (type, px, py, off) {
+    var w = MF.sim.toWorld(px, py), b = MF.bodyFromTemplate(type, w.x, w.y);
+    return MF.snap.moveBody(this.snapContext(null), b, null, { model: w, world: w }, off, MF.snap.FREE_MOVE);
   },
 
   // ---------- Bibliothek: Ziehen auf die Fläche ----------
@@ -195,18 +226,19 @@ MF.editor = {
       chip.style.top = ev.clientY + 'px';
       var p = self.canvasPos(ev);
       chip.classList.toggle('is-over-canvas', p.inside);
-      MF.sim.ghost = p.inside ? self.ghostFor(type, p) : null;
+      MF.sim.ghost = p.inside ? self.ghostFor(type, p, ev.altKey) : null;
+      self.showSnap(MF.sim.ghost && MF.sim.ghost.hit);
       MF.sim.draw();
     }
 
     function up(ev) {
       var p = self.canvasPos(ev);
       if (chip) {
-        if (p.inside) self.place(type, self.posFor(p.x, p.y));
+        if (p.inside) self.place(type, self.posFor(type, p.x, p.y, ev.altKey));
         else MF.ui.message('Abgebrochen – zum Einfügen auf die Fläche ziehen.');
       } else if (self.canEdit()) {
         // Einfacher Klick: in die Mitte der Ansicht legen
-        self.place(type, self.posFor(MF.sim.width / 2, MF.sim.height / 2));
+        self.place(type, self.posFor(type, MF.sim.width / 2, MF.sim.height / 2, false));
       }
       end();
     }
@@ -219,6 +251,7 @@ MF.editor = {
       chip = null;
       document.body.classList.remove('is-dragging');
       MF.sim.ghost = null;
+      self.showSnap(null);
       MF.sim.draw();
     }
 
@@ -227,14 +260,19 @@ MF.editor = {
     btn.addEventListener('pointercancel', end);
   },
 
-  ghostFor: function (type, p) {
-    var c = this.posFor(p.x, p.y);
-    return { template: type, x: c.x, y: c.y };
+  ghostFor: function (type, p, off) {
+    var c = this.posFor(type, p.x, p.y, off);
+    return { template: type, x: c.x, y: c.y, z: c.z, hit: c.hit };
   },
 
+  // Einfügen ist ein Schritt im Verlauf, auch wenn der Objektfang die Höhe setzt
   place: function (type, pos) {
+    MF.history.end();
+    MF.history.begin();
     var b = MF.store.createBody(type, pos.x, pos.y, this.currentParent('plant'));
-    MF.ui.message(b.name + ' (' + b.id + ') eingefügt.');
+    if (pos.z !== undefined) { b.pose.z = pos.z; MF.store.changed(); }
+    MF.history.end();
+    MF.ui.message(b.name + ' (' + b.id + ') eingefügt' + (pos.hit ? ', ' + pos.hit.text : '') + '.');
     return b;
   },
 
@@ -293,16 +331,15 @@ MF.editor = {
   // Koordinatensystem des Körpers mit Achse in Stellung 0 (drag.rest0).
   applyAxisHandle: function (drag, w, e) {
     var b = drag.el, ax = drag.axis0, G = MF.geom, part = drag.h.part;
-    var snap = MF.model.settings.snap, off = e.altKey, ch = {}, label;
+    var snap = MF.model.settings.snap, off = e.altKey, ch = {}, label, S = MF.snap;
     var l = G.toLocal(drag.rest0, w.x, w.y), o = ax.origin;
-    var astep = !off && snap.on !== false ? snap.angle || 5 : 0.1;
     var unit = MF.axisUnit(ax).pos;
     if (part === 'origin') {
-      var q = G.snapPoint(l.x, l.y, snap, off);
+      var q = S.gridPoint(l.x, l.y, snap, off);
       ch.origin = [q.x, q.y, o[2]];
       label = 'Ursprung ' + this.fmtLen(q.x) + ' | ' + this.fmtLen(q.y) + ' m';
     } else if (part === 'dir') {
-      var deg = G.snapAngle(Math.atan2(l.y - o[1], l.x - o[0]) * 180 / Math.PI, snap, off), d = G.dirVec(deg);
+      var deg = S.angle(Math.atan2(l.y - o[1], l.x - o[0]) * 180 / Math.PI, snap, off), d = G.dirVec(deg);
       ch.dir = [d.x, d.y, 0];
       label = 'Richtung ' + MF.props.formatNumber(deg) + '°';
     } else if (ax.type === 'rotary') {
@@ -310,11 +347,11 @@ MF.editor = {
       var sign = ax.dir[2] < 0 ? -1 : 1, prev = ax[part];
       var a = sign * Math.atan2(l.y - o[1], l.x - o[0]) * 180 / Math.PI;
       a += 360 * Math.round((prev - a) / 360);
-      ch[part] = G.round6(Math.round(a / astep) * astep);
+      ch[part] = S.angleValue(a, snap, off);
     } else {
       var d0 = ax.dir, len = Math.sqrt(d0[0] * d0[0] + d0[1] * d0[1] + d0[2] * d0[2]) || 1;
       var ux = d0[0] / len, uy = d0[1] / len;
-      ch[part] = G.snapLen(((l.x - o[0]) * ux + (l.y - o[1]) * uy) / (ux * ux + uy * uy), snap, off);
+      ch[part] = S.len(((l.x - o[0]) * ux + (l.y - o[1]) * uy) / (ux * ux + uy * uy), snap, off);
     }
     if (part === 'min' || part === 'max') {
       // Grenzen tauschen nicht die Seite: min bleibt höchstens max
@@ -335,35 +372,41 @@ MF.editor = {
   // die letzte gültige Form stehen und zeigen den Grund am Mauszeiger.
   applyHandle: function (drag, w, e) {
     if (drag.h.kind === 'axis') { this.applyAxisHandle(drag, w, e); return; }
-    var b = drag.el, h = drag.h, pose = drag.pose0, sh = drag.shape0, G = MF.geom;
+    var b = drag.el, h = drag.h, pose = drag.pose0, sh = drag.shape0, G = MF.geom, S = MF.snap;
     var snap = MF.model.settings.snap, off = e.altKey;
-    var step = G.snapStep(snap, off), ch = {}, label;
+    var step = S.step(snap, off), ch = {}, label, hit = null;
     var w0 = w;
     w = this.modelPoint(drag.draw0, pose, w);   // Achse, Kopplung: zurück ins Koordinatensystem der Lage
+    // Objektfang an Größe, Radius und Punkten: Maße folgen dem gefangenen Punkt genau,
+    // sonst fängt das Raster die Maße (wie ohne Objektfang)
+    var q = h.kind === 'rotate' ? null : S.point(drag.snapCtx, w0, off, { draw: drag.draw0, pose: pose });
+    var exact = q && q.locked;
+    function len(v) { return exact ? G.round6(v) : S.len(v, snap, off); }
+    if (exact) { w = q; hit = q.hit; }
     if (h.kind === 'rotate') {
-      ch.rot = G.snapAngle(Math.atan2(w.y - pose.y, w.x - pose.x) * 180 / Math.PI + 90, snap, off);
+      ch.rot = S.angle(Math.atan2(w.y - pose.y, w.x - pose.x) * 180 / Math.PI + 90, snap, off);
       label = MF.props.formatNumber(ch.rot) + '°';
     } else if (h.kind === 'size') {
       var l = G.toLocal(pose, w.x, w.y), cx = 0, cy = 0;
       ch.w = sh.w; ch.d = sh.d;
       if (h.sx) {
         var fx = -h.sx * sh.w / 2;
-        ch.w = Math.max(step, G.snapLen(h.sx * (l.x - fx), snap, off));
+        ch.w = Math.max(step, len(h.sx * (l.x - fx)));
         cx = fx + h.sx * ch.w / 2;
       }
       if (h.sy) {
         var fy = -h.sy * sh.d / 2;
-        ch.d = Math.max(step, G.snapLen(h.sy * (l.y - fy), snap, off));
+        ch.d = Math.max(step, len(h.sy * (l.y - fy)));
         cy = fy + h.sy * ch.d / 2;
       }
       var c = G.toWorld(pose, cx, cy);
       ch.x = G.round6(c.x); ch.y = G.round6(c.y);
       label = this.fmtLen(ch.w) + ' × ' + this.fmtLen(ch.d) + ' m';
     } else if (h.kind === 'radius') {
-      ch.r = Math.max(step, G.snapLen(Math.sqrt((w.x - pose.x) * (w.x - pose.x) + (w.y - pose.y) * (w.y - pose.y)), snap, off));
+      ch.r = Math.max(step, len(Math.sqrt((w.x - pose.x) * (w.x - pose.x) + (w.y - pose.y) * (w.y - pose.y))));
       label = 'r ' + this.fmtLen(ch.r) + ' m';
     } else if (h.kind === 'vertex') {
-      var q = G.snapPoint(w.x, w.y, snap, off), lq = G.toLocal(pose, q.x, q.y);
+      var lq = G.toLocal(pose, q.x, q.y);
       ch.points = sh.points.map(function (p) { return [p[0], p[1]]; });
       ch.points[h.i] = [G.round6(lq.x), G.round6(lq.y)];
       var n = ch.points.length, lens = G.edgeLengths(ch.points);
@@ -371,6 +414,7 @@ MF.editor = {
     }
     var err = MF.setForm(b, ch);
     var s = MF.sim.toScreen(w0.x, w0.y);
+    this.showSnap(err ? null : hit);
     MF.sim.editLabel = { text: err || label, x: s.x, y: s.y };
     drag.err = err;
     if (!err) MF.store.changed();
@@ -392,8 +436,8 @@ MF.editor = {
       var w = MF.sim.toWorld(p.x, p.y), pose = MF.sim.drawPose(b);
       var a = MF.geom.worldOutline(b.shape, pose), q = MF.geom.nearestOnSegment(w, a[e.i], a[(e.i + 1) % a.length]);
       var l = MF.geom.toLocal(pose, q.x, q.y);
-      var mm = function (v) { return Math.round(v * 1000) / 1000; };
-      pts.splice(e.i + 1, 0, [mm(l.x), mm(l.y)]);
+      var mm = MF.snap.gridPoint(l.x, l.y, null, true);   // ohne Fangen: 1 mm
+      pts.splice(e.i + 1, 0, [mm.x, mm.y]);
       text = 'Punkt eingefügt – zum Verschieben ziehen';
     }
     var err = MF.setForm(b, { points: pts });
@@ -412,15 +456,18 @@ MF.editor = {
 
   // ---------- Formen zeichnen ----------
 
-  // Gefangener Weltpunkt unter der Maus. Alt = ohne Fangen. Polygon mit Shift:
-  // Kante mit gefangenem Winkel und gefangener Länge ab dem letzten Punkt.
+  // Gefangener Weltpunkt unter der Maus (Objektfang, sonst Raster). Alt = ohne Fangen.
+  // Polygon mit Shift: Kante mit gefangenem Winkel und gefangener Länge ab dem letzten Punkt.
   drawPoint: function (p, e) {
     var w = MF.sim.toWorld(p.x, p.y), snap = MF.model.settings.snap;
     var d = this.draft;
     if (d && d.type === 'polygon' && e.shiftKey && d.points.length) {
-      return MF.geom.snapPolar(d.points[d.points.length - 1], w, snap, e.altKey);
+      this.showSnap(null);
+      return MF.snap.polar(d.points[d.points.length - 1], w, snap, e.altKey);
     }
-    return MF.geom.snapPoint(w.x, w.y, snap, e.altKey);
+    var q = MF.snap.point(this.snapContext(null), w, e.altKey);
+    this.showSnap(q.hit);
+    return { x: q.x, y: q.y };
   },
 
   drawDown: function (p, e) {
@@ -489,6 +536,7 @@ MF.editor = {
   cancelDraft: function () {
     if (!this.draft) return;
     this.draft = null;
+    this.showSnap(null);
     this.showDraft();
   },
 
@@ -539,6 +587,7 @@ MF.editor = {
     shape.h = MF.BODY.H;
     this.draft = null;
     MF.sim.draft = null;
+    this.showSnap(null);
     MF.history.end();
     MF.history.begin();
     var b = MF.store.createShape(shape, { x: pose.x, y: pose.y, z: 0, rot: 0 }, this.currentParent('plant'));
@@ -578,7 +627,7 @@ MF.editor = {
           pose0: { x: sel.pose.x, y: sel.pose.y, z: sel.pose.z, rot: sel.pose.rot },
           shape0: JSON.parse(JSON.stringify(sel.shape)),
           draw0: MF.sim.drawPose(sel), rest0: MF.sim.restDrawPose(sel),
-          axis0: sel.axis ? JSON.parse(JSON.stringify(sel.axis)) : null };
+          axis0: sel.axis ? JSON.parse(JSON.stringify(sel.axis)) : null, snapCtx: self.snapContext(sel.id) };
         canvas.setPointerCapture(e.pointerId);
         return;
       }
@@ -590,10 +639,10 @@ MF.editor = {
       if (e.button === 0) MF.store.select(hit ? hit.id : null);
 
       if (hit && self.tool === 'move') {
-        var dp = MF.sim.drawPose(hit), p0 = { x: hit.pose.x, y: hit.pose.y, rot: hit.pose.rot };
+        var dp = MF.sim.drawPose(hit), p0 = { x: hit.pose.x, y: hit.pose.y, z: hit.pose.z, rot: hit.pose.rot };
         var w = self.modelPoint(dp, p0, MF.sim.toWorld(p.x, p.y));
-        drag = { mode: 'move', el: hit, wx: w.x, wy: w.y, ox: hit.pose.x, oy: hit.pose.y, sx: p.x, sy: p.y, active: false,
-          draw0: dp, pose0: p0 };
+        drag = { mode: 'move', el: hit, wx: w.x, wy: w.y, ox: hit.pose.x, oy: hit.pose.y, oz: hit.pose.z, sx: p.x, sy: p.y, active: false,
+          draw0: dp, pose0: p0, mx: MF.sim.toWorld(p.x, p.y), snapCtx: self.snapContext(hit.id) };
       } else {
         // Ansicht ziehen – auch über Körpern, damit Auswählen/Drehen nichts verschiebt.
         // Ein Klick ohne Ziehen dreht beim Werkzeug "Drehen" den Körper.
@@ -608,6 +657,14 @@ MF.editor = {
 
       if (self.draft) {
         self.updateDraft(p, e);
+        return;
+      }
+
+      // Zeichenwerkzeug vor dem ersten Punkt: zeigen, wo er einrasten würde
+      if (!drag && self.TOOLS[self.tool].draw) {
+        var had = !!MF.sim.snapMark;
+        self.drawPoint(p, e);
+        if (had || MF.sim.snapMark) MF.sim.draw();
         return;
       }
 
@@ -644,15 +701,22 @@ MF.editor = {
         self.applyHandle(drag, w, e);
         return;
       }
+      var mw = w;
       w = self.modelPoint(drag.draw0, drag.pose0, w);   // gekoppelt oder gedreht: im Koordinatensystem der Lage
 
-      var nx = self.snapValue(drag.ox + (w.x - drag.wx), e.altKey);
-      var ny = self.snapValue(drag.oy + (w.y - drag.wy), e.altKey);
-      if (nx !== drag.el.pose.x || ny !== drag.el.pose.y) {
-        drag.el.pose.x = nx;
-        drag.el.pose.y = ny;
+      // Lage ohne Fangen – im Koordinatensystem der Lage und in der Welt –, dann fangen
+      var raw = { model: { x: drag.ox + (w.x - drag.wx), y: drag.oy + (w.y - drag.wy) },
+        world: { x: drag.draw0.x + (mw.x - drag.mx.x), y: drag.draw0.y + (mw.y - drag.mx.y) } };
+      var r = MF.snap.moveBody(drag.snapCtx, drag.el, { draw: drag.draw0, pose: drag.pose0 }, raw, e.altKey, MF.snap.FREE_MOVE);
+      var nz = r.z !== undefined ? r.z : drag.oz;
+      drag.hit = r.hit;
+      self.showSnap(r.hit);
+      if (r.x !== drag.el.pose.x || r.y !== drag.el.pose.y || nz !== drag.el.pose.z) {
+        drag.el.pose.x = r.x;
+        drag.el.pose.y = r.y;
+        drag.el.pose.z = nz;
         MF.store.changed();
-      }
+      } else MF.sim.draw();
     });
 
     // Esc während des Ziehens: Form und Lage wie beim Anfassen
@@ -666,10 +730,12 @@ MF.editor = {
       } else {
         drag.el.pose.x = drag.ox;
         drag.el.pose.y = drag.oy;
+        drag.el.pose.z = drag.oz;
       }
       MF.store.changed();
       MF.history.end();
       MF.sim.editLabel = null;
+      self.showSnap(null);
       drag = null;
       MF.ui.message('Bearbeitung abgebrochen.');
       return true;
@@ -684,9 +750,10 @@ MF.editor = {
         return;
       }
       if (drag && drag.mode === 'move' && drag.active &&
-          (drag.el.pose.x !== drag.ox || drag.el.pose.y !== drag.oy)) {
+          (drag.el.pose.x !== drag.ox || drag.el.pose.y !== drag.oy || drag.el.pose.z !== drag.oz)) {
         MF.ui.message(drag.el.name + ' nach x ' + MF.props.formatNumber(drag.el.pose.x) +
-          ' m, y ' + MF.props.formatNumber(drag.el.pose.y) + ' m verschoben.');
+          ' m, y ' + MF.props.formatNumber(drag.el.pose.y) + ' m verschoben' +
+          (drag.hit ? ', ' + drag.hit.text : '') + '.');
       }
       if (drag && drag.mode === 'handle' && drag.active) {
         var b = drag.el, sh = b.shape, ax = b.axis, u = ax ? ' ' + MF.axisUnit(ax).pos : '';
@@ -704,7 +771,9 @@ MF.editor = {
         self.rotateBody(drag.el);
       }
       drag = null;
-      if (MF.sim.editLabel) { MF.sim.editLabel = null; MF.sim.draw(); }
+      var marked = !!MF.sim.snapMark && !self.TOOLS[self.tool].draw;
+      if (marked) self.showSnap(null);
+      if (MF.sim.editLabel || marked) { MF.sim.editLabel = null; MF.sim.draw(); }
       self.updateCursor(p.inside ? MF.sim.hitTest(p.x, p.y) : null);
     }
     canvas.addEventListener('pointerup', end);
@@ -720,7 +789,9 @@ MF.editor = {
     });
 
     canvas.addEventListener('pointerleave', function () {
-      if (!drag) MF.ui.setCursor(null);
+      if (drag) return;
+      MF.ui.setCursor(null);
+      if (MF.sim.snapMark && !self.draft) { self.showSnap(null); MF.sim.draw(); }
     });
 
     // Mausrad / Trackpad: zoomen um den Mauszeiger
@@ -815,8 +886,8 @@ MF.editor = {
       dy = -dx * s + dy * c;
       dx = lx;
     }
-    el.pose.x = Math.round((el.pose.x + dx) * 1e6) / 1e6;
-    el.pose.y = Math.round((el.pose.y + dy) * 1e6) / 1e6;
+    el.pose.x = MF.geom.round6(el.pose.x + dx);
+    el.pose.y = MF.geom.round6(el.pose.y + dy);
     MF.store.changed();
     return true;
   },
@@ -870,9 +941,10 @@ MF.editor = {
         return;
       }
 
-      // Werkzeuge: V = Auswählen, M = Verschieben, D = Drehen
+      // Werkzeuge: V = Auswählen, M = Verschieben, D = Drehen; O = Objektfang an/aus
       if (!mod && !e.altKey) {
         var key = e.key.toLowerCase();
+        if (key === 'o') { self.toggleObjSnap(); e.preventDefault(); return; }
         for (var tool in self.TOOLS) {
           if (self.TOOLS[tool].key === key) { self.setTool(tool); e.preventDefault(); return; }
         }

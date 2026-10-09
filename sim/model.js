@@ -938,7 +938,7 @@ MF.model = {
   settings: {
     dtMs: 50,                                    // SPS-Zyklus in Millisekunden
     gravity: -9.81,                              // Schwerkraft in m/s² (z nach oben)
-    snap: { on: true, pos: 0.05, angle: 5 }      // Fangen: Raster nur als Zeichenhilfe
+    snap: { on: true, obj: true, pos: 0.05, angle: 5 }   // Fangen (Raster, Objektfang): nur Zeichenhilfe
   },
   folders: [
     { id: 'F1', name: 'Förderstrecke 1', parent: null, area: 'plant' },
