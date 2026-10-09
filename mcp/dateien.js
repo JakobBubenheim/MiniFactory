@@ -14,10 +14,25 @@ const ENDUNG = '.mfab';
 
 class DateiFehler extends Error {}
 
+// Platzhalter, die Claude Desktop nicht immer auflöst (z. B. im Standardwert
+// "${HOME}/Mini-Fabrik" der Einstellung) – hier selbst ersetzen
+const PLATZHALTER = {
+  HOME: function () { return os.homedir(); },
+  DESKTOP: function () { return path.join(os.homedir(), 'Desktop'); },
+  DOCUMENTS: function () { return path.join(os.homedir(), 'Documents'); },
+  DOWNLOADS: function () { return path.join(os.homedir(), 'Downloads'); },
+  '/': function () { return path.sep; },
+  pathSeparator: function () { return path.sep; }
+};
+
 function basisOrdner() {
-  const v = (process.env.MINI_FABRIK_DIR || '').trim();
-  // Unaufgelöste Platzhalter (Einstellung im Bündel leer gelassen) zählen als nicht gesetzt
-  const roh = v && !/^\$\{.*\}$/.test(v) ? v : path.join(os.homedir(), 'Mini-Fabrik');
+  let v = (process.env.MINI_FABRIK_DIR || '').trim();
+  v = v.replace(/\$\{([^}]*)\}/g, function (ganz, name) {
+    return PLATZHALTER[name] ? PLATZHALTER[name]() : ganz;
+  });
+  // Übrige unaufgelöste Platzhalter (z. B. ${user_config.plant_dir}, Einstellung leer
+  // gelassen) zählen als nicht gesetzt
+  const roh = v && !/\$\{/.test(v) ? v : path.join(os.homedir(), 'Mini-Fabrik');
   return path.resolve(roh.replace(/^~(?=$|[\\/])/, os.homedir()));
 }
 
