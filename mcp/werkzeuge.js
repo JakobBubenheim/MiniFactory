@@ -160,7 +160,7 @@ const WERKZEUGE = [
     name: 'validate',
     title: 'Anlage prüfen',
     description: 'Prüft die Anlage wie beim Öffnen einer Datei (fehler) und gegen die Bauregeln (hinweise): Erzeuger über einer Fläche, ' +
-      'was hinter jedem Bandende kommt, Bänder 1–2 mm versetzt, Sensoren über einer Fläche, unvollständige Regeln, SCL-Fehler.',
+      'was hinter jedem Bandende kommt, Bänder an Nähten 1 cm versetzt, Sensoren über einer Fläche, unvollständige Regeln, SCL-Fehler.',
     inputSchema: LEER,
     annotations: { readOnlyHint: true },
     run: async function (a, k) {

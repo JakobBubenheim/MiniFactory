@@ -505,12 +505,12 @@ class SitzungHeadless {
             (o.sink || oben(o) <= top + 0.005);
         });
         if (!weiter) hinweise.push(b.id + ': hinter dem Ende (Laufrichtung ' + dirW + '°, bei x ' + r(ex) + ', y ' + r(ey) + ') liegt weder Senke noch Fläche – Kisten fallen dort herunter.');
-        // Bündig anschließende Transportfläche: 1–2 mm tiefer legen
+        // Anschließende Transportfläche: MF.BELT_SEAM (1 cm) tiefer (stellt MF.fixBeltSeams sonst selbst ein)
         bodies.forEach(function (o) {
           if (o === b || !o.surface || o.kind === 'ghost') return;
           if (!MF.geom.containsXY(o.shape, o.pose, b.pose.x + v.x * (halb + 0.01), b.pose.y + v.y * (halb + 0.01))) return;
           const d = top - oben(o);
-          if (d < 0.001 - 1e-9) hinweise.push(o.id + ' schließt an ' + b.id + ' an, liegt aber nicht 1–2 mm tiefer (Unterschied ' + r(d * 1000) + ' mm) – Kisten haken an der Kante.');
+          if (d < MF.BELT_SEAM - 1e-6) hinweise.push(o.id + ' schließt an ' + b.id + ' an, liegt aber nicht ' + r(MF.BELT_SEAM * 100) + ' cm tiefer (Unterschied ' + r(d * 1000) + ' mm) – Kisten haken an der Kante.');
         });
       }
       // Sensor: liegt er über einer Fläche, auf der Kisten laufen?

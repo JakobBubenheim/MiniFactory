@@ -20,7 +20,7 @@
 //             rasten Ecken bzw. Mitten entlang der Kante ein. Liegt eine Kante näher
 //             als jeder Punkt, gewinnt sie.
 //   Bandende – Stirnkante an Stirnkante zweier Transportflächen: der gezogene Körper
-//             liegt danach 2 mm tiefer (er nimmt ab) bzw. höher (er liefert), damit
+//             liegt danach 1 cm (MF.BELT_SEAM) tiefer (er nimmt ab) bzw. höher (er liefert), damit
 //             die Kiste nicht an der Naht hakt (Konzept, Abschnitt 4)
 //   Flucht  – Ecke, Mitte oder Mittelpunkt auf derselben x- bzw. y-Linie wie beim
 //             anderen Körper, mit Hilfslinie
@@ -34,7 +34,6 @@ MF.snap = {
   FREE_MOVE: 0.01,     // Lage ohne Rasterfangen beim Verschieben: 1 cm
   FREE_ANGLE: 0.1,     // Winkel ohne Fangen
   RANGE_PX: 8,         // Reichweite des Objektfangs in Bildschirmpixeln
-  LOWER: 0.002,        // abnehmendes Band 2 mm tiefer
   PARALLEL: 0.9995,    // Kanten gelten als parallel bis etwa 1,8°
 
   // ---------- Raster ----------
@@ -259,11 +258,11 @@ MF.snap = {
       var isEnd = F.belt && A.f.belt && A.e.end && A.g.end;
       hit = this.hit(isEnd ? 'end' : 'edge', m.x, m.y, A.f);
       if (isEnd) {
-        // Liefert der gezogene Körper (vordere Stirnkante), liegt er 2 mm höher, sonst tiefer
+        // Liefert der gezogene Körper (vordere Stirnkante), liegt er MF.BELT_SEAM höher, sonst tiefer
         var up = A.e.end === 'front' ? 1 : -1;
-        var zw = MF.geom.round6(A.f.top + up * this.LOWER - b.shape.h);
+        var zw = MF.geom.round6(A.f.top + up * MF.BELT_SEAM - b.shape.h);
         z = MF.geom.round6(zw - ((draw.z || 0) - ((frame ? frame.pose.z : b.pose.z) || 0)));
-        hit.text += up > 0 ? ' (liefert, 2 mm höher)' : ' (nimmt ab, 2 mm tiefer)';
+        hit.text += up > 0 ? ' (liefert, 1 cm höher)' : ' (nimmt ab, 1 cm tiefer)';
       }
     } else if (B) {
       dx = B.q.x - B.p.x; dy = B.q.y - B.p.y;

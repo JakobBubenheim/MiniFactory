@@ -35,7 +35,7 @@ test('Gekoppelter Körper bleibt beim Koppeln, wo er ist, und dreht mit dem Dreh
   const l = a.lage('K1');
   nahe(l.x, 2.5, 1e-6, 'x'); nahe(l.y, 2, 1e-6, 'y'); nahe(l.z, 0.7, 1e-6, 'z');
   const p = a.koerper('K1').pose;
-  nahe(p.x, 0.5, 1e-6, 'relativ x'); nahe(p.z, 0.102, 1e-6, 'relativ z');
+  nahe(p.x, 0.5, 1e-6, 'relativ x'); nahe(p.z, 0.11, 1e-6, 'relativ z');
   // Im Baum direkt unter dem Drehtisch
   const reihe = a.baumReihenfolge('plant');
   assert.equal(reihe.indexOf('K1'), reihe.indexOf('DT1') + 1);
@@ -60,20 +60,20 @@ test('Band auf dem Hubtisch fährt mit hoch und nimmt die Kiste mit', function (
   a.anlegen('lift', 2, 2);
   a.funktion('HT1', 'Transportfläche', null);          // Tisch ohne eigenes Band
   const b = a.anlegen('conveyor', 2, 2);                 // Band oben auf dem Tisch
-  a.form(b, { w: 0.6, z: 0.698 });
+  a.form(b, { w: 0.6, z: 0.69 });
   assert.equal(a.koppeln(b, 'HT1'), true);
   a.setzen(b + '.Ein', 0);
   const q = a.anlegen('source', 2, 2);
   a.form(q, { z: 0.82 });
   a.eigenschaft(q, 'maxCount', 1);
   a.laufen(1);
-  nahe(a.kisten3d()[0].z, 0.798 + 0.15, 0.005, 'Kiste liegt auf dem Band');
+  nahe(a.kisten3d()[0].z, 0.79 + 0.15, 0.005, 'Kiste liegt auf dem Band');
 
   a.setzen('HT1.Ausfahren', 1);
   a.laufen(2);
   assert.equal(a.signal('HT1.Ausgefahren'), 1);
-  nahe(a.lage(b).z, 0.998, 1e-6, 'Band ist mitgefahren');
-  nahe(a.kisten3d()[0].z, 1.098 + 0.15, 0.005, 'Kiste ist mitgefahren');
+  nahe(a.lage(b).z, 0.99, 1e-6, 'Band ist mitgefahren');
+  nahe(a.kisten3d()[0].z, 1.09 + 0.15, 0.005, 'Kiste ist mitgefahren');
 
   // Das gekoppelte Band läuft: Kiste fährt nach rechts herunter
   a.setzen(b + '.Ein', 1);

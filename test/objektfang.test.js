@@ -117,24 +117,24 @@ function leer() {
     folders: [], bodies: [], rules: [] });
 }
 
-test('Band an Bandende schieben: Stirnkanten liegen aneinander, das abnehmende Band 2 mm tiefer', function () {
+test('Band an Bandende schieben: Stirnkanten liegen aneinander, das abnehmende Band 1 cm tiefer', function () {
   const a = leer();
   const b1 = a.anlegen('conveyor', 0, 0);   // 2 × 0,5 m, läuft nach rechts, Oberkante 0,7 m
   const b2 = a.anlegen('conveyor', 4, 2);
-  assert.equal(a.ziehen(b2, 2.04, 0.03), 'an Bandende von ' + b1 + ' (nimmt ab, 2 mm tiefer)');
-  assert.deepEqual(a.koerper(b2).pose, { x: 2, y: 0, z: 0.598, rot: 0 });
+  assert.equal(a.ziehen(b2, 2.04, 0.03), 'an Bandende von ' + b1 + ' (nimmt ab, 1 cm tiefer)');
+  assert.deepEqual(a.koerper(b2).pose, { x: 2, y: 0, z: 0.59, rot: 0 });
 
-  // Ein drittes Band vor B1 gezogen liefert auf B1 und liegt 2 mm höher
+  // Ein drittes Band vor B1 gezogen liefert auf B1 und liegt 1 cm höher
   const b0 = a.anlegen('conveyor', -4, 2);
-  assert.equal(a.ziehen(b0, -1.96, -0.02), 'an Bandende von ' + b1 + ' (liefert, 2 mm höher)');
-  assert.deepEqual(a.koerper(b0).pose, { x: -2, y: 0, z: 0.602, rot: 0 });
+  assert.equal(a.ziehen(b0, -1.96, -0.02), 'an Bandende von ' + b1 + ' (liefert, 1 cm höher)');
+  assert.deepEqual(a.koerper(b0).pose, { x: -2, y: 0, z: 0.61, rot: 0 });
 
   // Weg vom Bandende: die Höhe bleibt, wie sie beim Anfassen war; Alt fängt nicht
   assert.equal(a.ziehen(b0, -1.234, 3.012, { ohneFangen: true }), null);
-  assert.deepEqual(a.koerper(b0).pose, { x: -1.234, y: 3.012, z: 0.602, rot: 0 });
+  assert.deepEqual(a.koerper(b0).pose, { x: -1.234, y: 3.012, z: 0.61, rot: 0 });
   // Ein Schritt im Verlauf je Ziehen
   a.rueckgaengig();
-  assert.deepEqual(a.koerper(b0).pose, { x: -2, y: 0, z: 0.602, rot: 0 });
+  assert.deepEqual(a.koerper(b0).pose, { x: -2, y: 0, z: 0.61, rot: 0 });
 });
 
 test('Kiste läuft sauber über die Naht zweier per Objektfang verbundener Bänder', function () {
@@ -155,7 +155,7 @@ test('Kiste läuft sauber über die Naht zweier per Objektfang verbundener Bänd
   }
   const k = a.kisten3d()[0], v = a.kistenTempo()[0];
   assert.ok(k.x > 1.5, 'über die Naht gefahren: x = ' + k.x);
-  assert.ok(Math.abs(k.z - (0.698 + 0.15)) < 0.005, 'liegt auf dem zweiten Band: z = ' + k.z);
+  assert.ok(Math.abs(k.z - (0.69 + 0.15)) < 0.005, 'liegt auf dem zweiten Band: z = ' + k.z);
   assert.ok(zMax < 0.7 + 0.15 + 0.005, 'springt nicht an der Naht: höchstes z = ' + zMax);
   assert.ok(yMax < 0.01, 'fährt gerade: |y| bis ' + yMax);
   assert.ok(Math.abs(v.x - 0.5) <= 0.025, 'Bandtempo ' + v.x);
@@ -171,9 +171,10 @@ test('Schalter Objektfang: Standard an, wird gespeichert und geladen, kein Schri
   assert.equal(a.datei().settings.snap.obj, false);
   assert.equal(neueAnlage(a.datei()).fangenEinstellungen().obj, false);
 
-  // Aus: verschieben fängt nur am Raster
+  // Aus: verschieben fängt nur am Raster. B2 berührt danach das Ende von B1 und nimmt
+  // ab – die Naht-Regel (MF.fixBeltSeams) gilt auch ohne Objektfang: 1 cm tiefer
   assert.equal(a.ziehen('B2', 2.04, 0.03), null);
-  assert.deepEqual(a.koerper('B2').pose, { x: 2.05, y: 0.05, z: 0.6, rot: 0 });
+  assert.deepEqual(a.koerper('B2').pose, { x: 2.05, y: 0.05, z: 0.59, rot: 0 });
 
   // Rückgängig und Wiederholen lassen den Schalter, wie er ist
   a.rueckgaengig();

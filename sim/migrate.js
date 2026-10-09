@@ -5,7 +5,7 @@
 //   (Lage-Drehung 0), außer Schiebern, die in Schubrichtung gedreht werden.
 // - Förderband: static, Rechteck, 0,1 m hoch, Oberkante 0,7 m, Transportfläche.
 //   Richtung -> surface.dir in Grad (rechts 0°, unten 90°, links 180°, oben 270°).
-//   Ein Band, das ein anderes beliefert, liegt 2 mm tiefer (nie exakt bündig,
+//   Ein Band, das von einem anderen beliefert wird, liegt 1 cm tiefer (nie exakt bündig,
 //   sonst hakt die Kiste an der Kante ein – Spike-Ergebnis 4.2).
 // - Lichtschranke: ghost, 5 cm schmaler Streifen quer über dem Band (wie der
 //   alte Strahl durch die Zellmitte), Sensor.
@@ -22,7 +22,7 @@ window.MF = window.MF || {};
 
 (function () {
   var DIR_VEC = { rechts: [1, 0], links: [-1, 0], oben: [0, -1], unten: [0, 1] };
-  var LOWER = 0.002;   // abnehmendes Band 2 mm tiefer
+  var LOWER = MF.BELT_SEAM;   // abnehmendes Band tiefer (1 cm, wie MF.fixBeltSeams)
 
   function isObject(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
   function isNum(v) { return typeof v === 'number' && isFinite(v); }
@@ -72,7 +72,7 @@ window.MF = window.MF || {};
     }
 
     // Höhen der Bänder: liefert A auf B (B berührt die Stirnkante von A), liegt B
-    // 2 mm tiefer. Ketten werden weitergereicht, Kreise nach einer Runde abgebrochen.
+    // MF.BELT_SEAM tiefer. Ketten werden weitergereicht, Kreise nach einer Runde abgebrochen.
     var z = {};
     belts.forEach(function (b) { z[b.id] = MF.BELT_TOP - 0.1; });
     function feeds(a, b) {

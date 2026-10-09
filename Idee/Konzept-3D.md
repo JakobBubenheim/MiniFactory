@@ -141,7 +141,7 @@ Festgelegt in Phase 2 (Umsetzung `sim/migrate.js`, Zelle × `cellM`, alle Körpe
 
 | Alt | Neu im Detail |
 |---|---|
-| Förderband | Rechteck = belegte Zellen, Unterseite z = 0,6 m. `direction` → `surface.dir` (Grad, siehe oben), Lage-Drehung 0. **Liefert ein Band auf ein anderes** (das andere berührt seine Stirnkante), liegt das abnehmende **2 mm tiefer**; Ketten werden weitergereicht |
+| Förderband | Rechteck = belegte Zellen, Unterseite z = 0,6 m. `direction` → `surface.dir` (Grad, siehe oben), Lage-Drehung 0. **Liefert ein Band auf ein anderes** (das andere berührt seine Stirnkante), liegt das abnehmende **1 cm tiefer** (`MF.BELT_SEAM`, bis 09.10.2026: 2 mm); Ketten werden weitergereicht |
 | Lichtschranke | 5 cm schmaler Streifen durch die Zellmitte (wie der alte Strahl), quer über das Band, 0,3 m hoch, Unterseite 1 cm über der Bandoberkante (ohne Band: über dem Boden) |
 | Schieber | `direction: 'auto'` einmal fest aufgelöst (wie die alte Engine). Grundform schiebt nach +y, gedreht in die Schubrichtung (`pose.rot`). Form: **Stößel mit Platte und Fangwinkel** (siehe Abschnitt 4), Platte an der Zellkante, Unterseite 2 cm über dem Band, `stroke` (mm) → `axis.max` (m), `speed` → `vmax`, `returnDelay` bleibt |
 | Quelle | liegt dort, wo die alte Engine die Kisten ablegte (Mitte der angrenzenden Bandzelle), Unterseite 2 cm über dem Band; der Erzeuger legt die Kiste mit ihrer Unterseite auf die Lage des Erzeugers |
@@ -187,7 +187,7 @@ Festgelegt in Phase 4 (Achsen, Kopplung, neue Vorlagen; `sim/model.js`, `sim/eng
 | Kontakte nach Anhalten | Gleitet ein kinematischer Körper an einer Kiste entlang (Stopper fährt ein, die gestaute Kiste drückt seitlich), schreibt parry die Kontaktpunkte nur fort – auch über die Kante hinaus –, und die Kiste hing an einem Kontakt, den es nicht mehr gab. Darum: kommt ein bewegter Körper zum Stehen, werden seine Kontakte neu berechnet (`refreshContacts`) |
 | Achse in der Draufsicht | für den gewählten Körper in Blau: linear Linie von min bis max mit Pfeil und Marke der Stellung, senkrecht ein Kreis mit Punkt (hoch) bzw. Kreuz (runter) und Text, rotatorisch Bogen von min bis max mit Zeiger. Griffe: Ursprung, min, max, Richtung (nur linear in der Ebene); Fangen wie bei Formen (Lage `snap.pos`, Winkel `snap.angle`, Alt aus). Jede Geste ein Schritt im Verlauf, Esc bricht ab. Bearbeiten (Griffe, Verschieben, Pfeiltasten) rechnet bei gekoppelten und gedrehten Körpern ins Koordinatensystem der Lage zurück |
 | Katalog | entsteht aus `MF.templates` (`MF.templateGroups()`); jede Vorlage hat `label`, `icon`, `prefix`, `color`, `group`, `hint`, `make()`, `props`. Keine Sonderfälle je Vorlage in Oberfläche oder Engine |
-| Neue Vorlagen | **Drehtisch** `DT` (Gruppe Tische): Kreis r 0,4 m, kinematisch, Band 0,5 m/s, Drehachse 90 °/s (bis Handbetrieb `position` −180 … 180°, seitdem `zweipunkt` 0 … 90°, siehe 3b). **Hubtisch** `HT` (Tische): 0,6 × 0,5 m mit Band, linear z, `zweipunkt`, Hub 0,3 m, 0,2 m/s. Beide Oberkante 0,698 m (2 mm unter dem Band). **Stopper** `ST` (Aktoren): Leiste 0,05 × 0,4 m, eingefahren 2 cm unter der Bandoberkante, linear z, `zweipunkt`, 0,14 m, 0,5 m/s, Gleitbelag. **Weiche** `W` (Aktoren): Arm 0,8 × 0,05 m, 2 cm über dem Band, Drehachse am linken Ende, `zweipunkt` 0 … 45°, 90 °/s, Gleitbelag; an die obere Bandkante gelegt lenkt sie ausgefahren auf ein nach unten abgehendes Band. Portal/Greifer: nicht in diesem Umbau (Greifen fehlt) |
+| Neue Vorlagen | **Drehtisch** `DT` (Gruppe Tische): Kreis r 0,4 m, kinematisch, Band 0,5 m/s, Drehachse 90 °/s (bis Handbetrieb `position` −180 … 180°, seitdem `zweipunkt` 0 … 90°, siehe 3b). **Hubtisch** `HT` (Tische): 0,6 × 0,5 m mit Band, linear z, `zweipunkt`, Hub 0,3 m, 0,2 m/s. Beide Oberkante 0,69 m (1 cm unter dem Band; bis 09.10.2026: 0,698 m). **Stopper** `ST` (Aktoren): Leiste 0,05 × 0,4 m, eingefahren 2 cm unter der Bandoberkante, linear z, `zweipunkt`, 0,14 m, 0,5 m/s, Gleitbelag. **Weiche** `W` (Aktoren): Arm 0,8 × 0,05 m, 2 cm über dem Band, Drehachse am linken Ende, `zweipunkt` 0 … 45°, 90 °/s, Gleitbelag; an die obere Bandkante gelegt lenkt sie ausgefahren auf ein nach unten abgehendes Band. Portal/Greifer: nicht in diesem Umbau (Greifen fehlt) |
 
 ### 3b. Festlegungen Handbetrieb (`feature/handbetrieb`)
 
@@ -208,7 +208,7 @@ Festgelegt beim Objektfang (Branch `feature/objektfang`; `sim/snap.js`, `ui/edit
 | Vorrang | Punkt → Kante → Flucht → Raster. Beim **Verschieben** zählt der Körper als Ganzes: liegt eine seiner Kanten parallel (± 1,8°) und gegenüber einer Zielkante näher als jeder Punkt an einem Zielpunkt, legt sie sich bündig an; danach rasten entlang der Kante Ecken bzw. Mitten aufeinander, sonst fängt dort das Raster. Liegen nach einem Punktfang die Mittelpunkte aufeinander, heißt es „an Mitte“. Achsparallele Kanten und Flucht legen nur eine Achse fest, die andere fängt weiter (bei gekoppelten Körpern auf gedrehtem Eltern nur ganze Punkte) |
 | Gilt für | Verschieben (Maus) und Einfügen aus dem Katalog (Ziehen und Klick), Zeichnen (Punkte von Rechteck/Kreis/Polygon, Marker schon vor dem ersten Punkt), Griffe für Größe, Radius und Polygonpunkte (Maße folgen dann genau dem gefangenen Punkt). Drehen und Achs-Griffe fangen nur am Raster, Pfeiltasten gehen Rasterschritte, Polygon mit Shift fängt Winkel und Länge |
 | Alt | hält Raster **und** Objektfang aus, auch beim Ziehen aus dem Katalog (dort hatte Alt vorher keine Wirkung) |
-| Höhenregel Bandenden | Neue Bänder aus dem Katalog liegen alle auf 0,7 m; die 2-mm-Regel wendet sonst nur die Migration an. Darum setzt der Objektfang die Höhe: rastet eine **Stirnkante** (Kante quer zur Laufrichtung) einer Transportfläche an die Stirnkante einer anderen, liegt der **gezogene** Körper danach mit seiner Oberkante 2 mm **tiefer**, wenn er abnimmt (seine hintere Stirnkante liegt an), bzw. 2 mm **höher**, wenn er liefert (vordere Stirnkante). Der andere Körper bleibt unverändert, Ketten setzen sich fort (0,7 → 0,698 → 0,696). Ohne Bandende behält er die Höhe vom Anfassen. Meldung „an Bandende von B1 (nimmt ab, 2 mm tiefer)“ |
+| Höhenregel Bandenden | Neue Bänder aus dem Katalog liegen alle auf 0,7 m; die Naht-Regel stellt `MF.fixBeltSeams` bei jeder Änderung ein (siehe Abschnitt 4). Zusätzlich setzt der Objektfang die Höhe: rastet eine **Stirnkante** (Kante quer zur Laufrichtung) einer Transportfläche an die Stirnkante einer anderen, liegt der **gezogene** Körper danach mit seiner Oberkante 1 cm **tiefer**, wenn er abnimmt (seine hintere Stirnkante liegt an), bzw. 1 cm **höher**, wenn er liefert (vordere Stirnkante). Der andere Körper bleibt unverändert, Ketten setzen sich fort (0,7 → 0,69 → 0,68). Ohne Bandende behält er die Höhe vom Anfassen. Meldung „an Bandende von B1 (nimmt ab, 1 cm tiefer)“ |
 | Anzeige | Marker am Fangpunkt in Grün (`MF.sim.snapMark`), Text in der Statusleiste („Objektfang: an Kante von B1.“) und in der Meldung nach dem Ziehen bzw. Einfügen |
 | Schalter | Knopf **„Objektfang“** neben „Fangen“ in den Reitern Modell und Design (`MF.ui.syncToggles`), Kürzel **O**. `settings.snap.obj`, Standard an; alte Dateien ohne `obj` = an, `validate()` verlangt `true`/`false`. Kein Schritt im Verlauf: Rückgängig lässt `snap.on` und `snap.obj`, wie sie sind (`MF.history.snapshot` lässt sie weg) |
 | Behoben | `MF.sim.drawPose()`/`restDrawPose()` gaben ohne Achse und Kopplung `b.pose` selbst zurück; der Editor merkte sich das beim Anfassen, und ein gezogener Körper lief seit Phase 4 nur halb so schnell wie die Maus. Beide liefern jetzt eine Kopie |
@@ -265,8 +265,17 @@ Weitere Festlegungen aus Phase 2:
 
 Aus Phase 1 außerdem:
 
-- Aneinanderstoßende Transportflächen **nie exakt bündig**: das abnehmende Band 1–2 mm tiefer,
-  sonst hakt die Kiste an der Kante ein und springt.
+- Aneinanderstoßende Transportflächen **nie exakt bündig**: das abnehmende Band **1 cm** tiefer,
+  sonst hakt die Kiste an der Kante ein und springt. (Spike: „1–2 mm genügen“ – das galt nur bei
+  gleichem Tempo und lockeren Abständen. Fehler vom 09.10.2026: dicht folgende Kisten und ein
+  langsameres Folgeband blieben bei 2 mm und 5 mm hängen, ab 1 cm in keiner Kombination mehr.)
+- **Naht-Regel zentral (`MF.fixBeltSeams`, `sim/model.js`):** läuft bei jeder Änderung
+  (`MF.store.changed`) vor dem Melden, also nach Ziehen, Zahleneingabe, Einfügen, Laden, Rückgängig.
+  Liefernd ist ein Rechteck mit Transportfläche: Was bis 5 cm hinter seiner vorderen Stirnkante
+  liegt, nimmt ab; was hinter seiner hinteren liegt, liefert (so zählen Drehtische mit). Nur
+  absenken, nie anheben; liegt die abnehmende Fläche mehr als 5 cm höher, ist es eine Stufe und
+  bleibt (oberes Band am Hubtisch). Achsen in Grundstellung; ein gehobener Hubtisch ist nicht
+  abgedeckt. Objektfang und Migration nutzen denselben Wert `MF.BELT_SEAM`.
 - Sensoren über Rapier-Schnittabfragen (`intersectionsWithShape`, nur dynamische Körper), keine
   Sensor-Collider. Erzeuger legen nur auf, wenn der Platz frei ist.
 - Simulation ist bitgenau deterministisch (Node, Chromium, Firefox gleich). Tests prüfen trotzdem

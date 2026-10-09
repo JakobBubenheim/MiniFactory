@@ -145,7 +145,7 @@ test('Migration 2 → 3: Ordner, Eingänge und Darstellung bleiben', function ()
   assert.equal(d.settings.dtMs, 20);
 });
 
-test('Aneinanderstoßende Bänder sind nicht bündig: das abnehmende liegt 2 mm tiefer', function () {
+test('Aneinanderstoßende Bänder sind nicht bündig: das abnehmende liegt 1 cm tiefer', function () {
   const a = neueAnlage();
   // B1 nach rechts liefert auf B2 (nach unten), B2 liefert auf B3 (nach links); B4 steht allein
   const datei = plaene.datei([
@@ -160,8 +160,8 @@ test('Aneinanderstoßende Bänder sind nicht bündig: das abnehmende liegt 2 mm 
   const z = {};
   d.bodies.forEach(function (b) { z[b.id] = b.pose.z; });
   nahe(z.B1, 0.6, 'B1');
-  nahe(z.B2, 0.598, 'B2 2 mm unter B1');
-  nahe(z.B3, 0.596, 'B3 2 mm unter B2');
+  nahe(z.B2, 0.59, 'B2 1 cm unter B1');
+  nahe(z.B3, 0.58, 'B3 1 cm unter B2');
   nahe(z.B4, 0.6, 'B4 berührt keins');
 
   // Über beide Ecken hinweg kommen Kisten in der Senke an

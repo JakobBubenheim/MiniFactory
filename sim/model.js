@@ -29,6 +29,7 @@ MF.MATERIALS = {
 MF.BODY = { prefix: 'K', label: 'Körper', color: '#3A7CA5', H: 0.1 };
 
 MF.BELT_TOP = 0.7;      // Oberkante der Förderbänder (m)
+MF.BELT_SEAM = 0.01;    // Naht: das abnehmende Band liegt 1 cm tiefer (MF.fixBeltSeams)
 MF.BOX_SIZE = 0.3;      // Kantenlänge der Kisten aus Erzeugern (m)
 MF.BOX_COLOR = '#C79A5B';
 
@@ -422,6 +423,88 @@ MF.poseInWorld = function (b, posOf, depth) {
   return MF.composePose(MF.poseInWorld(p, posOf, (depth || 0) + 1), local);
 };
 
+// ---------- Nähte zwischen Transportflächen ----------
+//
+// Stoßen zwei Transportflächen aneinander, hakt die Kiste an der Stirnkante der
+// nächsten ein, wenn diese gleich hoch oder höher liegt – bei dicht folgenden
+// Kisten und langsamerem Folgeband auch noch bei 2 mm Absatz. Deshalb liegt
+// jede abnehmende Fläche mindestens MF.BELT_SEAM tiefer als die liefernde.
+//
+// Liefernd ist ein Rechteck mit Transportfläche: Was hinter seiner vorderen
+// Stirnkante liegt (bis SEAM_GAP, auch über Eck in die Mitte eines Bands), nimmt ab;
+// was hinter seiner hinteren Stirnkante liegt, liefert auf es. So zählen auch
+// Tische ohne eigene Richtung (Drehtisch) mit. Es wird nur abgesenkt, nie
+// angehoben; Ketten werden weitergereicht. Geneigte Körper zählen nicht.
+// Liegt die abnehmende Fläche mehr als SEAM_STEP höher, ist das keine Naht, sondern
+// eine Stufe (z. B. oberes Band am Hubtisch) – sie bleibt, wie sie ist. Achsen
+// zählen in Grundstellung; ein gehobener Hubtisch ist also nicht abgedeckt.
+// Gibt die IDs der abgesenkten Körper zurück.
+MF.SEAM_GAP = 0.05;
+MF.SEAM_STEP = 0.05;
+MF.fixBeltSeams = function (bodies) {
+  bodies = bodies || MF.model.bodies;
+  var G = MF.geom;
+  var list = bodies.filter(function (b) {
+    return b.surface && b.shape && (b.kind === 'static' || b.kind === 'kinematic') && !G.isSloped(b.shape);
+  });
+  if (list.length < 2) return [];
+  function home(b) { return MF.axisHome(b.axis); }
+  function info(b) {
+    var pose = MF.poseInWorld(b, home);
+    return { b: b, pose: pose, top: pose.z + b.shape.h,
+      outline: G.worldOutline(b.shape, pose).map(function (p) { return [p.x, p.y]; }) };
+  }
+  // Streifen hinter der vorderen (side 1) bzw. hinteren (side −1) Stirnkante, in der Welt
+  function strip(it, side) {
+    var sh = it.b.shape, d = G.dirVec(it.b.surface.dir || 0);
+    var ex = Math.abs(d.x) * sh.w / 2 + Math.abs(d.y) * sh.d / 2;
+    var ey = Math.abs(d.y) * sh.w / 2 + Math.abs(d.x) * sh.d / 2 - 0.001;   // Nachbarn daneben zählen nicht
+    var a0 = ex, a1 = ex + MF.SEAM_GAP;
+    return [[a0, -ey], [a1, -ey], [a1, ey], [a0, ey]].map(function (q) {
+      var lx = side * (q[0] * d.x) - q[1] * d.y, ly = side * (q[0] * d.y) + q[1] * d.x;
+      var w = G.toWorld(it.pose, lx, ly);
+      return [w.x, w.y];
+    });
+  }
+  function overlaps(p, q) {
+    var i, j;
+    for (i = 0; i < p.length; i++) if (G.inPolygon(q, p[i][0], p[i][1])) return true;
+    for (i = 0; i < q.length; i++) if (G.inPolygon(p, q[i][0], q[i][1])) return true;
+    for (i = 0; i < p.length; i++) {
+      for (j = 0; j < q.length; j++) {
+        if (G.segmentsTouch(p[i], p[(i + 1) % p.length], q[j], q[(j + 1) % q.length])) return true;
+      }
+    }
+    return false;
+  }
+  var items = list.map(info), pairs = [];   // [liefernd, abnehmend]
+  items.forEach(function (a) {
+    if (a.b.shape.type !== 'rect') return;
+    var front = strip(a, 1), back = strip(a, -1);
+    items.forEach(function (o) {
+      if (o === a) return;
+      if (overlaps(front, o.outline)) pairs.push([a, o]);
+      if (overlaps(back, o.outline)) pairs.push([o, a]);
+    });
+  });
+  var lowered = {};
+  for (var round = 0; round <= items.length; round++) {
+    var changed = false;
+    pairs.forEach(function (pr) {
+      var want = pr[0].top - MF.BELT_SEAM;
+      if (pr[1].top > want + 1e-9 && pr[1].top - pr[0].top <= MF.SEAM_STEP) {
+        var dz = want - pr[1].top;
+        pr[1].b.pose.z = G.round6(pr[1].b.pose.z + dz);
+        pr[1].top = G.round6(pr[1].top + dz);
+        lowered[pr[1].b.id] = true;
+        changed = true;
+      }
+    });
+    if (!changed) break;
+  }
+  return Object.keys(lowered);
+};
+
 // Koordinatensystem, in dem b.pose gilt: Lage des Elternkörpers oder die Welt
 MF.parentFrame = function (b, posOf) {
   var p = MF.parentBody(b);
@@ -713,19 +796,19 @@ MF.templates = {
   },
 
   // ---------- Achsen (Phase 4) ----------
-  // Tische mit Band liegen 2 mm unter der Bandoberkante (0,7 m), damit Kisten
-  // vom Band sauber auffahren (Konzept, Abschnitt 4: nie exakt bündig). Ein
-  // abnehmendes Band dahinter wieder 2 mm tiefer legen.
+  // Tische mit Band liegen MF.BELT_SEAM (1 cm) unter der Bandoberkante (0,7 m),
+  // damit Kisten vom Band sauber auffahren (Konzept, Abschnitt 4: nie exakt bündig).
+  // Ein abnehmendes Band dahinter senkt MF.fixBeltSeams selbst ab.
   turntable: {
     label: 'Drehtisch', icon: 'i-turntable', prefix: 'DT', color: '#1B2430', group: 'Tische',
     hint: 'Runder Tisch mit Band, dreht um die Hochachse: Ausfahren = 1 dreht auf 90°, 0 zurück auf 0°, ' +
       'Ausgefahren/Eingefahren melden die Endlagen. Für beliebige Winkel Betriebsart Position (Soll und Freigabe). ' +
-      'Liegt 2 mm unter der Bandoberkante',
+      'Liegt 1 cm unter der Bandoberkante',
     make: function () {
       return {
         kind: 'kinematic',
         shape: { type: 'circle', r: 0.4, h: 0.1 },
-        pose: { z: MF.BELT_TOP - 0.1 - 0.002 },
+        pose: { z: MF.BELT_TOP - 0.1 - MF.BELT_SEAM },
         material: MF.MATERIALS.belt,
         surface: { speed: 0.5, dir: 0, running: true },
         axis: { type: 'rotary', origin: [0, 0, 0], dir: [0, 0, 1], min: 0, max: 90, vmax: 90, mode: 'zweipunkt', valve: 'mono', returnDelay: 0 }
@@ -741,7 +824,7 @@ MF.templates = {
       return {
         kind: 'kinematic',
         shape: { type: 'rect', w: 0.6, d: 0.5, h: 0.1 },
-        pose: { z: MF.BELT_TOP - 0.1 - 0.002 },
+        pose: { z: MF.BELT_TOP - 0.1 - MF.BELT_SEAM },
         material: MF.MATERIALS.belt,
         surface: { speed: 0.5, dir: 0, running: true },
         axis: { type: 'linear', origin: [0, 0, 0], dir: [0, 0, 1], min: 0, max: 0.3, vmax: 0.2, mode: 'zweipunkt', valve: 'mono', returnDelay: 0 }
@@ -1111,7 +1194,11 @@ MF.store = {
   },
 
   // Nach jeder Änderung am Modell aufrufen, damit alle Ansichten neu zeichnen.
-  changed: function () { this.emit('change'); },
+  changed: function () {
+    // Nähte vor dem Melden angleichen: Ansichten, Engine und Verlauf sehen nur den gültigen Stand
+    if (MF.fixBeltSeams) MF.fixBeltSeams();
+    this.emit('change');
+  },
 
   findBody: function (id) {
     var bs = MF.model.bodies;
